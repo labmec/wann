@@ -5,7 +5,7 @@ import math
 import time as tm
 import sys
 
-meshfile = "/home/thiago/Documents/Postdoc_ITA/mesh_generation/geo/mesh3D_rev01.msh"
+meshfile = "../geo/mesh3D_rev02.msh"
 mesh = Mesh(meshfile)
 V = FunctionSpace(mesh, "CG",1)
 
