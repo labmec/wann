@@ -8,6 +8,7 @@ import sys
 meshfile = "../geo/mesh3D_rev02.msh"
 mesh = Mesh(meshfile)
 V = FunctionSpace(mesh, "CG",1)
+W = VectorFunctionSpace(mesh, "CG",1)
 
 u = TrialFunction(V)
 v = TestFunction(V)
@@ -26,4 +27,7 @@ problem = LinearVariationalProblem(_lhs, _rhs, p, bcs=[p_farfield,p_well])
 solver  = LinearVariationalSolver(problem)
 solver.solve()
 
+vel = Function(W).interpolate(-grad(p))
+
 File("p.pvd").write(p)
+File("vel.pvd").write(vel)
