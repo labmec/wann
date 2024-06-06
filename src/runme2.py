@@ -5,6 +5,8 @@ import math
 import time as tm
 import sys
 
+solver_cg_wipc = {"ksp_type": "cg", "pc_type": "bjacobi", "pc_sub_type": "ilu"}
+
 reservoir_id = 111
 wellbore_id = 112
 reservoir_farfield = 100
@@ -15,8 +17,8 @@ wellbore_cylinder = 103
 meshfile = "../geo/mesh3D_rev03.msh"
 mesh = Mesh(meshfile)
 
-V = FunctionSpace(mesh, "CG",1)
-W = VectorFunctionSpace(mesh, "CG",1)
+V = FunctionSpace(mesh, "CG",2)
+W = VectorFunctionSpace(mesh, "CG",2)
 
 V_DG0_r = FunctionSpace(mesh, "DG", 0)
 V_DG0_w = FunctionSpace(mesh, "DG", 0)
@@ -67,7 +69,9 @@ p = Function(V)
 
 
 
-F = inner(grad(u),grad(v))*dx(reservoir_id) + Constant(0)*v*dx(reservoir_id) + 10000*inner(grad(u),grad(v))*dx(wellbore_id) + Constant(0)*v*dx(wellbore_id)
+#F = inner(grad(u),grad(v))*dx(reservoir_id) + Constant(0)*v*dx(reservoir_id) + inner(grad(u),n_vec)*v('+')*dS(103) + 10000*inner(grad(u),grad(v))*dx(wellbore_id) + Constant(0)*v*dx(wellbore_id)
+F = inner(grad(u),grad(v))*dx(reservoir_id) + Constant(0)*v*dx(reservoir_id) + inner(grad(u('+')),n_vec('+'))*v('+')*dS(102) 
+F += 1*inner(grad(u),grad(v))*dx(wellbore_id) + Constant(0)*v*dx(wellbore_id) + inner(grad(u('-')),n_vec('-'))*v('-')*dS(102)
 
 Pr=10;
 Pw=1;
@@ -77,7 +81,7 @@ p_well = DirichletBC(V, Pw, [wellbore_heel])
 _lhs = lhs(F)
 _rhs = rhs(F)
 problem = LinearVariationalProblem(_lhs, _rhs, p, bcs=[p_farfield,p_well])
-solver  = LinearVariationalSolver(problem)
+solver  = LinearVariationalSolver(problem,solver_parameters=solver_cg_wipc)
 solver.solve()
 
 vel = Function(W).interpolate(-grad(p))
