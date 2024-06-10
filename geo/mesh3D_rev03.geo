@@ -18,8 +18,9 @@ all_vol() = BooleanDifference{ Volume{2}; Delete; }{ Volume{1}; };
 MeshSize {3, 4, 5, 6, 7, 8, 9, 10} = h_farfield; //far field
 MeshSize {1, 2} = h_wellbore; //wellbore
 
-Physical Volume(111) = {2}; //reservoir
-Physical Volume(112) = {1}; //wellbore
+Physical Volume(111) = {1}; //wellbore
+Physical Volume(112) = {2}; //reservoir
+
 Physical Surface(100) = {4,5,7,9};//reservoir farfield
 Physical Surface(101) = {3};//wellbore heel
 Physical Surface(102) = {2};//wellbore toe
