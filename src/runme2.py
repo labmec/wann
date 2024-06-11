@@ -22,8 +22,14 @@ Pw=1;
 meshfile = "../geo/mesh2D_rev01.msh"
 mesh = Mesh(meshfile)
 
-V = FunctionSpace(mesh, "CG",2)
-W = VectorFunctionSpace(mesh, "CG",2)
+#CG
+#V = FunctionSpace(mesh, "CG",1)
+#W = VectorFunctionSpace(mesh, "CG",2)
+
+p_order = 1
+V = FunctionSpace(mesh, "DG",p_order-1)
+W = FunctionSpace(mesh, "RTCF",p_order)
+M = W*V
 
 V_DG0_r = FunctionSpace(mesh, "DG", 0)
 V_DG0_w = FunctionSpace(mesh, "DG", 0)
@@ -66,6 +72,54 @@ class MyBC(DirichletBC):
         # condition is to be applied.
         self.nodes = np.unique(np.where(markers.dat.data_ro_with_halos == 0)[0])
 
+
+# esse exemplo resolve poço e reservatório tudo junto, mas a condição de contorno no poço também fica no reservatório, mesmo com big number
+k = 1 
+big = 1.e6
+#CG
+#u = TrialFunction(V)
+#v = TestFunction(V)
+#p = Function(V)
+#F  = inner(grad(u),grad(v))*dx(reservoir_id) + Constant(0)*v*dx(reservoir_id) + inner(k*grad(u('+')),n_vec('+'))*v('+')*dS(wellbore_cylinder) # reservatório
+#F += inner(k*grad(u),grad(v))*dx(wellbore_id) + Constant(0)*v*dx(wellbore_id) + inner(grad(u('-')),n_vec('-'))*v('-')*dS(wellbore_cylinder) #+ big*u('-')*v('-')*dS(wellbore_heel) # poço
+#_lhs = lhs(F)
+#_rhs = rhs(F)
+#p_farfield = DirichletBC(V, Pr, [reservoir_farfield])
+#p_well = DirichletBC(V, Pw, [wellbore_heel])
+#problem = LinearVariationalProblem(_lhs, _rhs, p, bcs=[p_farfield, p_well]) # condição do poço também fica no reservatório
+#problem = LinearVariationalProblem(_lhs, _rhs, p, bcs=[p_farfield])
+#solver  = LinearVariationalSolver(problem,solver_parameters=solver_cg_wipc)
+#solver.solve()
+
+#vel = Function(W).interpolate(-k*grad(p))
+#File("p_all.pvd").write(p)
+#File("vel.pvd").write(vel)
+
+#mixed
+sigma, u = TrialFunctions(M)
+tau, v = TestFunctions(M)
+m =  Function(M)
+
+F = inner(sigma, tau)*dx(reservoir_id) + div(tau)*u*dx(reservoir_id) + div(sigma)*v*dx(reservoir_id) + Constant(0)*v*dx(reservoir_id) + inner(k*grad(u('+')),n_vec('+'))*v('+')*dS(wellbore_cylinder)
+F += inner(sigma, tau)*dx(wellbore_id) + div(tau)*u*dx(wellbore_id) + div(sigma)*v*dx(wellbore_id) + Constant(0)*v*dx(wellbore_id) + inner(grad(u('-')),n_vec('-'))*v('-')*dS(wellbore_cylinder)
+F += big*Pr*u*v*dx(reservoir_id) + big*Pr*v*dx(reservoir_id)
+
+_lhs = lhs(F)
+_rhs = rhs(F)
+p_farfield = DirichletBC(M.sub(1), Pr, [reservoir_farfield])
+p_well = DirichletBC(M.sub(1), Pw, [wellbore_heel])
+v_toe = DirichletBC(M.sub(0), as_vector([0,0]), [wellbore_toe])
+#v_farfiled = DirichletBC(M.sub(0), as_vector([0,-10]), [wellbore_heel])
+problem = LinearVariationalProblem(_lhs, _rhs, m, bcs=[p_farfield, p_well, v_toe])#, v_farfiled]) # condição do poço também fica no reservatório
+#problem = LinearVariationalProblem(_lhs, _rhs, p, bcs=[p_farfield])
+solver  = LinearVariationalSolver(problem,solver_parameters=solver_cg_wipc)
+solver.solve()
+
+sigma, u = m.subfunctions
+File("p_all.pvd").write(u)
+File("vel.pvd").write(sigma)
+
+sys.exit("exit")
 u_w = TrialFunction(V)
 u_r = TrialFunction(V)
 v_w = TestFunction(V)
@@ -73,30 +127,38 @@ v_r = TestFunction(V)
 p_w = Function(V)
 p_r = Function(V)
 
-#F = inner(grad(u),grad(v))*dx(reservoir_id) + Constant(0)*v*dx(reservoir_id) + inner(grad(u),n_vec)*v('+')*dS(103) + 10000*inner(grad(u),grad(v))*dx(wellbore_id) + Constant(0)*v*dx(wellbore_id)
-#F = inner(grad(u),grad(v))*dx(reservoir_id) + Constant(0)*v*dx(reservoir_id) + inner(grad(u('+')),n_vec('+'))*v('+')*dS(103) 
-#F += 1*inner(grad(u),grad(v))*dx(wellbore_id) + Constant(0)*v*dx(wellbore_id) + inner(grad(u('-')),n_vec('-'))*v('-')*dS(103)
+max_iter = 6
+k = 10000 
+for i in range(max_iter):
+    vel_r = -grad(p_r)
+    flux_w = inner(vel_r('-'),n_vec('-'))
+    F_w = inner(k*grad(u_w),grad(v_w))*dx + Constant(0)*v_w*dx - flux_w*v_w('-')*dS(wellbore_cylinder) #Constant(0)*v_w('-')*dS(wellbore_cylinder)
+    p_well = DirichletBC(V, Pw, [wellbore_heel])
+    #exclude_beyond_wellbore = MyBC(V, 0, I_cg_w)
+    _lhs_w = lhs(F_w)
+    _rhs_w = rhs(F_w)
+    #problem_w = LinearVariationalProblem(_lhs_w, _rhs_w, p_w, bcs=[p_well, exclude_beyond_wellbore])
+    problem_w = LinearVariationalProblem(_lhs_w, _rhs_w, p_w, bcs=[p_well])
+    solver_w  = LinearVariationalSolver(problem_w,solver_parameters=solver_cg_wipc)
+    solver_w.solve()
 
-#F = inner(grad(u),grad(v))*dx(reservoir_id) + Constant(0)*v*dx(reservoir_id) + Constant(50)*v('+')*dS(101) + inner(grad(u),grad(v))*dx(wellbore_id) + Constant(0)*v*dx(wellbore_id)
-#F = inner(grad(u),grad(v))*dx(reservoir_id) + Constant(0)*v*dx(reservoir_id)  
+    vel_w = -k*grad(p_w)
+    #vel_r = -grad(p_r)
+    flux_r = inner(vel_w('+'),n_vec('+'))
+    F_r = inner(grad(u_r),grad(v_r))*dx + Constant(0)*v_r*dx + flux_r*v_r('+')*dS(wellbore_cylinder) #Constant(0)*v_r('+')*dS(wellbore_cylinder) 
+    p_farfield = DirichletBC(V, Pr, [reservoir_farfield])
+    exclude_beyond_reservoir = MyBC(V, 0, I_cg_r)
+    _lhs_r = lhs(F_r)
+    _rhs_r = rhs(F_r)
+    #problem_r = LinearVariationalProblem(_lhs_r, _rhs_r, p_r, bcs=[p_farfield, exclude_beyond_reservoir])
+    problem_r = LinearVariationalProblem(_lhs_r, _rhs_r, p_r, bcs=[p_farfield])
+    solver_r  = LinearVariationalSolver(problem_r,solver_parameters=solver_cg_wipc)
+    solver_r.solve()
 
-F_w = inner(100000*grad(u_w),grad(v_w))*dx + Constant(0)*v_w*dx + Constant(0)*v_w('-')*dS(wellbore_cylinder)
-p_well = DirichletBC(V, Pw, [wellbore_heel])
-exclude_beyond_wellbore = MyBC(V, 0, I_cg_w)
-_lhs_w = lhs(F_w)
-_rhs_w = rhs(F_w)
-problem_w = LinearVariationalProblem(_lhs_w, _rhs_w, p_w, bcs=[p_well, exclude_beyond_wellbore])
-solver_w  = LinearVariationalSolver(problem_w,solver_parameters=solver_cg_wipc)
-solver_w.solve()
-
-F_r = inner(grad(u_r),grad(v_r))*dx + Constant(0)*v_r*dx + Constant(0)*v_r('+')*dS(wellbore_cylinder) 
-p_farfield = DirichletBC(V, Pr, [reservoir_farfield])
-exclude_beyond_reservoir = MyBC(V, 0, I_cg_r)
-_lhs_r = lhs(F_r)
-_rhs_r = rhs(F_r)
-problem_r = LinearVariationalProblem(_lhs_r, _rhs_r, p_r, bcs=[p_farfield, exclude_beyond_reservoir])
-solver_r  = LinearVariationalSolver(problem_r,solver_parameters=solver_cg_wipc)
-solver_r.solve()
+    print("flux_w="+str(assemble(flux_w*dS(wellbore_cylinder))))
+    print("flux_r="+str(assemble(flux_r*dS(wellbore_cylinder))))
+    #dflux = assemble(abs(flux_w-flux_r)*dS(wellbore_cylinder))
+    #print(dflux)
 
 #vel = Function(W).interpolate(-grad(p))
 
