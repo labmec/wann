@@ -55,10 +55,10 @@ par_loop(("{[i] : 0 <= i < A.dofs}", "A[i, 0] = fmax(A[i, 0], B[0, 0])"),
          dx,
          {"A": (I_cg_w, RW), "B": (I_w, READ)})
 
-File("I_r.pvd").write(I_r)
-File("I_w.pvd").write(I_w)
-File("I_cg_r.pvd").write(I_cg_r)
-File("I_cg_w.pvd").write(I_cg_w)
+VTKFile("I_r.pvd").write(I_r)
+VTKFile("I_w.pvd").write(I_w)
+VTKFile("I_cg_r.pvd").write(I_cg_r)
+VTKFile("I_cg_w.pvd").write(I_cg_w)
 
 # We use indicator functions to construct normal unit vector outward to the reservoir domain at the wellbore-reservoir interface:
 n_vec = FacetNormal(mesh)
@@ -132,7 +132,10 @@ vel_w = -k*grad(u_w) # vel inside wellbore -> +
 vel_r = -grad(u_r) # vel inside reservoi -> -
 
 F = inner(k*grad(u_w),grad(v_w))*dx(wellbore_id) + Constant(0)*v_w*dx(wellbore_id)
+F+= big*(u_w('+')-u_r('+'))*v_w('+')*dS(wellbore_cylinder)
 F+= inner(grad(u_r),grad(v_r))*dx(reservoir_id) + Constant(0)*v_r*dx(reservoir_id)
+F+= big*(u_r('+')-u_w('+'))*v_r('+')*dS(wellbore_cylinder)
+
 #F+= (inner(vel_r('-'),n_vec('-'))*v_w('-')*dS(wellbore_cylinder) - inner(vel_w('+'),n_vec('+'))*v_r('+')*dS(wellbore_cylinder))
 #F+= (u_w('+')*v_r('+')-u_r('+')*v_w('+'))*dS(wellbore_toe)
 
@@ -154,8 +157,8 @@ solver.solve()
 
 
 p_w, p_r = p_wr.subfunctions
-File("p_reservoir.pvd").write(p_r)
-File("p_wellbore.pvd").write(p_w)
+VTKFile("p_reservoir.pvd").write(p_r)
+VTKFile("p_wellbore.pvd").write(p_w)
 
 pwc = assemble(p_w('-')*dS(wellbore_cylinder))
 prc = assemble(p_r('-')*dS(wellbore_cylinder))
@@ -223,6 +226,6 @@ for i in range(max_iter):
 
 #vel = Function(W).interpolate(-grad(p))
 
-File("p_reservoir.pvd").write(p_r)
-File("p_wellbore.pvd").write(p_w)
+VTKFile("p_reservoir.pvd").write(p_r)
+VTKFile("p_wellbore.pvd").write(p_w)
 #File("vel.pvd").write(vel)
