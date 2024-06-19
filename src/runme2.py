@@ -9,8 +9,8 @@ solver_cg_wipc = {"ksp_type": "cg", "pc_type": "bjacobi", "pc_sub_type": "ilu"}
 
 wellbore_id = 111
 reservoir_id = 112
-reservoir_farfield = 100
 
+reservoir_farfield = 100
 wellbore_heel = 101
 wellbore_toe = 102
 wellbore_cylinder = 103
@@ -23,14 +23,9 @@ meshfile = "../geo/mesh2D_rev01.msh"
 mesh = Mesh(meshfile)
 
 #CG
-V = FunctionSpace(mesh, "CG",1)
-#W = VectorFunctionSpace(mesh, "CG",2)
+V = FunctionSpace(mesh, "CG",2)
+Q = VectorFunctionSpace(mesh, "CG",2) # for post procesing
 W = V*V #wellbore and reservoir CG spaces
-
-#p_order = 1
-#V = FunctionSpace(mesh, "DG",p_order-1)
-#W = FunctionSpace(mesh, "RTCF",p_order)
-#M = W*V
 
 V_DG0_r = FunctionSpace(mesh, "DG", 0)
 V_DG0_w = FunctionSpace(mesh, "DG", 0)
@@ -126,7 +121,7 @@ u_w, u_r = TrialFunction(W)
 v_w, v_r = TestFunction(W)
 p_wr = Function(W)
 
-k = 1.
+k = 1000.
 
 vel_w = -k*grad(u_w) # vel inside wellbore -> +
 vel_r = -grad(u_r) # vel inside reservoi -> -
@@ -138,7 +133,6 @@ F+= big*(u_r('+')-u_w('+'))*v_r('+')*dS(wellbore_cylinder)
 
 #F+= (inner(vel_r('-'),n_vec('-'))*v_w('-')*dS(wellbore_cylinder) - inner(vel_w('+'),n_vec('+'))*v_r('+')*dS(wellbore_cylinder))
 #F+= (u_w('+')*v_r('+')-u_r('+')*v_w('+'))*dS(wellbore_toe)
-
 #F+= (u_w('+')*v_r('+')-u_r('+')*v_w('+'))*dS(wellbore_cylinder)
 #- inner(-grad(u_r('-')),n_vec('-'))*v_w('-')*dS(wellbore_cylinder) + inner(-k*grad(u_w('+')),n_vec('+'))*v_r('+')*dS(wellbore_cylinder)
 
@@ -164,68 +158,30 @@ pwc = assemble(p_w('-')*dS(wellbore_cylinder))
 prc = assemble(p_r('-')*dS(wellbore_cylinder))
 
 vel_w = -k*grad(p_w)
-#flux_w = assemble(inner(vel_w('+'),n_vec('+'))*dS(wellbore_cylinder))
-flux_w = assemble(inner(vel_w('+'),n_vec('+'))*dS(wellbore_toe))
+_vel_w = Function(Q).interpolate(vel_w)
+flux_w_t = assemble(inner(vel_w('+'),n_vec('+'))*dS(wellbore_toe))
+flux_w_h = assemble(inner(vel_w('+'),n_vec('+'))*dS(wellbore_heel))
+flux_w_c = assemble(inner(vel_w('+'),n_vec('+'))*dS(wellbore_cylinder))
 
 vel_r = -grad(p_r)
-#flux_r = assemble(inner(vel_r('-'),n_vec('-'))*dS(wellbore_cylinder))
-flux_r = assemble(inner(vel_r('-'),n_vec('-'))*dS(wellbore_toe))
+_vel_r = Function(Q).interpolate(vel_r)
+flux_r_t = assemble(inner(vel_r('-'),n_vec('-'))*dS(wellbore_toe))
+flux_r_h = assemble(inner(vel_r('-'),n_vec('-'))*dS(wellbore_heel))
+flux_r_c = assemble(inner(vel_r('-'),n_vec('-'))*dS(wellbore_cylinder))
+flux_r_ff = assemble(inner(vel_r,n_vec)*ds)
+
+VTKFile("vel_reservoir.pvd").write(_vel_r)
+VTKFile("vel_wellbore.pvd").write(_vel_w)
 
 print('wellbore')
 print('pwc='+str(pwc))
-print('flux_w='+str(flux_w))
+print('flux_w (toe)='+str(flux_w_t))
+print('flux_w (heel)='+str(flux_w_h))
+print('flux_w (cylinder)='+str(flux_w_c))
 
 print('reservoir')
 print('prc='+str(prc))
-print('flux_r='+str(flux_r))
-
-
-sys.exit("exit")
-
-u_w = TrialFunction(V)
-u_r = TrialFunction(V)
-v_w = TestFunction(V)
-v_r = TestFunction(V)
-p_w = Function(V)
-p_r = Function(V)
-
-max_iter = 1
-k = 1
-for i in range(max_iter):
-    vel_r = -grad(p_r)
-    flux_w = inner(vel_r('-'),n_vec('-'))
-    #flux_w = Constant(0.)
-    F_w = inner(k*grad(u_w),grad(v_w))*dx(wellbore_id) + Constant(0)*v_w*dx(wellbore_id) - flux_w*v_w('-')*dS(wellbore_cylinder) #Constant(0)*v_w('-')*dS(wellbore_cylinder)
-    p_well = DirichletBC(V, Pw, [wellbore_heel])
-    exclude_beyond_wellbore = MyBC(V, 0, I_cg_w)
-    _lhs_w = lhs(F_w)
-    _rhs_w = rhs(F_w)
-    problem_w = LinearVariationalProblem(_lhs_w, _rhs_w, p_w, bcs=[p_well, exclude_beyond_wellbore])
-    #problem_w = LinearVariationalProblem(_lhs_w, _rhs_w, p_w, bcs=[p_well])
-    solver_w  = LinearVariationalSolver(problem_w,solver_parameters=solver_cg_wipc)
-    solver_w.solve()
-
-    vel_w = -k*grad(p_w)
-    #vel_r = -grad(p_r)
-    flux_r = inner(vel_w('+'),n_vec('+'))
-    #flux_r = Constant(0.)
-    F_r = inner(grad(u_r),grad(v_r))*dx(reservoir_id) + Constant(0)*v_r*dx(reservoir_id) + flux_r*v_r('+')*dS(wellbore_cylinder) #Constant(0)*v_r('+')*dS(wellbore_cylinder) 
-    p_farfield = DirichletBC(V, Pr, [reservoir_farfield])
-    exclude_beyond_reservoir = MyBC(V, 0, I_cg_r)
-    _lhs_r = lhs(F_r)
-    _rhs_r = rhs(F_r)
-    problem_r = LinearVariationalProblem(_lhs_r, _rhs_r, p_r, bcs=[p_farfield, exclude_beyond_reservoir])
-    #problem_r = LinearVariationalProblem(_lhs_r, _rhs_r, p_r, bcs=[p_farfield])
-    solver_r  = LinearVariationalSolver(problem_r,solver_parameters=solver_cg_wipc)
-    solver_r.solve()
-
-    #print("flux_w="+str(assemble(flux_w*dS(wellbore_cylinder))))
-    #print("flux_r="+str(assemble(flux_r*dS(wellbore_cylinder))))
-    #dflux = assemble(abs(flux_w-flux_r)*dS(wellbore_cylinder))
-    #print(dflux)
-
-#vel = Function(W).interpolate(-grad(p))
-
-VTKFile("p_reservoir.pvd").write(p_r)
-VTKFile("p_wellbore.pvd").write(p_w)
-#File("vel.pvd").write(vel)
+print('flux_r (toe)='+str(flux_r_t))
+print('flux_r (heel)='+str(flux_r_h))
+print('flux_r (cylinder)='+str(flux_r_c))
+print('flux_r (farfiled)='+str(flux_r_ff))
