@@ -121,15 +121,17 @@ u_w, u_r = TrialFunction(W)
 v_w, v_r = TestFunction(W)
 p_wr = Function(W)
 
-k = 1000.
+k = 100.
 
 vel_w = -k*grad(u_w) # vel inside wellbore -> +
 vel_r = -grad(u_r) # vel inside reservoi -> -
 
 F = inner(k*grad(u_w),grad(v_w))*dx(wellbore_id) + Constant(0)*v_w*dx(wellbore_id)
 F+= big*(u_w('+')-u_r('+'))*v_w('+')*dS(wellbore_cylinder)
+#F+= big*(u_w('+')-u_r('+'))*v_w('+')*dS(wellbore_toe)
 F+= inner(grad(u_r),grad(v_r))*dx(reservoir_id) + Constant(0)*v_r*dx(reservoir_id)
 F+= big*(u_r('+')-u_w('+'))*v_r('+')*dS(wellbore_cylinder)
+#F+= big*(u_r('+')-u_w('+'))*v_r('+')*dS(wellbore_toe)
 
 #F+= (inner(vel_r('-'),n_vec('-'))*v_w('-')*dS(wellbore_cylinder) - inner(vel_w('+'),n_vec('+'))*v_r('+')*dS(wellbore_cylinder))
 #F+= (u_w('+')*v_r('+')-u_r('+')*v_w('+'))*dS(wellbore_toe)
