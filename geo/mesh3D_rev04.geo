@@ -9,9 +9,15 @@ Lb = 2*Lw; //[m]
 Wb = 8*Dw; //[m]
 Hb = 8*Dw; //[m] 
 
-//wellbore division (along its axis)
-h_div = 10;
-v_div = 10;
+//reservoir dimensions
+Lr = 10; //[m]
+Wr = 8; //[m]
+Hr = 6; //[m]
+
+//wellbore division
+h_div = 6;//horizontal division
+v_div = 3;//vertical division
+w_div = 3;//width division
 
 //h_farfield = Hr/10.;
 //h_wellbore = Dw/5;
@@ -19,7 +25,8 @@ v_div = 10;
 Box(1) = {0, -Dw/2, -Dw/2, Lw, Dw, Dw};//wellbore
 Box(2) = {-(Lb-Lw)/2, -Wb/2, -Hb/2, Lb, Wb, Hb};//block
 //remove wellbore volume
-all_vol() = BooleanDifference{ Volume{2}; Delete; }{ Volume{1}; Delete; };
+//all_vol() = BooleanDifference{ Volume{2}; Delete; }{ Volume{1}; }; };
+all_vol() = BooleanDifference{ Volume{2}; Delete; }{ Volume{1}; Delete; }; //used to generate the block+wellbore mesh only
 
 Line(25) = {1,9};
 Line(26) = {2,10};
@@ -74,14 +81,20 @@ Volume(6) = {6};
 Volume(7) = {7};
 Volume(8) = {8};
 
-all_vol() = BooleanDifference{ Volume{3,4,5,6,7,8}; }{ Volume{2}; Delete; };
+//Box(9) = {-(Lr-Lw)/2, -Wr/2, -Hr/2, Lr, Wr, Hr};//block
+//all_vol() = BooleanDifference{ Volume{3,4,5,6,7,8,9}; }{ Volume{1,2}; Delete; };
+//Delete{ Volume{9}; }
+Delete{ Volume{2};} //used to generate the block+wellbore mesh only
 
-Transfinite Curve{:} = 2;
+//Transfinite Curve{:} = 2;
 Transfinite Curve{9,10,11,12,17,19,20,22} = h_div Using Bump 0.3;
 Transfinite Curve{25,26,27,28,29,30,31,32} = v_div Using Progression 1.2;
-Transfinite Surface{:};
-Transfinite Volume{:};
-Recombine Surface{:};
+Transfinite Curve{1,2,3,4,5,6,7,8,13,14,15,16,18,21,23,24} = w_div Using Progression 1;
+//Transfinite Surface{:};
+Transfinite Surface{1,2,3,4,5,6,7,8,9,10,11,12,100,101,102,103,104,105,106,107,108,109,110,111};
+Transfinite Volume{3,4,5,6,7,8};
+//Recombine Surface{:};
+Recombine Surface{1,2,3,4,5,6,7,8,9,10,11,12,100,101,102,103,104,105,106,107,108,109,110,111};
 
 //MeshSize {3, 4, 5, 6, 7, 8, 9, 10} = h_farfield; //far field
 //MeshSize {1, 2} = h_wellbore; //wellbore
