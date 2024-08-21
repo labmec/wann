@@ -5,8 +5,8 @@ Lw = 100; //[m] wellbore length
 Lr = 1000;//[m] reservoir width
 
 //mesh resolution
-hw = Lw/5;
-hr = Lr/2;
+hw = Lw/40;
+hr = Lr/16;
 
 Point(1) = {0, 0, 0, hw}; //heel
 Point(2) = {Lw, 0, 0, hw}; //toe
@@ -29,7 +29,9 @@ MeshSize{3,4,5,6} = hr;
 
 Physical Curve("far_field", 100) = {2,3,4,5};
 Physical Curve("wellbore",101) = {1};
+Physical Surface("dom",102) = {1};
 Physical Point("heel", 100) = {1};
+Physical Point("dedao", 105) = {2};
 
 Coherence Mesh;
 
