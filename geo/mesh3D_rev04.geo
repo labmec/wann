@@ -19,14 +19,14 @@ h_div = 6;//horizontal division
 v_div = 3;//vertical division
 w_div = 3;//width division
 
-//h_farfield = Hr/10.;
-//h_wellbore = Dw/5;
+//reservoir division (only one parameter for now)
+h_farfield = Hr/10.;
 
 Box(1) = {0, -Dw/2, -Dw/2, Lw, Dw, Dw};//wellbore
 Box(2) = {-(Lb-Lw)/2, -Wb/2, -Hb/2, Lb, Wb, Hb};//block
 //remove wellbore volume
-//all_vol() = BooleanDifference{ Volume{2}; Delete; }{ Volume{1}; }; };
-all_vol() = BooleanDifference{ Volume{2}; Delete; }{ Volume{1}; Delete; }; //used to generate the block+wellbore mesh only
+all_vol() = BooleanDifference{ Volume{2}; Delete; }{ Volume{1}; };
+//all_vol() = BooleanDifference{ Volume{2}; Delete; }{ Volume{1}; Delete; }; //used to generate the block+wellbore mesh only
 
 Line(25) = {1,9};
 Line(26) = {2,10};
@@ -81,10 +81,10 @@ Volume(6) = {6};
 Volume(7) = {7};
 Volume(8) = {8};
 
-//Box(9) = {-(Lr-Lw)/2, -Wr/2, -Hr/2, Lr, Wr, Hr};//block
-//all_vol() = BooleanDifference{ Volume{3,4,5,6,7,8,9}; }{ Volume{1,2}; Delete; };
-//Delete{ Volume{9}; }
-Delete{ Volume{2};} //used to generate the block+wellbore mesh only
+Box(9) = {-(Lr-Lw)/2, -Wr/2, -Hr/2, Lr, Wr, Hr};//block
+all_vol() = BooleanDifference{ Volume{3,4,5,6,7,8,9}; }{ Volume{1,2}; Delete; };
+Delete{ Volume{9}; }
+//Delete{ Volume{2};} //used to generate the block+wellbore mesh only
 
 //Transfinite Curve{:} = 2;
 Transfinite Curve{9,10,11,12,17,19,20,22} = h_div Using Bump 0.3;
@@ -94,26 +94,29 @@ Transfinite Curve{1,2,3,4,5,6,7,8,13,14,15,16,18,21,23,24} = w_div Using Progres
 Transfinite Surface{1,2,3,4,5,6,7,8,9,10,11,12,100,101,102,103,104,105,106,107,108,109,110,111};
 Transfinite Volume{3,4,5,6,7,8};
 //Recombine Surface{:};
-Recombine Surface{1,2,3,4,5,6,7,8,9,10,11,12,100,101,102,103,104,105,106,107,108,109,110,111};
+//Recombine Surface{1,2,3,4,5,6,7,8,9,10,11,12,100,101,102,103,104,105,106,107,108,109,110,111};
 
-//MeshSize {3, 4, 5, 6, 7, 8, 9, 10} = h_farfield; //far field
-//MeshSize {1, 2} = h_wellbore; //wellbore
+//far field nodes
+//MeshSize {17, 18, 19, 20, 21, 22, 23, 24} = h_farfield; //far field
 
-//Physical Volume(111) = {1}; //wellbore
-//Physical Volume(112) = {2}; //reservoir
-
-//Physical Surface(100) = {4,5,7,9};//reservoir farfield
-//Physical Surface(101) = {3};//wellbore heel
-//Physical Surface(102) = {2};//wellbore toe
-//Physical Surface(103) = {1};//wellbore cylinder
+Physical Curve("curve_wellbore",100) = {9,10,11,12};
+Physical Curve("curve_toe",101) = {5,6,7,8};
+Physical Curve("curve_heel",102) = {1,2,3,4};
+Physical Surface("surface_wellbore_cylinder",103) = {3,4,5,6};//wellbore cylinder
+Physical Surface("surface_wellbore_toe",104) = {2};//wellbore toe
+Physical Surface("surface_wellbore_heel",105) = {1};//wellbore heel
+Physical Surface("surface_farfield",106) = {112,113,114,115};//reservoir farfield
+Physical Volume("volume_reservoir",107) = {10}; //reservoir
 
 //Mesh.SubdivisionAlgorithm=2;  //all hexas
 General.NumThreads = 4;
 Mesh.OptimizeThreshold = 0.5;
-Mesh.Smoothing = 10;
+Mesh.Smoothing = 40;
 Mesh.Algorithm = 8;//1: MeshAdapt, 2: Automatic, 3: Initial mesh only, 5: Delaunay, 6: Frontal-Delaunay (default), 7: BAMG, 8: Frontal-Delaunay for Quads, 9: Packing of Parallelograms, 11: Quasi-structured Quad
 Mesh.Algorithm3D = 1; //1: Delaunay (default), 3: Initial mesh only, 4: Frontal, 7: MMG3D, 9: R-tree, 10: HXT (paralelizável)
 //Mesh.SubdivisionAlgorithm = 2; //(0: none, 1: all quadrangles, 2: all hexahedra, 3: barycentric)
 //Mesh.RecombinationAlgorithm = 3; //(0: simple, 1: blossom, 2: simple full-quad, 3: blossom full-quad)
-
+Mesh 3;
+OptimizeMesh "Netgen";
+OptimizeMesh "Gmsh"; // "Netgen" is slow
 
