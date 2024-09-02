@@ -1,7 +1,7 @@
 SetFactory("OpenCASCADE");
 
 //geometry
-Lw = 100; //[m] wellbore length 
+Lw = 400; //[m] wellbore length 
 Lr = 1000;//[m] reservoir width
 
 //mesh resolution
