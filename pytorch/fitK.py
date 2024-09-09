@@ -18,16 +18,6 @@ else:
 
 from helper_functions import plot_predictions, plot_decision_boundary
 
-weight = 0.7
-bias = 0.3
-start = 0
-end = 1
-step = 0.1
-
-# X = torch.arange(start,end,step).unsqueeze(dim=1)
-# y = weight * X + bias
-
-
 data = torch.from_numpy(np.loadtxt('kpts.txt', delimiter='\t',dtype=np.float32))
 X = data[:, :-1]
 y = data[:, -1].unsqueeze(dim=1)
@@ -37,34 +27,50 @@ X_train, X_test, y_train, y_test = train_test_split(X,y,
                                                     test_size=0.01, # 20% of data will be test
                                                     random_state=42)
 
-# train_split = int(0.8 * len(X))
-# X_train, y_train = X[:train_split], y[:train_split]
-# X_test, y_test = X[train_split:], y[train_split:]
 
-# plot_predictions(train_data=X_train,train_labels=y_train,test_data=X_test,test_labels=y_test)
-# plt.show()
-
-# Construct model
+# Create model with input features
 torch.manual_seed(42)
-model0 = nn.Sequential(
-  nn.Linear(in_features=1,out_features=32),
-  nn.Tanh(),
-  nn.Linear(in_features=32,out_features=32),
-  nn.Tanh(),
-  nn.Linear(in_features=32,out_features=32),
-  nn.Tanh(), 
-  nn.Linear(in_features=32,out_features=1),
-  nn.Tanh(),
-)
+class MyModel(nn.Module):
+  def __init__(self,input_features: int,output_features: int,hidden_units=8,n_hiddenlayers=1):    
+    """Initializes multi-class classification model.
+
+    Args:
+        input_features (int): Number of inputs to the model
+        output_features (int): 
+        hidden_units (int, optional): Number of hidden units between layers. Defaults to 8.
+    """
+    super().__init__()
+    if n_hiddenlayers < 1:
+      raise ValueError("n_hiddenlayers must be at least 1")
+    activation = nn.ReLU
+    self.entry =  nn.Sequential(*[
+                        nn.Linear(in_features=input_features, out_features=hidden_units),
+                        activation()])
+    self.hidden = nn.Sequential(*[
+                        nn.Sequential(*[
+                            nn.Linear(in_features=hidden_units, out_features=hidden_units),
+                            activation()]) for _ in range(n_hiddenlayers)])
+    self.end = nn.Linear(in_features=hidden_units, out_features=output_features)
+
+
+  def forward(self,x):
+    x = self.entry(x)
+    x = self.hidden(x)
+    x = self.end(x)
+    return x
+
+  
+model0 = MyModel(input_features=1,output_features=1,hidden_units=16,n_hiddenlayers=2)
 
 loss_fn = nn.L1Loss() # sigmoiod activation function built in. It uses log tricks to be more numerically stable
 # loss_fn = nn.MSELoss()
+# loss_fn = nn.BCEWithLogitsLoss()
 
-optimizer = torch.optim.SGD(params=model0.parameters(),lr=0.001)
+optimizer = torch.optim.SGD(params=model0.parameters(),lr=0.002)
 
 # ---------------- Train the model -----------------
 torch.manual_seed(42)
-epochs = 15000
+epochs = 20000
 for epoch in range(epochs):
   model0.train() # sets requires_grad = True
 
