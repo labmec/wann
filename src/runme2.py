@@ -121,7 +121,7 @@ u_w, u_r = TrialFunction(W)
 v_w, v_r = TestFunction(W)
 p_wr = Function(W)
 
-k = 100.
+k = 10000.
 
 vel_w = -k*grad(u_w) # vel inside wellbore -> +
 vel_r = -grad(u_r) # vel inside reservoi -> -
