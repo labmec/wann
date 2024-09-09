@@ -7,6 +7,7 @@
 #include <TPZGmshReader.h>
 #include <TPZLinearAnalysis.h>
 #include <TPZNullMaterial.h>
+#include <TPZRefPatternTools.h>
 #include <TPZSSpStructMatrix.h>  //symmetric sparse matrix storage
 #include <TPZSimpleTimer.h>
 #include <pzbuildmultiphysicsmesh.h>
@@ -32,7 +33,7 @@
 #include "pzshapequad.h"
 #include "pzvisualmatrix.h"
 #include "tpzchangeel.h"
-#include <TPZRefPatternTools.h>
+#include "pzvec_extras.h"
 
 using namespace std;
 
@@ -43,11 +44,20 @@ enum EMatid { ENone,
               EDedao,
               EFarField };
 
+struct PostProcElData {
+  TPZGeoEl* gel;
+  TPZManVector<REAL,1> qsi = {-10}; // a value that is not valid
+  TPZManVector<REAL,3> x = {0.,0.,0.};
+};
+
+
 const int global_nthread = 8;
 
 TPZGeoMesh* ReadMeshFromGmsh(std::string file_name);
-TPZCompMesh* CreateCompMeshH1(TPZGeoMesh* gmesh, const int porder);
+TPZCompMesh* CreateCompMeshH1(TPZGeoMesh* gmesh, const int porder, const REAL pff, const REAL pheel, const REAL Kres, const REAL Kwell);
 void PrintResults(TPZLinearAnalysis& an, TPZCompMesh* cmesh);
+void FindElementsAndPtsToPostProc(TPZGeoMesh* gmesh, TPZStack<PostProcElData>& postProcData, const int matid, const int npts, const REAL x0, const REAL xf);
+void PostProcDataForANN(TPZGeoMesh* gmesh, TPZStack<PostProcElData>& postProcData, const REAL pff);
 
 int main() {
   std::cout << "--------- Starting simulation ---------" << std::endl;
@@ -55,25 +65,31 @@ int main() {
   TPZLogger::InitializePZLOG();
 #endif
 
-  const int pord = 3;
-  const int nrefdirectional = 3;
+  const int pord = 4;
+  const int nrefdirectional = 6;  
+  const REAL pff = 22064967.11, pheel = 11767982.46;
+  const REAL Kres = 1.e-13;
+  const REAL wellR = 0.05;
+  const REAL mu = 0.005;  
+  REAL Kwell = M_PI * wellR * wellR * wellR * wellR / (8.0 * mu);
+  // Kwell = 1e-6;
   // 1) Create gmesh
   TPZGeoMesh* gmesh = ReadMeshFromGmsh("../geo/mesh_rev01.msh");
 
   std::ofstream out("gmesh.vtk");
 
   // refine directional towards heel and dedao
-  if(nrefdirectional){
+  if (nrefdirectional) {
     gRefDBase.InitializeRefPatterns(gmesh->Dimension());
     for (int i = 0; i < nrefdirectional; i++) {
-      TPZRefPatternTools::RefineDirectional(gmesh, {EHeel,EDedao});
-    }    
-  } 
+      TPZRefPatternTools::RefineDirectional(gmesh, {EHeel, EDedao});
+    }
+  }
 
   TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
 
   // 2) Create cmesh
-  TPZCompMesh* cmeshH1 = CreateCompMeshH1(gmesh, pord);
+  TPZCompMesh* cmeshH1 = CreateCompMeshH1(gmesh, pord, pff, pheel, Kres, Kwell);
   std::ofstream out2("cmeshH1.vtk");
   TPZVTKGeoMesh::PrintCMeshVTK(cmeshH1, out2);
 
@@ -84,11 +100,20 @@ int main() {
   strmat.SetNumThreads(global_nthread);
   an.SetStructuralMatrix(strmat);
   step.SetDirect(ECholesky);
-  an.SetSolver(step);  
+  an.SetSolver(step);
   an.Run();
 
   // 4) Post process solution using vtk
   PrintResults(an, cmeshH1);
+
+  // 5) Post process pressure at well on several points using FindElementByMatId
+  TPZStack<PostProcElData> postProcData;
+  const REAL x0 = 0.0, xf = 400.0;
+  const int npts = 4001;
+  FindElementsAndPtsToPostProc(gmesh, postProcData, EWell, npts, x0, xf);
+
+  // 6) Post process pressure and divergence of q at well on several points using postprocdata
+  PostProcDataForANN(gmesh, postProcData, pff);
 
   delete cmeshH1;
   delete gmesh;
@@ -96,8 +121,65 @@ int main() {
   std::cout << "--------- Simulation finished ---------" << std::endl;
 }
 
-TPZCompMesh* CreateCompMeshH1(TPZGeoMesh* gmesh, const int porder) {
+void PostProcDataForANN(TPZGeoMesh* gmesh, TPZStack<PostProcElData>& postProcData, const REAL pff) {
+  std::ofstream out("postprocdata.txt");
+  out << std::setprecision(15);
+  for (auto& data : postProcData) {
+    TPZVec<REAL> qsi(3, 0.0);
+    TPZCompEl* cel = data.gel->Reference();
+    if(!cel) DebugStop();
+    TPZMaterial* mat = cel->Material();
+    TPZDarcyFlow* darcy = dynamic_cast<TPZDarcyFlow*>(mat);
+    if(!darcy) DebugStop();
+    const int pind = darcy->VariableIndex("Pressure");
+    const int qind = darcy->VariableIndex("Flux");
+    TPZManVector<STATE, 3> output(1);
+    cel->Solution(data.qsi,pind,output);
+    const REAL pressure = output[0];
+    cel->Solution(data.qsi, qind, output);
+    const REAL q = output[0];
 
+    std::cout << "x = " << data.x << " p = " << pressure << " q = " << q << std::endl;
+    out << data.x[0] << " " << pressure << " " << q << std::endl;
+  }
+}
+
+void FindElementsAndPtsToPostProc(TPZGeoMesh* gmesh, TPZStack<PostProcElData>& postProcData, const int matid, const int npts, const REAL x0, const REAL xf) {
+  const REAL dx = (xf - x0) / (npts - 1);
+
+  int64_t InitialElIndex = -1;
+  for (auto gel : gmesh->ElementVec()) {
+    if (gel && gel->MaterialId() == matid) {
+      InitialElIndex = gel->Index();
+      break;
+    }
+  }
+
+
+  for (int i = 0; i < npts; i++) {
+    const REAL x = x0 + i * dx;
+    TPZManVector<REAL,3> qsi(3, 0.0);    
+    TPZManVector<REAL,3> xvec(3, 0.);
+    xvec[0] = x;
+    TPZGeoEl* gel = TPZGeoMeshTools::FindElementByMatId(gmesh, xvec, qsi, InitialElIndex, {matid});
+    if (!gel) {
+      std::cout << "Element not found for x = " << x << std::endl;
+      DebugStop();
+    }
+#ifdef PZDEBUG
+    TPZManVector<REAL, 3> xcheck(3);
+    gel->X(qsi, xcheck);
+    REAL distance = dist(xvec, xcheck);
+    if(distance > 1.e-8){
+      DebugStop(); // check if the element found is the correct one
+    }
+#endif
+    postProcData.Push({gel, qsi, xvec}); // Creates a struct entry with gel and qsi.
+  }
+
+}
+
+TPZCompMesh* CreateCompMeshH1(TPZGeoMesh* gmesh, const int porder, const REAL pff, const REAL pheel, const REAL Kres, const REAL Kwell) {
   // create computational mesh
   TPZCompMesh* cmesh = new TPZCompMesh(gmesh);
   cmesh->SetDefaultOrder(porder);
@@ -107,24 +189,24 @@ TPZCompMesh* CreateCompMeshH1(TPZGeoMesh* gmesh, const int porder) {
 
   // create domain material
   TPZDarcyFlow* mat = new TPZDarcyFlow(EDomain, dim);
-  mat->SetConstantPermeability(1.0);
+  mat->SetConstantPermeability(Kres);
   cmesh->InsertMaterialObject(mat);
 
   // create boundary conditions
   const int diri = 0, neu = 1, mixed = 2;
   // Far field
   TPZFMatrix<STATE> val1(1, 1, 0.0);
-  TPZManVector<STATE, 1> val2(1, 1.0);
+  TPZManVector<STATE, 1> val2(1, pff);
   TPZBndCond* bcFF = mat->CreateBC(mat, EFarField, diri, val1, val2);
   cmesh->InsertMaterialObject(bcFF);
 
   // create well material
-  TPZDarcyFlow* matWell = new TPZDarcyFlow(EWell, dim-1);
-  matWell->SetConstantPermeability(1.0e4);
+  TPZDarcyFlow* matWell = new TPZDarcyFlow(EWell, dim - 1);
+  matWell->SetConstantPermeability(Kwell);
   cmesh->InsertMaterialObject(matWell);
 
   // create heel boundary condition for well
-  val2[0] = 0.0;
+  val2[0] = pheel;
   TPZBndCond* bcHeel = matWell->CreateBC(matWell, EHeel, diri, val1, val2);
   cmesh->InsertMaterialObject(bcHeel);
 
