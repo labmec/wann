@@ -60,17 +60,18 @@ class MyModel(nn.Module):
     return x
 
   
-model0 = MyModel(input_features=1,output_features=1,hidden_units=16,n_hiddenlayers=2)
+model0 = MyModel(input_features=1,output_features=1,hidden_units=16,n_hiddenlayers=4)
 
-loss_fn = nn.L1Loss() # sigmoiod activation function built in. It uses log tricks to be more numerically stable
-# loss_fn = nn.MSELoss()
+# loss_fn = nn.L1Loss() # sigmoiod activation function built in. It uses log tricks to be more numerically stable
+loss_fn = nn.MSELoss()
 # loss_fn = nn.BCEWithLogitsLoss()
 
-optimizer = torch.optim.SGD(params=model0.parameters(),lr=0.002)
+# optimizer = torch.optim.SGD(params=model0.parameters(),lr=0.002)
+optimizer = torch.optim.AdamW(params=model0.parameters(),lr=0.00075)
 
 # ---------------- Train the model -----------------
 torch.manual_seed(42)
-epochs = 20000
+epochs = 16700
 for epoch in range(epochs):
   model0.train() # sets requires_grad = True
 
