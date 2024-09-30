@@ -39,7 +39,7 @@ X_train, X_test, y_train, y_test = train_test_split(X,y,
 
 # Create model with input features
 torch.manual_seed(42)
-class MyModel(nn.Module):
+class KNN(nn.Module):
   def __init__(self,input_features: int,output_features: int,hidden_units=8,n_hiddenlayers=1):    
     """Initializes multi-class classification model.
 
@@ -69,7 +69,7 @@ class MyModel(nn.Module):
     return x
 
   
-model0 = MyModel(input_features=1,output_features=1,hidden_units=16,n_hiddenlayers=4)
+model0 = KNN(input_features=1,output_features=1,hidden_units=16,n_hiddenlayers=4)
 # model0 = torch.nn.parallel.DistributedDataParallel(
 #     model,
 #     device_ids=[local_rank],
