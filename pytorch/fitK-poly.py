@@ -23,20 +23,15 @@ from helper_functions import plot_predictions, plot_decision_boundary
 torch.set_num_threads(8)
 torch.set_num_interop_threads(8)
 
-data = torch.from_numpy(np.loadtxt('../../kpts.txt', delimiter='\t',dtype=np.float32))
+data = torch.from_numpy(np.loadtxt('kpts.txt', delimiter='\t',dtype=np.float32))
 X = data[:, :-1]
 y = data[:, -1].unsqueeze(dim=1)
 
 # Split data into train and test
 X_train, X_test, y_train, y_test = train_test_split(X,y,
-                                                    test_size=0.2, # 20% of data will be test
+                                                    test_size=0.01, # 20% of data will be test
                                                     random_state=42)
 
-X_train = X
-y_train = y
-
-t_boundaryA = torch.tensor(-1.).view(-1,1).requires_grad_(True)
-t_boundaryB = torch.tensor(1.).view(-1,1).requires_grad_(True)
 
 # multicore stuff
 # local_rank = int(os.environ["LOCAL_RANK"])
@@ -56,7 +51,7 @@ class MyModel(nn.Module):
     super().__init__()
     if n_hiddenlayers < 1:
       raise ValueError("n_hiddenlayers must be at least 1")
-    activation = nn.Tanh
+    activation = nn.ReLU
     self.entry =  nn.Sequential(*[
                         nn.Linear(in_features=input_features, out_features=hidden_units),
                         activation()])
@@ -74,7 +69,7 @@ class MyModel(nn.Module):
     return x
 
   
-model0 = MyModel(input_features=1,output_features=1,hidden_units=40,n_hiddenlayers=10)
+model0 = MyModel(input_features=1,output_features=1,hidden_units=16,n_hiddenlayers=4)
 # model0 = torch.nn.parallel.DistributedDataParallel(
 #     model,
 #     device_ids=[local_rank],
@@ -86,45 +81,20 @@ loss_fn = nn.MSELoss()
 # loss_fn = nn.BCEWithLogitsLoss()
 
 # optimizer = torch.optim.SGD(params=model0.parameters(),lr=0.002)
-optimizer = torch.optim.AdamW(params=model0.parameters(),lr=0.00009)
+optimizer = torch.optim.AdamW(params=model0.parameters(),lr=0.00075)
 
 # ---------------- Train the model -----------------
 torch.manual_seed(42)
-epochs = 25000
+epochs = 16700
 for epoch in range(epochs):
   model0.train() # sets requires_grad = True
-
-  if epoch == 10000:
-    for g in optimizer.param_groups:
-      g['lr'] = 0.00006
-  elif epoch == 15000:
-    for g in optimizer.param_groups:
-      g['lr'] = 0.00003
-  elif epoch == 18000:
-    for g in optimizer.param_groups:
-      g['lr'] = 0.000015
-  elif epoch == 22000:
-    for g in optimizer.param_groups:
-      g['lr'] = 0.000005   
 
   # 1. Forward pass
   y_pred = model0(X_train)
 
   # 2. Calculate loss/accuracy
-  lossav = loss_fn(y_pred,
+  loss = loss_fn(y_pred, # We are passing logits bcz BCEWithLogits expects logits and does sigmoid by itself
                  y_train) 
-  # print(f"lossav: {lossav}")
-
-  # Calculate the error in the first and last point
-  y_pred_bcA = model0(t_boundaryA)
-  y_pred_bcB = model0(t_boundaryB)
-  weight = 0.025
-  first_point_error = weight*torch.abs(torch.squeeze(y_pred_bcA) - y_train[0])
-  last_point_error = weight*torch.abs(torch.squeeze(y_pred_bcB) - y_train[-1])
-  # print(f"first_point_error: {first_point_error}")
-
-  # Add the errors to the loss
-  loss = torch.squeeze(first_point_error) + torch.squeeze(last_point_error) + lossav
 
   # 3. Optimizer zero grad
   optimizer.zero_grad()
@@ -144,7 +114,7 @@ for epoch in range(epochs):
 
   # Print out what is happenning
   if epoch % 100 == 0:
-    print(f"Epoch: {epoch} | Loss: {loss:.7f} | Test loss: {test_loss:.7f}")
+    print(f"Epoch: {epoch} | Loss: {loss:.5f} | Test loss: {test_loss:.5f}")
 
 # Lets see the results
 
