@@ -13,13 +13,14 @@ model["fluid_prop"] = {
 model["wellbore_prop"] = {
     "Lw": 400, # m
     "D": 0.1, # m
+    #"D": 1., # m
     "Q_toe": 0,
-    "p_heel": 1.177e+7 # Pa 120 kgf/cm2
+    "p_heel": 1.177e+7 # Pa == 120 kgf/cm2
 }
 
 model["reservoir_prop"] = {
-    "p_res": 2.206e+7, # Pa 225 kgf/cm2
-    "k": 1e-13, #m2 
+    "p_res": 2.206e+7, # Pa == 225 kgf/cm2
+    "k": 1e-13, # m2 
     "Dr": 2000, # [m] diameter of the reservoir
 }
 
@@ -52,26 +53,28 @@ def FrictionFactor(model, Q):#{{{
         f = 16/Re # laminar flow
     else:
         f= 0.0791/Re**0.25 # turbulent flow
-    #print("Re="+str(Re)) 
+    
     return f
 #}}}
-def K(model, x): #{{{
+def K(model, x, K_x=None, K_v=None): #{{{
     # K comes from a Trained Neural Network 
-   
-    k = model["reservoir_prop"]["k"]
-    Dr= model["reservoir_prop"]["Dr"]
-    D = model["wellbore_prop"]["D"]
-    mu= model["fluid_prop"]["mu"] 
+    #FIXME testing
+    if 1:
+        k = model["reservoir_prop"]["k"]
+        Dr= model["reservoir_prop"]["Dr"]
+        D = model["wellbore_prop"]["D"]
+        mu= model["fluid_prop"]["mu"] 
 
-    # K from a vertical wellbore (constant)
-    K = 2*np.pi*k/(mu*np.log(Dr/D))
+        # K from a vertical wellbore (constant)
+        K = 2*np.pi*k/(mu*np.log(Dr/D))
+    else:
+        np.interp(x,K_x,K_v)
 
     return K
 #}}}
 def Qfunc(model, x, p): #{{{
     p_res = model["reservoir_prop"]["p_res"]
-    #print("p="+str(p))
-    #print("Qfunc="+str(-K(model, x) * (p - p_res)))
+    
     return -K(model, x) * (p - p_res)
 #}}}
 def pfunc(model, x, Q): #{{{
@@ -85,6 +88,41 @@ def pfunc(model, x, Q): #{{{
     #FIXME testing laminar flow for now
     #mu = model["fluid_prop"]["mu"]
     #return -128*mu*Q/(np.pi*D**4)
+#}}}
+def read_K(model):#{{{
+    _data = np.loadtxt("./pytorch/kpts.txt", delimiter="\t",unpack=False)
+    _x = _data[:,0]*model["wellbore_prop"]["Lw"]
+    _K = _data[:,1] 
+
+    #plt.plot(x_K,K,linestyle='none',marker='o')
+    #plt.show()
+    return _x, _K
+#}}}
+def Q_vertical_wellbore(model):#{{{
+    k = model["reservoir_prop"]["k"]
+    h = model["wellbore_prop"]["Lw"]
+    p_res = model["reservoir_prop"]["p_res"]
+    p_heel = model["wellbore_prop"]["p_heel"]
+    mu = model["fluid_prop"]["mu"]
+    D = model["wellbore_prop"]["D"]
+    Dr = model["reservoir_prop"]["Dr"]
+
+    Qw = 2*np.pi*k*h*(p_res-p_heel)/(mu*np.log(Dr/D))
+    
+    return Qw
+#}}}
+def test_VerticalWelboreModel(model):#{{{
+    model["reservoir_prop"]["k"] = 1e-13 # m2 
+    model["wellbore_prop"]["Lw"] = 400 # m 
+    model["reservoir_prop"]["p_res"] = 2.206e+7 # Pa 
+    model["wellbore_prop"]["p_heel"] = 1.177e+7 # Pa
+    model["fluid_prop"]["mu"] = 0.005 # Pa * s
+    model["wellbore_prop"]["D"] = 0.1 # m
+    model["reservoir_prop"]["Dr"] = 2000 # m 
+    
+    Q_total = Q_vertical_wellbore(model)
+    return Q_total
+
 #}}}
 
 verbose = model["RK_settigns"]["verbose"]
@@ -100,7 +138,7 @@ p_toe = p_heel + dp
 #p_toe = p_res # it seems a good initial estimate
 rel_error = 1
 
-x = np.linspace(0,Lw,npoints)
+x = np.linspace(0,Lw,npoints) # x=0, toe; x=Lw, heel
 Q = np.zeros(len(x))
 p = np.zeros(len(x))
 
@@ -108,6 +146,14 @@ Q[0] = Q_toe
 p[0] = p_toe
 n = 0
 
+# read K from file
+#K_x, K_v = read_K(model)
+#K_x = Lw-K_x 
+#print(K_x[0])
+#plt.plot(K_x,K_v,linestyle='none',marker='o')
+#plt.show()
+
+# for the RK solver, x=0 is the toe; x=L is the heel
 while rel_error > rtol and n < max_n:
     print("Solving iteration n="+str(n))
     
@@ -157,6 +203,24 @@ while rel_error > rtol and n < max_n:
         print("Q_heel=?\t\tQ[heel]="+str(Q[-1]))
     n = n+1
 
-plt.plot(x, p)
-#plt.plot(x, Q)
+Q_vertical_wellbore = test_VerticalWelboreModel(model)
+print("Q_vertical_verbore="+str(Q_vertical_wellbore))
+
+# post-processing
+# transforming RK x to FEM x
+x_fem = Lw-x  
+
+MPa = 1.e6
+fig, axs = plt.subplots(2, 1, layout='constrained')
+axs[0].plot(x_fem, p/MPa)
+#axs[0].set_xlim(0, 2)
+axs[0].set_xlabel('Wellbore distance (m)')
+axs[0].set_ylabel('Pressure (MPa)')
+axs[0].grid(True)
+
+axs[1].plot(x_fem, Q)
+axs[1].set_xlabel('Wellbore distance (m)')
+axs[1].set_ylabel('Flow rate (m2/s)')
+axs[1].grid(True)
+
 plt.show()
