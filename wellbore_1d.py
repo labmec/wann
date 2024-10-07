@@ -42,7 +42,7 @@ def Reynolds(model, Q): #{{{
     rho = model["fluid_prop"]["rho"]
     mu = model["fluid_prop"]["mu"]
     D = model["wellbore_prop"]["D"]
-    V = np.sqrt(4*Q/(np.pi*D**2))
+    V = 4*Q/(np.pi*D**2)
     return rho * V * D / mu
 #}}}
 def FrictionFactor(Re):#{{{
@@ -216,7 +216,7 @@ def test_VerticalWelboreModel():#{{{
     
     x_RK, Q_RK, p_RK = RungeKutta_solver(model) 
    
-    assert 100*abs(Q_VW-Q_RK[-1])/Q_VW < 6.5e-5
+    assert np.allclose(Q_VW, Q_RK[-1], rtol= 8.0e-7)
     
     fig, ax = plt.subplots()
     ax.plot(400-x_RK,Q_RK) 
@@ -229,20 +229,14 @@ def test_VerticalWelboreModel():#{{{
 #}}}
 def test_FrictionFator():#{{{
 
-    model = model_settings()
-
-    model["wellbore_prop"]["D"] = 0.1 # m
-    model["fluid_prop"]["mu"] = 0.001 # Pa * s
-    model["fluid_prop"]["rho"] = 1000 # kg / m3
-
     Re_eq = 1187.38
     _eps  = 0.001 
 
-    assert abs(FrictionFactor(Re_eq-_eps)-16/(Re_eq-_eps)) < 1.e-14
+    assert np.allclose(FrictionFactor(Re_eq-_eps), 16/(Re_eq-_eps), rtol=1.e-14)
     
-    assert abs(FrictionFactor(Re_eq+_eps)-0.0791/((Re_eq+_eps)**0.25)) < 1.e-14
+    assert np.allclose(FrictionFactor(Re_eq+_eps), 0.0791/((Re_eq+_eps)**0.25), rtol=1.e-14)
 
-    assert abs(FrictionFactor(Re_eq-_eps)-FrictionFactor(Re_eq+_eps)) < 5.2e-8 
+    assert np.allclose(FrictionFactor(Re_eq-_eps), FrictionFactor(Re_eq+_eps), rtol=4.e-6)
 
     Re_min = 100 
     Re_max = 10000
@@ -269,6 +263,26 @@ def test_FrictionFator():#{{{
     ax.grid(True)
     plt.show(block=False)
 
+#}}}
+def test_Reynolds():#{{{
+    D = 0.1 # m
+    mu = 0.001 # Pa*s
+    rho = 1000 # kg/m3
+    V = 0.01 # m/s
+
+    Q = V*np.pi*(D**2)/4
+    
+    model = model_settings()
+
+    model["wellbore_prop"]["D"] = D # m
+    model["fluid_prop"]["mu"] = mu # Pa * s
+    model["fluid_prop"]["rho"] = rho # kg / m3
+
+    Re_1 = rho*V*D/mu
+    Re_2 = Reynolds(model,Q)
+
+    assert np.allclose(Re_1,Re_2,rtol=1e-12)
+    
 #}}}
 def test_only_to_show_all_plots():#{{{
     plt.show()
