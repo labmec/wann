@@ -42,21 +42,15 @@ def Reynolds(model, Q): #{{{
     rho = model["fluid_prop"]["rho"]
     mu = model["fluid_prop"]["mu"]
     D = model["wellbore_prop"]["D"]
-    V = np.sqrt(4*Q/np.pi)
+    V = np.sqrt(4*Q/(np.pi*D**2))
     return rho * V * D / mu
 #}}}
-def FrictionFactor(model, Q):#{{{
-    eps = model["RK_settigns"]["eps"]
-    Re_min = model["RK_settigns"]["Re_min"]
-    Re = Reynolds(model, Q)
-    if Re < eps:
-        print("WARNING: Reynolds <= 0! Using mininal Reynolds")
-        Re = Re_min        
+def FrictionFactor(Re):#{{{
 
     if Re<= 1187.38:
         f = 16/Re # laminar flow
     else:
-        f= 0.0791/Re**0.25 # turbulent flow
+        f= 0.0791/(Re**0.25) # turbulent flow
     
     return f
 #}}}
@@ -90,7 +84,14 @@ def Qfunc(model, x, p): #{{{
 def pfunc(model, x, Q): #{{{
     rho = model["fluid_prop"]["rho"]
     D = model["wellbore_prop"]["D"]
-    f = FrictionFactor(model, Q)
+    eps = model["RK_settigns"]["eps"]
+    Re_min = model["RK_settigns"]["Re_min"]
+    
+    Re = Reynolds(model, Q) 
+    if Re < eps:
+        print("WARNING: Reynolds <= 0! Using mininal Reynolds")
+        Re = Re_min        
+    f = FrictionFactor(Re)
     # if Q=0, f is obtained with Re=100 (min_Re); 
     # it will return 0 anyway
     return -32*f*rho*Q**2/(np.pi**2 * D**5)
@@ -203,19 +204,74 @@ def test_VerticalWelboreModel():#{{{
     model = model_settings()
 
     model["reservoir_prop"]["k"] = 1e-13 # m2 
-    model["wellbore_prop"]["Lw"] = 400 # m 
     model["reservoir_prop"]["p_res"] = 2.206e+7 # Pa 
+    model["reservoir_prop"]["Dr"] = 2000 # m 
+    model["reservoir_prop"]["K_type"] = 0
+    model["wellbore_prop"]["D"] = 1.0 # m to avoid pressure drop
+    model["wellbore_prop"]["Lw"] = 400 # m 
     model["wellbore_prop"]["p_heel"] = 1.177e+7 # Pa
     model["fluid_prop"]["mu"] = 0.005 # Pa * s
-    model["wellbore_prop"]["D"] = 1.0 # m to avoid pressure drop
-    model["reservoir_prop"]["Dr"] = 2000 # m 
-    
+
     Q_VW = Q_vertical_wellbore(model)
     
     x_RK, Q_RK, p_RK = RungeKutta_solver(model) 
+   
+    assert 100*abs(Q_VW-Q_RK[-1])/Q_VW < 6.5e-5
     
-    assert 100*abs(Q_VW-Q_RK[-1])/Q_VW < 7.e-5
+    fig, ax = plt.subplots()
+    ax.plot(400-x_RK,Q_RK) 
+    ax.plot(400-x_RK[-1],Q_VW,"rx",markersize=12)
+    ax.set_xlabel("Wellbore distance")
+    ax.set_ylabel("Q [m3/s]")
+    ax.grid(True)
+    plt.show(block=False)
 
+#}}}
+def test_FrictionFator():#{{{
+
+    model = model_settings()
+
+    model["wellbore_prop"]["D"] = 0.1 # m
+    model["fluid_prop"]["mu"] = 0.001 # Pa * s
+    model["fluid_prop"]["rho"] = 1000 # kg / m3
+
+    Re_eq = 1187.38
+    _eps  = 0.001 
+
+    assert abs(FrictionFactor(Re_eq-_eps)-16/(Re_eq-_eps)) < 1.e-14
+    
+    assert abs(FrictionFactor(Re_eq+_eps)-0.0791/((Re_eq+_eps)**0.25)) < 1.e-14
+
+    assert abs(FrictionFactor(Re_eq-_eps)-FrictionFactor(Re_eq+_eps)) < 5.2e-8 
+
+    Re_min = 100 
+    Re_max = 10000
+    npoints = 1000
+
+    Re = np.linspace(Re_min,Re_max,npoints)
+    f = np.zeros(len(Re))
+    g = np.zeros(len(Re))
+
+    for i in range(0,len(Re)):
+        f[i] = FrictionFactor(Re[i])
+        if Re[i] <= Re_eq:
+            g[i] = 16/Re[i]
+        else:
+            g[i] = 0.0791/(Re[i]**0.25)
+   
+    assert np.allclose(f,g,rtol=1e-12)
+
+    fig, ax = plt.subplots()
+    ax.plot(Re,f) 
+    plt.xscale("log")
+    ax.set_xlabel("Reynolds")
+    ax.set_ylabel("Friction factor")
+    ax.grid(True)
+    plt.show(block=False)
+
+#}}}
+def test_only_to_show_all_plots():#{{{
+    plt.show()
 #}}}
 
 def main():
