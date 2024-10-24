@@ -20,6 +20,8 @@ file(GLOB_RECURSE PZ_SRC
 add_custom_target( GlobalFiles SOURCES ${PZ_SRC})
 # ----------------
 
+add_subdirectory(3d-well)
+
 # creating the projects
 add_executable(wann wann.cpp)
 target_link_libraries(wann PUBLIC NeoPZ::pz)
