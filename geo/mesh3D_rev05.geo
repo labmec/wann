@@ -108,7 +108,7 @@ Physical Surface("surface_wellbore_toe",104) = {2};//wellbore toe
 Physical Surface("surface_wellbore_heel",105) = {1};//wellbore heel
 Physical Surface("surface_farfield",106) = {7,8,10,12};//reservoir farfield
 Physical Surface("cap_rock",107) = {9,11};//cap rock
-//Physical Volume("volume_reservoir",108) = {10}; //reservoir
+Physical Volume("volume_reservoir",108) = {3,4,5,6,7,8}; //reservoir
 
 //Mesh.SubdivisionAlgorithm=2;  //all hexas
 General.NumThreads = 4;
@@ -118,7 +118,7 @@ Mesh.Algorithm = 8;//1: MeshAdapt, 2: Automatic, 3: Initial mesh only, 5: Delaun
 Mesh.Algorithm3D = 1; //1: Delaunay (default), 3: Initial mesh only, 4: Frontal, 7: MMG3D, 9: R-tree, 10: HXT (paralelizável)
 //Mesh.SubdivisionAlgorithm = 2; //(0: none, 1: all quadrangles, 2: all hexahedra, 3: barycentric)
 //Mesh.RecombinationAlgorithm = 3; //(0: simple, 1: blossom, 2: simple full-quad, 3: blossom full-quad)
-//Mesh 3;
+Mesh 3;
 OptimizeMesh "Netgen";
 OptimizeMesh "Gmsh"; // "Netgen" is slow
 
