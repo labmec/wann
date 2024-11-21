@@ -107,7 +107,7 @@ Physical Surface("surface_wellbore_toe",104) = {2};//wellbore toe
 Physical Surface("surface_wellbore_heel",105) = {1};//wellbore heel
 Physical Surface("surface_farfield",106) = {112,113,114,115};//reservoir farfield
 Physical Surface("cap_rock",107) = {116,117};//cap rock
-Physical Volume("volume_reservoir",108) = {10}; //reservoir
+Physical Volume("volume_reservoir",108) = {3,4,5,6,7,8,10}; //reservoir
 
 //Mesh.SubdivisionAlgorithm=2;  //all hexas
 General.NumThreads = 4;
