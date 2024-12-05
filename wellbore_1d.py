@@ -16,7 +16,8 @@ def model_settings():
         "Lw": 400, # m
         "D": 0.1, # m
         "Q_toe": 0,
-        "p_heel": 1.177e+7 # Pa == 120 kgf/cm2
+        "p_heel": 1.177e+7, # Pa == 120 kgf/cm2
+        "f_type": 0, #0: default friction factor (linear or non-linear); 1: linear only; 2: non-linear only  
     }
 
     model["reservoir_prop"] = {
@@ -38,6 +39,35 @@ def model_settings():
 
     return model
 #}}}
+# model settings for numerical tests {{{
+def model_settings_for_tests():
+    # define model parameters to perform numerical tests
+    model = model_settings()
+
+    model["fluid_prop"]["rho"] = 800. # kg/m3
+    model["fluid_prop"]["mu"]  = 0.005 # Pa * s
+
+    model["wellbore_prop"]["Lw"] = 400 # m
+    model["wellbore_prop"]["D"] = 0.1 # m
+    model["wellbore_prop"]["Q_toe"] = 0
+    model["wellbore_prop"]["p_heel"] = 1.177e+7 # Pa == 120 kgf/cm2
+    model["wellbore_prop"]["f_type"] = 0 #0: default friction factor (linear or non-linear); 1: linear only; 2: non-linear only  
+
+    model["reservoir_prop"]["p_res"] = 2.206e+7 # Pa == 225 kgf/cm2
+    model["reservoir_prop"]["k"] = 1e-13 # m2 
+    model["reservoir_prop"]["Dr"] = 2000 # [m] diameter of the reservoir
+    model["reservoir_prop"]["K_type"] = 0 # 0: K=cte from vertical wellbore; 1: K=linear func; 2: parabolic func; 3: K comes from an ANN  
+
+    model["RK_settigns"]["verbose"] = 1 
+    model["RK_settigns"]["npoints"] = 21
+    model["RK_settigns"]["idp"] = 0.005 # [Pa] initial delta P
+    model["RK_settigns"]["eps"] = 1.e-6
+    model["RK_settigns"]["Re_min"] = 100
+    model["RK_settigns"]["rtol"] = 1e-10
+    model["RK_settigns"]["max_n"] = 100
+
+    return model
+#}}}
 def Reynolds(model, Q): #{{{
     rho = model["fluid_prop"]["rho"]
     mu = model["fluid_prop"]["mu"]
@@ -45,30 +75,61 @@ def Reynolds(model, Q): #{{{
     V = 4*Q/(np.pi*D**2)
     return rho * V * D / mu
 #}}}
-def FrictionFactor(Re):#{{{
+def FrictionFactor(model, Re):#{{{
 
-    if Re<= 1187.38:
-        f = 16/Re # laminar flow
-    else:
-        f= 0.0791/(Re**0.25) # turbulent flow
-    
+    f_laminar   = 16/Re
+    f_turbulent = 0.0791/(Re**0.25) 
+
+    if model["wellbore_prop"]["f_type"]==0: # default
+        f = f_laminar if Re<= 1187.38 else f_turbulent 
+    else: 
+        f = f_laminar if model["wellbore_prop"]["f_type"]==1 else f_turbulent
+
+    #if Re<= 1187.38:
+    #    f = 16/Re # laminar flow
+    #else:
+    #    f= 0.0791/(Re**0.25) # turbulent flow
+    #f = 16/Re # laminar flow
+    #f= 0.0791/(Re**0.25) # turbulent flow
     return f
-#}}}
+#}}}zc
 def K(model, x, K_x=None, K_v=None): #{{{
-    
+   
+    # x=0, toe; x=Lw, heel
     K_type = model["reservoir_prop"]["K_type"]
-    
+    verbose = model["RK_settigns"]["verbose"]  
+
     if K_type==0:
+        # K from a vertical wellbore (constant)
+        if verbose>1:
+            print("K (constant)")
         k = model["reservoir_prop"]["k"]
         Dr= model["reservoir_prop"]["Dr"]
         D = model["wellbore_prop"]["D"]
         mu= model["fluid_prop"]["mu"] 
-        # K from a vertical wellbore (constant)
         K = 2*np.pi*k/(mu*np.log(Dr/D))
     elif K_type==1:
-        sys.exit("K not defined yet")
+        # K linear (based on a vertical wellbore) 
+        if verbose>1:
+            print("K (linear)")
+        k = model["reservoir_prop"]["k"]
+        Dr= model["reservoir_prop"]["Dr"]
+        D = model["wellbore_prop"]["D"]
+        Lw= model["wellbore_prop"]["Lw"]
+        mu= model["fluid_prop"]["mu"]
+        Kvw = 2*np.pi*k/(mu*np.log(Dr/D))
+        K = Kvw * x/Lw     
     elif K_type==2:
-        sys.exit("K not defined yet")
+        # K parabolic (based on a vertical wellbore) 
+        if verbose>1:
+            print("K (parabolic)")
+        k = model["reservoir_prop"]["k"]
+        Dr= model["reservoir_prop"]["Dr"]
+        D = model["wellbore_prop"]["D"]
+        Lw= model["wellbore_prop"]["Lw"]
+        mu= model["fluid_prop"]["mu"]
+        Kvw = 2*np.pi*k/(mu*np.log(Dr/D))
+        K = 4*Kvw * (x/Lw)**2 - 4*Kvw * (x/Lw) + 3*Kvw/2     
     elif K_type==3:
         sys.exit("K not defined yet")
     else:
@@ -91,7 +152,7 @@ def pfunc(model, x, Q): #{{{
     if Re < eps:
         print("WARNING: Reynolds <= 0! Using mininal Reynolds")
         Re = Re_min        
-    f = FrictionFactor(Re)
+    f = FrictionFactor(model, Re)
     # if Q=0, f is obtained with Re=100 (min_Re); 
     # it will return 0 anyway
     return -32*f*rho*Q**2/(np.pi**2 * D**5)
@@ -201,7 +262,7 @@ def Q_vertical_wellbore(model):#{{{
     return Qw
 #}}}
 def test_VerticalWelboreModel():#{{{
-    model = model_settings()
+    model = model_settings_for_tests()
 
     model["reservoir_prop"]["k"] = 1e-13 # m2 
     model["reservoir_prop"]["p_res"] = 2.206e+7 # Pa 
@@ -229,14 +290,17 @@ def test_VerticalWelboreModel():#{{{
 #}}}
 def test_FrictionFator():#{{{
 
+    model = model_settings_for_tests()
+    model["wellbore_prop"]["f_type"] = 0 # default
+
     Re_eq = 1187.38
     _eps  = 0.001 
 
-    assert np.allclose(FrictionFactor(Re_eq-_eps), 16/(Re_eq-_eps), rtol=1.e-14)
+    assert np.allclose(FrictionFactor(model, Re_eq-_eps), 16/(Re_eq-_eps), rtol=1.e-14)
     
-    assert np.allclose(FrictionFactor(Re_eq+_eps), 0.0791/((Re_eq+_eps)**0.25), rtol=1.e-14)
+    assert np.allclose(FrictionFactor(model, Re_eq+_eps), 0.0791/((Re_eq+_eps)**0.25), rtol=1.e-14)
 
-    assert np.allclose(FrictionFactor(Re_eq-_eps), FrictionFactor(Re_eq+_eps), rtol=4.e-6)
+    assert np.allclose(FrictionFactor(model, Re_eq-_eps), FrictionFactor(model, Re_eq+_eps), rtol=4.e-6)
 
     Re_min = 100 
     Re_max = 10000
@@ -247,7 +311,7 @@ def test_FrictionFator():#{{{
     g = np.zeros(len(Re))
 
     for i in range(0,len(Re)):
-        f[i] = FrictionFactor(Re[i])
+        f[i] = FrictionFactor(model, Re[i])
         if Re[i] <= Re_eq:
             g[i] = 16/Re[i]
         else:
@@ -272,7 +336,7 @@ def test_Reynolds():#{{{
 
     Q = V*np.pi*(D**2)/4
     
-    model = model_settings()
+    model = model_settings_for_tests()
 
     model["wellbore_prop"]["D"] = D # m
     model["fluid_prop"]["mu"] = mu # Pa * s
@@ -284,6 +348,98 @@ def test_Reynolds():#{{{
     assert np.allclose(Re_1,Re_2,rtol=1e-12)
     
 #}}}
+def test_RungeKuttaLinearFrictionConstantK():#{{{
+    # from Mathematica (using NDSolve)
+    # K constant (vertical wellbore), linear friction coeficient
+    p_toe_expected  = 1.179124269e+7
+    p_heel_expected = 1.177e+7  
+    Q_heel_expected = 0.05215536594
+
+    model = model_settings_for_tests()
+    model["reservoir_prop"]["K_type"] = 0 # K constant (vertical wellbore)
+    model["wellbore_prop"]["f_type"] = 1 # linear only
+
+    # run the RungeKutta model
+    x_RK, Q_RK, p_RK = RungeKutta_solver(model)
+
+    #print(p_RK[0])
+    #print(p_RK[-1])
+    #print(Q_RK[-1])
+
+    assert np.allclose(p_toe_expected,  p_RK[0],  rtol= 1.0e-9)
+    assert np.allclose(p_heel_expected, p_RK[-1], rtol= 1.0e-9)
+    assert np.allclose(Q_heel_expected, Q_RK[-1], rtol= 2.0e-7, atol=1.0e-12)
+
+#}}}
+def test_RungeKuttaLinearFrictionLinearK():#{{{
+    # from Mathematica (using NDSolve)
+    # K linear, linear friction coeficient
+    p_toe_expected  = 1.177708919e+7
+    p_heel_expected = 1.177000000e+7  
+    Q_heel_expected = 0.02610282486
+
+    model = model_settings_for_tests()
+    model["reservoir_prop"]["K_type"] = 1 # K linear 
+    model["wellbore_prop"]["f_type"] = 1 # linear only
+
+    # run the RungeKutta model
+    x_RK, Q_RK, p_RK = RungeKutta_solver(model)
+
+    print(p_RK[0])
+    print(p_RK[-1])
+    print(Q_RK[-1])
+
+    assert np.allclose(p_toe_expected,  p_RK[0],  rtol= 2.0e-10)
+    assert np.allclose(p_heel_expected, p_RK[-1], rtol= 1.0e-10)
+    assert np.allclose(Q_heel_expected, Q_RK[-1], rtol= 7.0e-10, atol=1.0e-12)
+
+#}}}
+def test_RungeKuttaNonLinearFrictionConstantK():#{{{
+    # from Mathematica (using NDSolve)
+    # K constant (vertical wellbore), non linear friction coeficient
+    p_toe_expected  = 1.219297411e+7
+    p_heel_expected = 1.176999979e+7  
+    Q_heel_expected = 0.05065050899
+
+    model = model_settings_for_tests()
+    model["reservoir_prop"]["K_type"] = 0 # K constant (vertical wellbore)
+    model["wellbore_prop"]["f_type"] = 2 # non linear only
+
+    # run the RungeKutta model
+    x_RK, Q_RK, p_RK = RungeKutta_solver(model)
+
+    #print(p_RK[0])
+    #print(p_RK[-1])
+    #print(Q_RK[-1]-Q_heel_expected)
+
+    assert np.allclose(p_toe_expected,  p_RK[0],  rtol= 4.0e-8)
+    assert np.allclose(p_heel_expected, p_RK[-1], rtol= 2.0e-8)
+    assert np.allclose(Q_heel_expected, Q_RK[-1], rtol= 3.0e-8, atol=1.0e-12)
+
+#}}}
+def test_RungeKuttaNonLinearFrictionLinearK():#{{{
+    # from Mathematica (using NDSolve)
+    # K linear, non linear friction coeficient
+    p_toe_expected  = 1.185093713e+7
+    p_heel_expected = 1.177000000e+7  
+    Q_heel_expected = 0.02597136491
+
+    model = model_settings_for_tests()
+    model["reservoir_prop"]["K_type"] = 1 # K linear
+    model["wellbore_prop"]["f_type"] = 2 # non linear only
+
+    # run the RungeKutta model
+    x_RK, Q_RK, p_RK = RungeKutta_solver(model)
+
+    #print(p_RK[0])
+    #print(p_RK[-1])
+    #print(Q_RK[-1]-Q_heel_expected)
+
+    assert np.allclose(p_toe_expected,  p_RK[0],  rtol= 1.1e-8)
+    assert np.allclose(p_heel_expected, p_RK[-1], rtol= 1.0e-10)
+    assert np.allclose(Q_heel_expected, Q_RK[-1], rtol= 3.0e-9, atol=1.0e-12)
+
+#}}}
 def test_only_to_show_all_plots():#{{{
     plt.show()
 #}}}
@@ -291,6 +447,8 @@ def test_only_to_show_all_plots():#{{{
 def main():
     
     model = model_settings()
+    model["reservoir_prop"]["K_type"] = 2
+    #model["wellbore_prop"]["f_type"]=2
 
     x, Q, p = RungeKutta_solver(model)
 
