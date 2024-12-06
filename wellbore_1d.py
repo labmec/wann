@@ -394,6 +394,29 @@ def test_RungeKuttaLinearFrictionLinearK():#{{{
     assert np.allclose(Q_heel_expected, Q_RK[-1], rtol= 7.0e-10, atol=1.0e-12)
 
 #}}}
+def test_RungeKuttaLinearFrictionParabolicK():#{{{
+    # from Mathematica (using NDSolve)
+    # K parabolic, linear friction coeficient
+    p_toe_expected  = 1.178770713e+7
+    p_heel_expected = 1.177000000e+7  
+    Q_heel_expected = 0.04347630488
+
+    model = model_settings_for_tests()
+    model["reservoir_prop"]["K_type"] = 2 # K parabolic 
+    model["wellbore_prop"]["f_type"] = 1 # linear only
+
+    # run the RungeKutta model
+    x_RK, Q_RK, p_RK = RungeKutta_solver(model)
+
+    print(p_RK[0])
+    print(p_RK[-1])
+    print(Q_RK[-1])
+
+    assert np.allclose(p_toe_expected,  p_RK[0],  rtol= 3.0e-10)
+    assert np.allclose(p_heel_expected, p_RK[-1], rtol= 1.0e-10)
+    assert np.allclose(Q_heel_expected, Q_RK[-1], rtol= 3.0e-9, atol=1.0e-12)
+
+#}}}
 def test_RungeKuttaNonLinearFrictionConstantK():#{{{
     # from Mathematica (using NDSolve)
     # K constant (vertical wellbore), non linear friction coeficient
@@ -440,6 +463,29 @@ def test_RungeKuttaNonLinearFrictionLinearK():#{{{
     assert np.allclose(Q_heel_expected, Q_RK[-1], rtol= 3.0e-9, atol=1.0e-12)
 
 #}}}
+def test_RungeKuttaNonLinearFrictionParabolicK():#{{{
+    # from Mathematica (using NDSolve)
+    # K parabolic, non linear friction coeficient
+    p_toe_expected  = 1.206718661e+7
+    p_heel_expected = 1.177000000e+7  
+    Q_heel_expected = 0.04267083913
+
+    model = model_settings_for_tests()
+    model["reservoir_prop"]["K_type"] = 2 # K parabolic
+    model["wellbore_prop"]["f_type"] = 2 # non linear only
+
+    # run the RungeKutta model
+    x_RK, Q_RK, p_RK = RungeKutta_solver(model)
+
+    #print(p_RK[0])
+    #print(p_RK[-1])
+    #print(Q_RK[-1]-Q_heel_expected)
+
+    assert np.allclose(p_toe_expected,  p_RK[0],  rtol= 1.0e-7)
+    assert np.allclose(p_heel_expected, p_RK[-1], rtol= 1.0e-10)
+    assert np.allclose(Q_heel_expected, Q_RK[-1], rtol= 6.0e-8, atol=1.0e-12)
+
+#}}}
 def test_only_to_show_all_plots():#{{{
     plt.show()
 #}}}
@@ -448,7 +494,7 @@ def main():
     
     model = model_settings()
     model["reservoir_prop"]["K_type"] = 2
-    #model["wellbore_prop"]["f_type"]=2
+    model["wellbore_prop"]["f_type"]=2
 
     x, Q, p = RungeKutta_solver(model)
 
