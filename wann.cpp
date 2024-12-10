@@ -57,7 +57,7 @@ TPZGeoMesh* ReadMeshFromGmsh(std::string file_name);
 TPZCompMesh* CreateCompMeshH1(TPZGeoMesh* gmesh, const int porder, const REAL pff, const REAL pheel, const REAL Kres, const REAL Kwell);
 void PrintResults(TPZLinearAnalysis& an, TPZCompMesh* cmesh);
 void FindElementsAndPtsToPostProc(TPZGeoMesh* gmesh, TPZStack<PostProcElData>& postProcData, const int matid, const int npts, const REAL x0, const REAL xf);
-void PostProcDataForANN(TPZGeoMesh* gmesh, TPZStack<PostProcElData>& postProcData, const REAL pff);
+void PostProcDataForANN(TPZGeoMesh* gmesh, TPZStack<PostProcElData>& postProcData, const REAL pff, const REAL wellR);
 
 int main() {
   std::cout << "--------- Starting simulation ---------" << std::endl;
@@ -65,13 +65,14 @@ int main() {
   TPZLogger::InitializePZLOG();
 #endif
 
-  const int pord = 4;
-  const int nrefdirectional = 6;  
-  const REAL pff = 22064967.11, pheel = 11767982.46;
+  const int pord = 6;
+  const int nrefdirectional = 6;
+  REAL pff = 22064967.11, pheel = 11767982.46;
   const REAL Kres = 1.e-13;
   const REAL wellR = 0.05;
-  const REAL mu = 0.005;  
+  const REAL mu = 0.005;
   REAL Kwell = M_PI * wellR * wellR * wellR * wellR / (8.0 * mu);
+//   Kwell = 1000*Kres;
   // Kwell = 1e-6;
   // 1) Create gmesh
   TPZGeoMesh* gmesh = ReadMeshFromGmsh("../geo/mesh_rev01.msh");
@@ -113,7 +114,7 @@ int main() {
   FindElementsAndPtsToPostProc(gmesh, postProcData, EWell, npts, x0, xf);
 
   // 6) Post process pressure and divergence of q at well on several points using postprocdata
-  PostProcDataForANN(gmesh, postProcData, pff);
+  PostProcDataForANN(gmesh, postProcData, pff, wellR);
 
   delete cmeshH1;
   delete gmesh;
@@ -121,7 +122,7 @@ int main() {
   std::cout << "--------- Simulation finished ---------" << std::endl;
 }
 
-void PostProcDataForANN(TPZGeoMesh* gmesh, TPZStack<PostProcElData>& postProcData, const REAL pff) {
+void PostProcDataForANN(TPZGeoMesh* gmesh, TPZStack<PostProcElData>& postProcData, const REAL pff, const REAL wellR) {
   std::ofstream out("postprocdata.txt");
   out << std::setprecision(15);
   for (auto& data : postProcData) {
@@ -140,7 +141,7 @@ void PostProcDataForANN(TPZGeoMesh* gmesh, TPZStack<PostProcElData>& postProcDat
     const REAL q = output[0];
 
     std::cout << "x = " << data.x << " p = " << pressure << " q = " << q << std::endl;
-    out << data.x[0] << " " << pressure << " " << q << std::endl;
+    out << data.x[0] << " " << pressure << " " << q << " " << wellR << std::endl;
   }
 }
 

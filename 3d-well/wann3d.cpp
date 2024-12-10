@@ -63,9 +63,12 @@ int main() {
 #endif
 
   const int nrefdirectional = 0;
+  const int nref = 1;
 
-  TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev04.msh");
-
+  // TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev04.msh");
+//   TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev05.msh");
+  TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev06.msh");
+  
   {
     std::ofstream out("gmeshorig.vtk");
     TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
@@ -75,7 +78,7 @@ int main() {
 
   {
     TPZCheckGeom checkgeom(gmesh);
-    checkgeom.UniformRefine(2);
+    checkgeom.UniformRefine(nref);
     // const int nref = 3;
     // for (int i = 0; i < nref; i++) {
     //   const int64_t nel = gmesh->NElements();
@@ -142,6 +145,7 @@ void ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh) {
     
     TPZManVector<int64_t, 4> nodeindices;
     gel->GetNodeIndices(nodeindices);
+    // AQUINATHAN: THIAGO WILL GENERATE THIS CYLINDER ALREADY ON GMSH
     for(auto& it : nodeindices) {
       TPZManVector<REAL,3> coor(3);
       gmesh->NodeVec()[it].GetCoordinates(coor);
@@ -168,15 +172,18 @@ void ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh) {
     TPZGeoEl* gel = gmesh->Element(iel);
     if(!gel) continue;
     if(gel->HasSubElement()) DebugStop();
-    if(gel->MaterialId() != ESurfWellCyl) continue;
+    if(gel->MaterialId() != ESurfWellCyl && gel->MaterialId() != ESurfHeel && gel->MaterialId() != ESurfToe) continue;
     int nsides = gel->NSides();
-    for (int iside = gel->NCornerNodes(); iside < nsides; iside++) {
+    // for (int iside = gel->NCornerNodes(); iside < nsides; iside++) {
+    for (int iside = gel->FirstSide(2); iside < nsides; iside++) {
       TPZGeoElSide gelSide(gel,iside);
       TPZStack<TPZGeoElSide> allneigh;
-      for(auto neigh = gelSide.Neighbour(); neigh != gelSide ; neigh++) {
+      for(auto neigh = gelSide.Neighbour(); neigh != gelSide ; neigh++) {      
         if(neigh.Element()->IsGeoBlendEl()) {
           continue;
         }
+        if(neigh.Element()->Dimension() != 3) continue;
+        // if(neigh.Element()->MaterialId() != EDomain) DebugStop();
         allneigh.Push(neigh);
       }
       for(auto it : allneigh){
