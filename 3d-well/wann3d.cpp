@@ -180,7 +180,7 @@ ReadMeshFromGmsh(std::string file_name) {
     stringtoint[2]["surface_wellbore_heel"] = ESurfHeel;
     stringtoint[2]["surface_wellbore_toe"] = ESurfToe;
     stringtoint[2]["surface_farfield"] = EFarField;
-    stringtoint[2]["cap_rock"] = EFarField;
+    stringtoint[2]["surface_cap_rock"] = EFarField;
     
     stringtoint[1]["curve_wellbore"] = ECurveWell;
     stringtoint[1]["curve_heel"] = ECurveHeel;
