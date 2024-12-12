@@ -63,9 +63,12 @@ int main() {
 #endif
 
   const int nrefdirectional = 0;
+  const int nref = 1;
 
-  TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev04.msh");
-
+  // TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev04.msh");
+//   TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev05.msh");
+  TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev06.msh");
+  
   {
     std::ofstream out("gmeshorig.vtk");
     TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
@@ -75,7 +78,7 @@ int main() {
 
   {
     TPZCheckGeom checkgeom(gmesh);
-    checkgeom.UniformRefine(2);
+    checkgeom.UniformRefine(nref);
     // const int nref = 3;
     // for (int i = 0; i < nref; i++) {
     //   const int64_t nel = gmesh->NElements();
@@ -131,7 +134,7 @@ ReadMeshFromGmsh(std::string file_name) {
 }
 
 void ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh) {
-  const REAL cylradius = 0.05;
+  const REAL cylradius = 0.1;
   const TPZManVector<REAL,3> cylcenter = {0.,0.,0.}, cylaxis = {1.,0.,0.};
   int64_t nel = gmesh->NElements();
   for(int64_t iel = 0; iel < nel ; iel++) {
@@ -142,16 +145,17 @@ void ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh) {
     
     TPZManVector<int64_t, 4> nodeindices;
     gel->GetNodeIndices(nodeindices);
-    for(auto& it : nodeindices) {
-      TPZManVector<REAL,3> coor(3);
-      gmesh->NodeVec()[it].GetCoordinates(coor);
-      REAL xcoortemp = coor[0];
-      coor[0] = 0.;
-      const REAL norm = Norm(coor)/cylradius;
-      coor /= norm;
-      coor[0] = xcoortemp;
-      gmesh->NodeVec()[it].SetCoord(coor);
-    }
+    // AQUINATHAN: THIAGO WILL GENERATE THIS CYLINDER ALREADY ON GMSH
+    // for(auto& it : nodeindices) {
+    //   TPZManVector<REAL,3> coor(3);
+    //   gmesh->NodeVec()[it].GetCoordinates(coor);
+    //   REAL xcoortemp = coor[0];
+    //   coor[0] = 0.;
+    //   const REAL norm = Norm(coor)/cylradius;
+    //   coor /= norm;
+    //   coor[0] = xcoortemp;
+    //   gmesh->NodeVec()[it].SetCoord(coor);
+    // }
     // auto newgel = new TPZGeoElRefPattern<pzgeom::TPZCylinderMap<pzgeom::TPZGeoTriangle> >(nodeindices, ESurfWellCylNonLin, *gmesh);
     // pzgeom::TPZCylinderMap<pzgeom::TPZGeoTriangle>& cylmap = newgel->Geom();
     // cylmap.SetOrigin({0.,0.,0.});
@@ -168,17 +172,25 @@ void ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh) {
     TPZGeoEl* gel = gmesh->Element(iel);
     if(!gel) continue;
     if(gel->HasSubElement()) DebugStop();
+    // if(gel->MaterialId() != ESurfWellCyl && gel->MaterialId() != ESurfHeel && gel->MaterialId() != ESurfToe) continue;
     if(gel->MaterialId() != ESurfWellCyl) continue;
     int nsides = gel->NSides();
-    for (int iside = gel->NCornerNodes(); iside < nsides; iside++) {
+    // for (int iside = gel->NCornerNodes(); iside < nsides; iside++) {
+    for (int iside = gel->FirstSide(1); iside < nsides; iside++) {
       TPZGeoElSide gelSide(gel,iside);
       TPZStack<TPZGeoElSide> allneigh;
-      for(auto neigh = gelSide.Neighbour(); neigh != gelSide ; neigh++) {
+      for(auto neigh = gelSide.Neighbour(); neigh != gelSide ; neigh++) {      
         if(neigh.Element()->IsGeoBlendEl()) {
           continue;
         }
+        if (neigh.Element()->MaterialId() == ESurfWellCyl) {
+          continue;
+        }
+        // if(neigh.Element()->Dimension() < 2) continue;
+        // if(neigh.Element()->MaterialId() != EDomain) DebugStop();
         allneigh.Push(neigh);
       }
+      std::cout << "Element " << iel << " side " << iside << " has " << allneigh.size() << " neighbours" << std::endl;
       for(auto it : allneigh){
         TPZChangeEl::ChangeToGeoBlend(gmesh, it.Element()->Index());
       }
