@@ -5,7 +5,8 @@ import math
 import time as tm
 import sys
 
-meshfile = "../geo/mesh3D_rev02.msh"
+#meshfile = "../geo/mesh3D_rev02.msh"
+meshfile = "../geo/mesh3D_rev06.msh"
 mesh = Mesh(meshfile)
 V = FunctionSpace(mesh, "CG",1)
 W = VectorFunctionSpace(mesh, "CG",1)
@@ -18,7 +19,7 @@ F = inner(grad(u),grad(v))*dx + Constant(0)*v*dx
 
 Pr=10;
 Pw=1;
-p_farfield = DirichletBC(V, Pr, [100])
+p_farfield = DirichletBC(V, Pr, [106,107]) # added cap rock
 p_well = DirichletBC(V, Pw, [103])
 
 _lhs = lhs(F)

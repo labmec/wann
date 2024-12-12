@@ -146,6 +146,8 @@ Physical Surface("surface_wellbore_toe",104) = {14,18,21,24,26};//wellbore toe
 Physical Surface("surface_wellbore_heel",105) = {1,2,3,4,5};//wellbore heel
 Physical Surface("surface_farfield",106) = {66,37,95,31,60,89,59,62,65,67,94,96,88,91,43,47,50,53,55,72,76,82,84,79};//reservoir farfield
 Physical Surface("surface_cap_rock",107) = {57,28,86,63,34,92};//cap rock
+Physical Point("point_heel",108) = {9};
+Physical Point("point_toe",109) = {18};
 all_volumes[] = Volume "*";
 Physical Volume("volume_reservoir",108) = all_volumes[]; //reservoir
 
