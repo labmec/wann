@@ -54,12 +54,15 @@ enum EMatid { ENone,
               ECurveHeel,
               ECurveToe,
               ESurfWellCylNonLin,
-              ECapRock };
+              ECapRock,
+              EPressure2DSkin,
+              EPressureInterface };
 
 const int global_nthread = 8;
 
 TPZGeoMesh* ReadMeshFromGmsh(std::string file_name);
 void ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh);
+void CreatePressure2DElsAndOrderIds(TPZGeoMesh* gmesh);
 
 int main() {
   std::cout << "--------- Starting simulation ---------" << std::endl;
@@ -109,6 +112,11 @@ int main() {
     }
   }
 
+  // Create GeoelBCs in same location as geoels with ESurfWell
+  CreatePressure2DElsAndOrderIds(gmesh);
+
+  //
+  
   // Create computational mesh for Darcy problem
   TPZHDivApproxCreator hdivCreator(gmesh);
   hdivCreator.ProbType() = ProblemType::EDarcy;
@@ -255,4 +263,96 @@ void ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh) {
       }
     }
   }  
+}
+
+void InsertXCoorInSet(const REAL x, std::set<REAL>& nodeCoordsX, const REAL tol) {
+  if (nodeCoordsX.size() == 0) {
+    nodeCoordsX.insert(x);
+    return;
+  }
+  auto it = std::lower_bound(nodeCoordsX.begin(), nodeCoordsX.end(), x);
+  if (it == nodeCoordsX.end()) {
+    REAL ref = *nodeCoordsX.begin();
+    if (fabs(x - ref) > tol) {
+      nodeCoordsX.insert(x);
+    }
+  } else {
+    REAL ref1 = *it;
+    if (fabs(x - ref1) <= tol) {
+      return;
+    }
+    it++;
+    if (it != nodeCoordsX.end()) {
+      REAL ref2 = *it;
+      if (fabs(x - ref2) <= tol) {
+        return;
+      }
+    }
+    nodeCoordsX.insert(x);
+  }
+}
+
+REAL FindClosestX(const REAL x, const std::set<REAL>& nodeCoordsX, const REAL tol) {
+  REAL closestX = -1000;
+  auto it = std::lower_bound(nodeCoordsX.begin(), nodeCoordsX.end(), x);
+  if (it == nodeCoordsX.end()) {
+    closestX = *nodeCoordsX.begin();
+    if(fabs(x - closestX) >= tol) DebugStop();
+    return closestX;
+  }
+  REAL ref = *it;
+  if (fabs(x - ref) <= tol) {
+    closestX = ref;
+    return closestX;
+  }
+  it++;
+  ref = *it;
+  if (fabs(x - ref) <= tol) {
+    closestX = ref;
+    return closestX;
+  }
+  DebugStop();
+}
+
+void CreatePressure2DElsAndOrderIds(TPZGeoMesh* gmesh) {
+  const int nel = gmesh->NElements();
+  const REAL tol = 1.e-6;
+  std::set<int64_t> pressure2Dels;
+  std::set<REAL> nodeCoordsX;
+  for (int64_t iel = 0; iel < nel; iel++) {
+    TPZGeoEl* gel = gmesh->Element(iel);
+    if (gel->MaterialId() != ESurfWellCyl) continue;
+    TPZGeoElBC bc(gel,gel->NSides()-1,EPressureInterface);
+    TPZGeoElBC bc(gel,gel->NSides()-1,EPressure2DSkin);    
+    pressure2Dels.insert(bc.CreatedElement()->Index());
+    for (int i = 0; i < gel->NCornerNodes(); i++) {
+      TPZManVector<REAL,3> coor(3);
+      gel->NodePtr(i)->GetCoordinates(coor);
+      InsertXCoorInSet(coor[0], nodeCoordsX, tol);
+    }
+  }
+
+  std::map<REAL,std::set<int64_t>> xToNodes;
+  for (auto iel : pressure2Dels) {
+    TPZGeoEl* gel = gmesh->Element(iel);
+    if (gel->MaterialId() != ESurfWellCyl) DebugStop();
+    for (int i = 0; i < gel->NCornerNodes(); i++) {
+      TPZManVector<REAL,3> coor(3);
+      gel->NodePtr(i)->GetCoordinates(coor);
+      REAL closestX = FindClosestX(coor[0], nodeCoordsX, tol);
+      xToNodes[closestX].insert(gel->NodeIndex(i));
+    }
+  }
+
+  int64_t maxid = gmesh->CreateUniqueNodeId();
+  for (auto& it : xToNodes) {
+    const REAL x = it.first;
+    const auto& nodes = it.second;
+    const int64_t nnodes = nodes.size();
+    if (nnodes < 2) DebugStop();          
+    for (auto& node : nodes) {
+      gmesh->NodeVec()[node].SetNodeId(maxid++);
+    }
+  }
+
 }
