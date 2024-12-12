@@ -10,7 +10,7 @@ $PhysicalNames
 2 104 "surface_wellbore_toe"
 2 105 "surface_wellbore_heel"
 2 106 "surface_farfield"
-2 107 "cap_rock"
+2 107 "surface_cap_rock"
 3 108 "volume_reservoir"
 $EndPhysicalNames
 $Entities
