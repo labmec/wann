@@ -63,6 +63,7 @@ const int global_nthread = 8;
 TPZGeoMesh* ReadMeshFromGmsh(std::string file_name);
 void ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh);
 void CreatePressure2DElsAndOrderIds(TPZGeoMesh* gmesh);
+void AddPressureSkinElements(TPZCompMesh* cmesh, const int pordWell);
 
 int main() {
   std::cout << "--------- Starting simulation ---------" << std::endl;
@@ -72,7 +73,7 @@ int main() {
 
   const int nrefdirectional = 0;
   const int nref = 0;
-  const int pOrder = 1;
+  const int pOrder = 1, pOrdWell = 2;
 
 
   // TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev04.msh");
@@ -112,10 +113,13 @@ int main() {
     }
   }
 
+  {
+    std::ofstream out("gmeshnonlin_ref.vtk");
+    TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);    
+  }
+
   // Create GeoelBCs in same location as geoels with ESurfWell
   CreatePressure2DElsAndOrderIds(gmesh);
-
-  //
   
   // Create computational mesh for Darcy problem
   TPZHDivApproxCreator hdivCreator(gmesh);
@@ -148,7 +152,12 @@ int main() {
   TPZBndCondT<STATE>* BCond4 = matdarcy->CreateBC(matdarcy, ESurfToe, neu, val1, val2);
   hdivCreator.InsertMaterialObject(BCond4);
 
-  TPZMultiphysicsCompMesh* cmesh = hdivCreator.CreateApproximationSpace();
+  int lagmultilevel = 1;
+  TPZManVector<TPZCompMesh*,7> meshvec(hdivCreator.NumMeshes());
+  hdivCreator.CreateAtomicMeshes(meshvec, lagmultilevel);
+  AddPressureSkinElements(meshvec[1],pOrdWell);
+  TPZMultiphysicsCompMesh* cmesh = nullptr;
+  hdivCreator.CreateMultiPhysicsMesh(meshvec, lagmultilevel, cmesh);
 
   TPZLinearAnalysis analysis(cmesh);
   TPZSSpStructMatrix<STATE> skylstr(cmesh);
@@ -312,6 +321,7 @@ REAL FindClosestX(const REAL x, const std::set<REAL>& nodeCoordsX, const REAL to
     return closestX;
   }
   DebugStop();
+  return -1;
 }
 
 void CreatePressure2DElsAndOrderIds(TPZGeoMesh* gmesh) {
@@ -321,10 +331,10 @@ void CreatePressure2DElsAndOrderIds(TPZGeoMesh* gmesh) {
   std::set<REAL> nodeCoordsX;
   for (int64_t iel = 0; iel < nel; iel++) {
     TPZGeoEl* gel = gmesh->Element(iel);
-    if (gel->MaterialId() != ESurfWellCyl) continue;
-    TPZGeoElBC bc(gel,gel->NSides()-1,EPressureInterface);
-    TPZGeoElBC bc(gel,gel->NSides()-1,EPressure2DSkin);    
-    pressure2Dels.insert(bc.CreatedElement()->Index());
+    if (gel->MaterialId() != ESurfWellCyl) continue;    
+    pressure2Dels.insert(iel);
+    TPZGeoElBC bc(gel,gel->NSides()-1,EPressure2DSkin); 
+    TPZGeoElBC bc2(gel,gel->NSides()-1,EPressureInterface);
     for (int i = 0; i < gel->NCornerNodes(); i++) {
       TPZManVector<REAL,3> coor(3);
       gel->NodePtr(i)->GetCoordinates(coor);
@@ -355,4 +365,111 @@ void CreatePressure2DElsAndOrderIds(TPZGeoMesh* gmesh) {
     }
   }
 
+  // Print nodes for debugging
+  // std::multimap<REAL,int64_t> xToNodeIds;
+  // for (auto& it : xToNodes) {    
+  //   for (auto& node : it.second) {
+  //     const int64_t id = gmesh->NodeVec()[node].Id();
+  //     const REAL x = gmesh->NodeVec()[node].Coord(0);
+  //     xToNodeIds.insert({x,id});
+  //   }        
+  // }  
+  // for (const auto& it : xToNodeIds) {
+  //   std::cout << "X: " << it.first << " Node ID: " << it.second << std::endl;
+  // }
+}
+
+void AddPressureSkinElements(TPZCompMesh* cmesh, const int pordWell) {
+  std::set<REAL> nodeCoordsX;
+
+  const int dim = cmesh->Dimension()-1; // 2D for these pressure elements living in the boundary of the 3d well
+  const int matid = EPressure2DSkin;
+  TPZNullMaterial<STATE>* mat = new TPZNullMaterial<>(matid,dim);
+  cmesh->SetAllCreateFunctionsContinuous();
+  cmesh->ApproxSpace().CreateDisconnectedElements(true);
+  cmesh->InsertMaterialObject(mat);
+  cmesh->SetDefaultOrder(pordWell);
+
+  std::set<int> matidset = {matid};
+  cmesh->AutoBuild(matidset);
+
+  const int64_t nel = cmesh->NElements();
+  std::set<int64_t> pressure2Dels;
+  for (int64_t iel = 0; iel < nel; iel++) {
+    TPZCompEl* cel = cmesh->Element(iel);    
+    if (!cel) continue;
+    if (cel->Material()->Id() != matid) continue;
+    TPZGeoEl* gel = cel->Reference();
+    if(gel->NNodes() != 4) DebugStop();
+    TPZInterpolatedElement* intEl = dynamic_cast<TPZInterpolatedElement*>(cel);
+    if (!intEl) DebugStop();    
+    // I am at a pressure 2D element at the 3d well boundary
+    pressure2Dels.insert(iel);
+    for(int i = 4 ; i < 8 ; i++){
+      TPZConnect& c = cel->Connect(i);
+      REAL x0 = gel->NodePtr(i%4)->Coord(0), x1 = gel->NodePtr((i+1)%4)->Coord(0);
+      InsertXCoorInSet(x0, nodeCoordsX, 1.e-6);
+      InsertXCoorInSet(x1, nodeCoordsX, 1.e-6);
+      InsertXCoorInSet((x0+x1)/2., nodeCoordsX, 1.e-6);
+      if (fabs(x0 - x1) < 1.e-6) {
+        // Both nodes are on the same x coordinate
+        c.SetOrder(1);
+        c.SetNShape(0);
+      }
+    }
+
+    // Setting the area connect to order 1
+    TPZConnect& c = cel->Connect(8);
+    c.SetOrder(1);
+    c.SetNShape(0);
+  }
+
+  std::map<REAL,std::set<int64_t>> xToConnects;
+  const REAL tol = 1.e-6;
+  for (auto iel : pressure2Dels) {
+    TPZCompEl* cel = cmesh->Element(iel);
+    TPZGeoEl* gel = cel->Reference();
+    for (int i = 0; i < gel->NCornerNodes(); i++) {
+      TPZManVector<REAL,3> coor(3);
+      gel->NodePtr(i)->GetCoordinates(coor);
+      REAL closestX = FindClosestX(coor[0], nodeCoordsX, tol);
+      xToConnects[closestX].insert(cel->ConnectIndex(i));
+    }
+    for (int i = 4; i < 8; i++) {
+      REAL x0 = gel->NodePtr(i%4)->Coord(0), x1 = gel->NodePtr((i+1)%4)->Coord(0);
+      if (fabs(x0 - x1) < 1.e-6) {
+        continue;
+      }
+      REAL closestX = FindClosestX((x0+x1)/2., nodeCoordsX, tol);
+      xToConnects[closestX].insert(cel->ConnectIndex(i));
+    }    
+  }
+
+  for (auto iel : pressure2Dels) {
+    TPZCompEl* cel = cmesh->Element(iel);
+    TPZGeoEl* gel = cel->Reference();
+    for (int i = 0; i < gel->NCornerNodes(); i++) {
+      TPZManVector<REAL,3> coor(3);
+      gel->NodePtr(i)->GetCoordinates(coor);
+      REAL closestX = FindClosestX(coor[0], nodeCoordsX, tol);
+      int64_t cindex = *xToConnects[closestX].begin();
+      cel->SetConnectIndex(i,cindex);
+    }
+    for (int i = 4; i < 8; i++) {
+      REAL x0 = gel->NodePtr(i%4)->Coord(0), x1 = gel->NodePtr((i+1)%4)->Coord(0);
+      if (fabs(x0 - x1) < 1.e-6) {
+        continue;
+      }
+      REAL closestX = FindClosestX((x0+x1)/2., nodeCoordsX, tol);
+      int64_t cindex = *xToConnects[closestX].begin();
+      cel->SetConnectIndex(i,cindex);
+    }    
+  }
+  cmesh->ComputeNodElCon();
+  cmesh->CleanUpUnconnectedNodes();
+  cmesh->ExpandSolution();
+  {
+    std::ofstream out("cmesh.txt");
+    cmesh->Print(out);
+  }
 }
