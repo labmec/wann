@@ -41,6 +41,7 @@
 #include "TPZLinearAnalysis.h"
 #include "TPZVTKGenerator.h"
 #include "TPZMultiphysicsCompMesh.h"
+#include "Projection/TPZL2ProjectionCS.h"
 
 using namespace std;
 
@@ -56,14 +57,17 @@ enum EMatid { ENone,
               ESurfWellCylNonLin,
               ECapRock,
               EPressure2DSkin,
-              EPressureInterface };
+              EPressureInterface,
+              EPointHeel,
+              EPointToe };
 
 const int global_nthread = 8;
 
 TPZGeoMesh* ReadMeshFromGmsh(std::string file_name);
 void ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh);
 void CreatePressure2DElsAndOrderIds(TPZGeoMesh* gmesh);
-void AddPressureSkinElements(TPZCompMesh* cmesh, const int pordWell);
+void AddPressureSkinElements(TPZCompMesh* cmesh, const int pordWell, const int laglevel);
+void AddWellboreElements(TPZVec<TPZCompMesh*>& meshvec, const int pordWell, const int laglevel);
 
 int main() {
   std::cout << "--------- Starting simulation ---------" << std::endl;
@@ -71,9 +75,14 @@ int main() {
   TPZLogger::InitializePZLOG();
 #endif
 
+  // Mesh parameters
   const int nrefdirectional = 0;
   const int nref = 0;
   const int pOrder = 1, pOrdWell = 2;
+
+  // Physical parameters
+  const REAL reservoirPerm = 1.;
+  const REAL wellPerm = reservoirPerm*10.;
 
 
   // TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev04.msh");
@@ -134,7 +143,7 @@ int main() {
   // Insert Materials
   const int diri = 0, neu = 1, mixed = 2;
   TPZMixedDarcyFlow* matdarcy = new TPZMixedDarcyFlow(EDomain, dim);
-  matdarcy->SetConstantPermeability(1.);
+  matdarcy->SetConstantPermeability(reservoirPerm);
   hdivCreator.InsertMaterialObject(matdarcy);
 
   TPZFMatrix<STATE> val1(1, 1, 0.);
@@ -152,12 +161,38 @@ int main() {
   TPZBndCondT<STATE>* BCond4 = matdarcy->CreateBC(matdarcy, ESurfToe, neu, val1, val2);
   hdivCreator.InsertMaterialObject(BCond4);
 
+  // Creating material for pressure skin
+  TPZL2ProjectionCS<STATE>* matl2proj = new TPZL2ProjectionCS<STATE>(EPressure2DSkin, dim-1, 1/*nstate*/);
+  hdivCreator.InsertMaterialObject(matl2proj);
+
+  // Creating mateterial for 1D wellbore and bcs
+  int dimwell = 1;
+  TPZMixedDarcyFlow* matdarcyWell = new TPZMixedDarcyFlow(ECurveWell, dimwell);
+  matdarcyWell->SetConstantPermeability(wellPerm);
+  hdivCreator.InsertMaterialObject(matdarcyWell); // This will only be used in the creation of the multiphysics mesh since the dimension is smaller than the dimension of the geometric mesh
+  val2[0] = 10.;
+  TPZBndCondT<STATE>* BCond5 = matdarcyWell->CreateBC(matdarcyWell, EPointHeel, diri, val1, val2);
+  hdivCreator.InsertMaterialObject(BCond5);
+  val2[0] = 0.;
+  TPZBndCondT<STATE>* BCond6 = matdarcyWell->CreateBC(matdarcyWell, EPointToe, neu, val1, val2);
+  hdivCreator.InsertMaterialObject(BCond6);
+
   int lagmultilevel = 1;
   TPZManVector<TPZCompMesh*,7> meshvec(hdivCreator.NumMeshes());
-  hdivCreator.CreateAtomicMeshes(meshvec, lagmultilevel);
-  AddPressureSkinElements(meshvec[1],pOrdWell);
+  hdivCreator.CreateAtomicMeshes(meshvec, lagmultilevel); // This method increments the lagmultilevel
+  AddPressureSkinElements(meshvec[1],pOrdWell,lagmultilevel); // lagmultilevel is 2 here
+  AddWellboreElements(meshvec,pOrdWell,lagmultilevel);
   TPZMultiphysicsCompMesh* cmesh = nullptr;
   hdivCreator.CreateMultiPhysicsMesh(meshvec, lagmultilevel, cmesh);
+
+  if (0) {
+    std::cout << "Number of connects in multiphysics mesh: " << cmesh->NConnects() << std::endl;
+    for (int i = 0; i < meshvec.size(); i++) {
+      std::cout << "Number of connects in atomic mesh " << i << ": " << meshvec[i]->NConnects() << std::endl;
+    }
+    std::ofstream out("multiphysics_mesh.txt");
+    cmesh->Print(out);
+  }
 
   TPZLinearAnalysis analysis(cmesh);
   TPZSSpStructMatrix<STATE> skylstr(cmesh);
@@ -169,7 +204,7 @@ int main() {
 
   analysis.Run();
 
-  std::string filename = "solution";
+  std::string filename = "solution", filename1d = "solwell";
   TPZStack<std::string> fieldnames; 
   fieldnames.Push("Pressure");
   fieldnames.Push("Flux");
@@ -177,6 +212,10 @@ int main() {
   vtkGen.SetNThreads(0);
   vtkGen.Do();
   
+  TPZVTKGenerator vtkGen1D(cmesh, fieldnames, filename1d, 0, 1);
+  vtkGen1D.SetNThreads(0);
+  vtkGen1D.Do();
+
 
   // delete cmesh;
   // delete gmesh;
@@ -190,7 +229,7 @@ ReadMeshFromGmsh(std::string file_name) {
   gmesh = new TPZGeoMesh();
   {
     TPZGmshReader reader;
-    TPZManVector<std::map<std::string, int>, 4> stringtoint(8);
+    TPZManVector<std::map<std::string, int>, 4> stringtoint(4);
     stringtoint[3]["volume_reservoir"] = EDomain;
 
     stringtoint[2]["surface_wellbore_cylinder"] = ESurfWellCyl;
@@ -202,6 +241,10 @@ ReadMeshFromGmsh(std::string file_name) {
     stringtoint[1]["curve_wellbore"] = ECurveWell;
     stringtoint[1]["curve_heel"] = ECurveHeel;
     stringtoint[1]["curve_toe"] = ECurveToe;
+
+    stringtoint[0]["point_heel"] = EPointHeel;
+    stringtoint[0]["point_toe"] = EPointToe;
+    
     reader.SetDimNamePhysical(stringtoint);
     reader.GeometricGmshMesh(file_name, gmesh);
   }
@@ -379,7 +422,7 @@ void CreatePressure2DElsAndOrderIds(TPZGeoMesh* gmesh) {
   // }
 }
 
-void AddPressureSkinElements(TPZCompMesh* cmesh, const int pordWell) {
+void AddPressureSkinElements(TPZCompMesh* cmesh, const int pordWell, const int laglevel) {
   std::set<REAL> nodeCoordsX;
 
   const int dim = cmesh->Dimension()-1; // 2D for these pressure elements living in the boundary of the 3d well
@@ -422,6 +465,12 @@ void AddPressureSkinElements(TPZCompMesh* cmesh, const int pordWell) {
     TPZConnect& c = cel->Connect(8);
     c.SetOrder(1);
     c.SetNShape(0);
+
+    for (int i = 0; i < 9; i++) {
+      TPZConnect& c = cel->Connect(i);
+      c.SetLagrangeMultiplier(laglevel);
+    }
+    
   }
 
   std::map<REAL,std::set<int64_t>> xToConnects;
@@ -466,10 +515,63 @@ void AddPressureSkinElements(TPZCompMesh* cmesh, const int pordWell) {
     }    
   }
   cmesh->ComputeNodElCon();
-  cmesh->CleanUpUnconnectedNodes();
-  cmesh->ExpandSolution();
+  cmesh->CleanUpUnconnectedNodes();  
+  for (int64_t i = 0; i < cmesh->NConnects(); i++) {
+    TPZConnect &c = cmesh->ConnectVec()[i];
+    if (c.NElConnected() == 0) continue;
+    cmesh->Block().Set(c.SequenceNumber(),c.NShape()*c.NState());
+  }
+  cmesh->InitializeBlock();
+
   {
     std::ofstream out("cmesh.txt");
     cmesh->Print(out);
   }
+}
+
+void AddWellboreElements(TPZVec<TPZCompMesh*>& meshvec, const int pordWell, const int laglevel) {
+  const int dimwell = 1;
+  const int matid = ECurveWell;
+
+  // First create the pressure elements
+  TPZNullMaterial<STATE>* mat = new TPZNullMaterial<>(matid,dimwell);
+  meshvec[1]->SetAllCreateFunctionsContinuous();
+  meshvec[1]->ApproxSpace().CreateDisconnectedElements(true);
+  meshvec[1]->InsertMaterialObject(mat);
+  meshvec[1]->SetDefaultOrder(pordWell);
+
+  std::set<int> matidset = {matid};
+  meshvec[1]->AutoBuild(matidset);
+
+  const int64_t nel = meshvec[1]->NElements();
+  for (int64_t iel = 0; iel < nel; iel++) {
+    TPZCompEl* cel = meshvec[1]->Element(iel);    
+    if (!cel) continue;
+    if (cel->Material()->Id() != matid) continue;
+    TPZGeoEl* gel = cel->Reference();
+    if(gel->NNodes() != 2) DebugStop();
+    TPZInterpolatedElement* intEl = dynamic_cast<TPZInterpolatedElement*>(cel);
+    if (!intEl) DebugStop();    
+    // I am at a wellbore element
+    for (int i = 0; i < intEl->NConnects(); i++) {
+      TPZConnect& c = cel->Connect(i);
+      c.SetLagrangeMultiplier(laglevel);
+    }
+  }
+
+  // Now create the flux elements in meshvec[0]
+  TPZNullMaterial<STATE>* matFlux = new TPZNullMaterial<>(matid,dimwell);
+  TPZNullMaterial<STATE>* matFluxBcHeel = new TPZNullMaterial<>(EPointHeel,dimwell-1);
+  TPZNullMaterial<STATE>* matFluxBcToe = new TPZNullMaterial<>(EPointToe,dimwell-1);
+  meshvec[0]->InsertMaterialObject(matFlux);
+  meshvec[0]->InsertMaterialObject(matFluxBcHeel);
+  meshvec[0]->InsertMaterialObject(matFluxBcToe);
+
+  meshvec[0]->SetDimModel(dimwell);
+  meshvec[0]->ApproxSpace().SetAllCreateFunctionsHDiv(dimwell);
+  meshvec[0]->SetDefaultOrder(pordWell);
+  
+  std::set<int> matidsetFlux = {matid, EPointHeel, EPointToe};
+  meshvec[0]->AutoBuild(matidsetFlux);
+
 }
