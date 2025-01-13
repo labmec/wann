@@ -19,9 +19,9 @@ Hr = 6; //[m]
 //h_div = 24;//horizontal division
 //v_div = 10;//vertical division
 //w_div = 10;//width division
-h_div = 6;
-v_div = 3;
-w_div = 3;
+h_div = 24;
+v_div = 10;
+w_div = 10;
 
 //reservoir division (only one parameter for now)
 h_farfield = Hr/10.;
