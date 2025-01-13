@@ -92,7 +92,7 @@ def FrictionFactor(model, Re):#{{{
     #f = 16/Re # laminar flow
     #f= 0.0791/(Re**0.25) # turbulent flow
     return f
-#}}}zc
+#}}}
 def K(model, x, K_x=None, K_v=None): #{{{
    
     # x=0, toe; x=Lw, heel
@@ -157,9 +157,6 @@ def pfunc(model, x, Q): #{{{
     # it will return 0 anyway
     return -32*f*rho*Q**2/(np.pi**2 * D**5)
     
-    #FIXME testing laminar flow for now
-    #mu = model["fluid_prop"]["mu"]
-    #return -128*mu*Q/(np.pi*D**4)
 #}}}
 def read_K(model):#{{{
     _data = np.loadtxt("./pytorch/kpts.txt", delimiter="\t",unpack=False)
@@ -493,18 +490,24 @@ def test_only_to_show_all_plots():#{{{
 def main():
     
     model = model_settings()
-    model["reservoir_prop"]["K_type"] = 2
-    model["wellbore_prop"]["f_type"]=2
+    model["reservoir_prop"]["K_type"] = 2# 0: K=cte from vertical wellbore; 1: K=linear func; 2: parabolic func; 3: K comes from an ANN 
+    model["wellbore_prop"]["f_type"] = 2 # 0: default friction factor (linear or non-linear); 1: linear only; 2: non-linear only 
 
+    # calling the RK solver. Solver for Q and p
     x, Q, p = RungeKutta_solver(model)
 
     # post-processing
+
+    # retrieve the Reynolds number
+    Re = Reynolds(model, Q) 
+
     # transforming RK x to FEM x
     Lw = model["wellbore_prop"]["Lw"]
     x_fem = Lw-x  
 
+    # now, plot
     MPa = 1.e6
-    fig, axs = plt.subplots(2, 1, layout='constrained')
+    fig, axs = plt.subplots(3, 1, layout='constrained')
     axs[0].plot(x_fem, p/MPa)
     #axs[0].set_xlim(0, 2)
     axs[0].set_xlabel('Wellbore distance (m)')
@@ -513,8 +516,16 @@ def main():
 
     axs[1].plot(x_fem, Q)
     axs[1].set_xlabel('Wellbore distance (m)')
-    axs[1].set_ylabel('Flow rate (m2/s)')
+    axs[1].set_ylabel('Flow rate (m3/s)')
     axs[1].grid(True)
+   
+    re_lim = np.zeros(Re.shape)
+    re_lim[:] = 1187.38
+    axs[2].plot(x_fem, Re)
+    axs[2].plot(x_fem, re_lim, linestyle='dashed') 
+    axs[2].set_xlabel('Wellbore distance (m)')
+    axs[2].set_ylabel('Reynolds number []')
+    axs[2].grid(True)
 
     plt.show()
 
