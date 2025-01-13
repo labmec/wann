@@ -88,7 +88,7 @@ int main() {
 
   // Physical parameters
   const REAL reservoirPerm = 1.;
-  const REAL wellPerm = reservoirPerm*0.1;
+  const REAL wellPerm = reservoirPerm*10.;
 
 
   // TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev04.msh");
@@ -242,6 +242,7 @@ int main() {
   // vtkGen2D.Do();
 
 
+  fieldnames.Push("Divergence");
   TPZVTKGenerator vtkGen1D(cmesh, fieldnames, filename1d, 0, 1);
   vtkGen1D.SetNThreads(0);
   vtkGen1D.Do();
@@ -387,7 +388,8 @@ void CreatePressure2DElsAndOrderIds(TPZGeoMesh* gmesh) {
   std::set<REAL> nodeCoordsX;
   for (int64_t iel = 0; iel < nel; iel++) {
     TPZGeoEl* gel = gmesh->Element(iel);
-    if (gel->MaterialId() != ESurfWellCyl) continue;    
+    if (gel->MaterialId() != ESurfWellCyl) continue;  
+    if (gel->HasSubElement()) continue;
     pressure2Dels.insert(iel);
     TPZGeoElBC bc(gel,gel->NSides()-1,EPressure2DSkin); 
     TPZGeoElBC bc2(gel,gel->NSides()-1,EPressureInterface);
@@ -458,6 +460,7 @@ void AddPressureSkinElements(TPZCompMesh* cmesh, const int pordWell, const int l
       if (!cel) continue;
       if (cel->Material()->Id() != matid) continue;
       TPZGeoEl* gel = cel->Reference();
+      if(gel->HasSubElement()) continue;
       if(gel->NNodes() != 4) DebugStop();
       TPZInterpolatedElement* intEl = dynamic_cast<TPZInterpolatedElement*>(cel);
       if (!intEl) DebugStop();    
@@ -493,6 +496,7 @@ void AddPressureSkinElements(TPZCompMesh* cmesh, const int pordWell, const int l
     for (auto iel : pressure2Dels) {
       TPZCompEl* cel = cmesh->Element(iel);
       TPZGeoEl* gel = cel->Reference();
+      if(gel->HasSubElement()) DebugStop();
       for (int i = 0; i < gel->NCornerNodes(); i++) {
         TPZManVector<REAL,3> coor(3);
         gel->NodePtr(i)->GetCoordinates(coor);
@@ -542,6 +546,7 @@ void AddPressureSkinElements(TPZCompMesh* cmesh, const int pordWell, const int l
       if (!cel) continue;
       if (cel->Material()->Id() != matid) continue;
       TPZGeoEl* gel = cel->Reference();
+      if(gel->HasSubElement()) DebugStop();
       if(gel->NNodes() != 4) DebugStop();
 
       TPZGeoElSide gelside(gel);
@@ -651,7 +656,7 @@ void AddWellboreElements(TPZVec<TPZCompMesh*>& meshvec, const int pordWell, cons
 
   const int64_t nel = meshvec[1]->NElements();
   for (int64_t iel = 0; iel < nel; iel++) {
-    TPZCompEl* cel = meshvec[1]->Element(iel);    
+    TPZCompEl* cel = meshvec[1]->Element(iel);
     if (!cel) continue;
     if (cel->Material()->Id() != matid) continue;
     TPZGeoEl* gel = cel->Reference();
@@ -732,9 +737,11 @@ void EqualizePressureConnects(TPZCompMesh* cmesh) {
   for(auto& gel: gmesh->ElementVec()) {
     if (!gel) continue;
     if (gel->MaterialId() != ECurveWell) continue;
+    if(gel->HasSubElement()) continue;
     TPZGeoElSide gelside(gel);
     TPZGeoElSide surfwellside = gelside.Neighbour();
     while (surfwellside.Element()->MaterialId() != EPressure2DSkin) {
+      if (surfwellside.Element()->HasSubElement()) DebugStop();
       if(surfwellside == gelside) DebugStop();      
       surfwellside = surfwellside.Neighbour();
     }
