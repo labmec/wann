@@ -340,7 +340,7 @@ void InsertXCoorInSet(const REAL x, std::set<REAL>& nodeCoordsX, const REAL tol)
   }
   auto it = std::lower_bound(nodeCoordsX.begin(), nodeCoordsX.end(), x);
   if (it == nodeCoordsX.end()) {
-    REAL ref = *nodeCoordsX.begin();
+    REAL ref = *(--it);
     if (fabs(x - ref) > tol) {
       nodeCoordsX.insert(x);
     }
@@ -349,12 +349,9 @@ void InsertXCoorInSet(const REAL x, std::set<REAL>& nodeCoordsX, const REAL tol)
     if (fabs(x - ref1) <= tol) {
       return;
     }
-    it++;
-    if (it != nodeCoordsX.end()) {
-      REAL ref2 = *it;
-      if (fabs(x - ref2) <= tol) {
-        return;
-      }
+    REAL ref2 = *(--it);
+    if (fabs(x - ref2) <= tol) {
+      return;
     }
     nodeCoordsX.insert(x);
   }
@@ -364,7 +361,7 @@ REAL FindClosestX(const REAL x, const std::set<REAL>& nodeCoordsX, const REAL to
   REAL closestX = -1000;
   auto it = std::lower_bound(nodeCoordsX.begin(), nodeCoordsX.end(), x);
   if (it == nodeCoordsX.end()) {
-    closestX = *nodeCoordsX.begin();
+    closestX = *(--it);
     if(fabs(x - closestX) >= tol) DebugStop();
     return closestX;
   }
@@ -373,8 +370,7 @@ REAL FindClosestX(const REAL x, const std::set<REAL>& nodeCoordsX, const REAL to
     closestX = ref;
     return closestX;
   }
-  it++;
-  ref = *it;
+  ref = *(--it);
   if (fabs(x - ref) <= tol) {
     closestX = ref;
     return closestX;
@@ -385,7 +381,7 @@ REAL FindClosestX(const REAL x, const std::set<REAL>& nodeCoordsX, const REAL to
 
 void CreatePressure2DElsAndOrderIds(TPZGeoMesh* gmesh) {
   const int nel = gmesh->NElements();
-  const REAL tol = 1.e-6;
+  const REAL tol = 1.e-4;
   std::set<int64_t> pressure2Dels;
   std::set<REAL> nodeCoordsX;
   for (int64_t iel = 0; iel < nel; iel++) {
