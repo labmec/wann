@@ -1,5 +1,9 @@
 SetFactory("OpenCASCADE");
 
+Geometry.MatchMeshTolerance = 1e-10;
+Geometry.Tolerance = 1e-12;
+Mesh.ToleranceReferenceElement = 1e-10;
+
 //wellbore dimensions
 Lw = 1; //[m] wellbore length
 Dw = 0.1; //[m] wellbore diameter
@@ -174,13 +178,10 @@ Physical Volume("volume_reservoir",108) = all_volumes[]; //reservoir
 Delete{ Point{1}; Point{10};
 }
 
-Geometry.MatchMeshTolerance = 1e-10;
-Geometry.Tolerance = 1e-12;
-Mesh.ToleranceReferenceElement = 1e-10;
-
 //General.NumThreads = 4;
 //Mesh.OptimizeThreshold = 0.5;
 //Mesh.Smoothing = 40;
+Mesh.Smoothing = 0;//smoothing is changing the coordinates of the cylinder (which is not desirable here)
 //Mesh.Algorithm = 8;
 //Mesh 3;
 //OptimizeMesh "Netgen";
