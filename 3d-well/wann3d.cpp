@@ -297,6 +297,47 @@ void ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh) {
     
     TPZManVector<int64_t, 4> nodeindices;
     gel->GetNodeIndices(nodeindices);
+    const int nnodes = gel->NCornerNodes();
+    //Moving the nodes to the cylinder surface
+    TPZManVector<REAL,3> xnode(3,0);
+    for (int in = 0; in < nnodes; in++)
+    {
+      gel->NodePtr(in)->GetCoordinates(xnode);
+      // component of xnode that is orthogonal to cyl axis
+      TPZManVector<REAL, 3> x_orth = xnode - cylcenter;
+      const REAL dax = Dot(x_orth, cylaxis);
+      for (int ix = 0; ix < 3; ix++)
+      {
+        x_orth[ix] -= dax * cylaxis[ix];
+      }
+      const auto normdiff = fabs(Norm(x_orth) - cylradius);
+      if (normdiff > 1e-10)
+      {
+        // Moving the node to the cylinder shell
+        REAL computed_radius = Norm(x_orth);
+        for (int ix = 0; ix < 3; ix++)
+        {
+          xnode[ix] = cylcenter[ix] + (x_orth[ix] / computed_radius) * cylradius + dax * cylaxis[ix];
+        }
+        x_orth = xnode - cylcenter;
+        for (int ix = 0; ix < 3; ix++)
+        {
+          x_orth[ix] -= dax * cylaxis[ix];
+        }
+        REAL new_radius = Norm(x_orth);
+        gel->NodePtr(in)->SetCoord(xnode);
+
+        PZError << __PRETTY_FUNCTION__
+                << "\nNode not on cylinder shell: " << gel->NodePtr(in)->Id()
+                << "\nComputed radius: " << computed_radius
+                << "\nGiven radius: " << cylradius
+                << "\nElement index: " << iel
+                << "\nNew coordinates: " << xnode
+                << "\nNew radius: " << new_radius
+                << std::endl;
+      }
+    }
+
     TPZChangeEl::ChangeToCylinder(gmesh, iel, cylcenter, cylaxis, cylradius);
   }
 
