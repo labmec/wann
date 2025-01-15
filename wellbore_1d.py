@@ -30,9 +30,9 @@ def model_settings():
     model["RK_settigns"] = {
         "verbose": 1, 
         "npoints": 21,
-        "idp": 0.005, # [Pa] initial delta P
+        "idp": 0.005e+7, # [Pa] initial delta P
         "eps": 1.e-6,
-        "Re_min": 100,
+        "Re_min": 1, #FIXME not sure if 100 is ok
         "rtol": 1e-10,
         "max_n": 100
     }
@@ -60,7 +60,7 @@ def model_settings_for_tests():
 
     model["RK_settigns"]["verbose"] = 1 
     model["RK_settigns"]["npoints"] = 21
-    model["RK_settigns"]["idp"] = 0.005 # [Pa] initial delta P
+    model["RK_settigns"]["idp"] = 0.005e+7 # [Pa] initial delta P
     model["RK_settigns"]["eps"] = 1.e-6
     model["RK_settigns"]["Re_min"] = 100
     model["RK_settigns"]["rtol"] = 1e-10
@@ -147,10 +147,12 @@ def pfunc(model, x, Q): #{{{
     D = model["wellbore_prop"]["D"]
     eps = model["RK_settigns"]["eps"]
     Re_min = model["RK_settigns"]["Re_min"]
-    
+    verbose = model["RK_settigns"]["verbose"]
+
     Re = Reynolds(model, Q) 
     if Re < eps:
-        print("WARNING: Reynolds <= 0! Using mininal Reynolds")
+        if verbose>1:
+            print("\tWARNING: Reynolds <= 0! Using mininal Reynolds")
         Re = Re_min        
     f = FrictionFactor(model, Re)
     # if Q=0, f is obtained with Re=100 (min_Re); 
@@ -180,9 +182,8 @@ def RungeKutta_solver(model):#{{{
     Q_toe = model["wellbore_prop"]["Q_toe"]
     rtol = model["RK_settigns"]["rtol"]
     max_n = model["RK_settigns"]["max_n"]
-    p_toe = p_heel + dp 
-    #p_toe = p_res # it seems a good initial estimate
-    rel_error = 1
+    p_toe = p_heel + dp  
+    p_rel_error = 1
 
     # defining x, Q, and p
     x = np.linspace(0,Lw,npoints) # x=0, toe; x=Lw, heel
@@ -191,14 +192,15 @@ def RungeKutta_solver(model):#{{{
 
     Q[0] = Q_toe
     p[0] = p_toe
+    dp_old = dp
     n = 0
 
     # for the RK solver, x=0 is the toe; x=L is the heel
-    while rel_error > rtol and n < max_n:
+    while p_rel_error > rtol and n < max_n:
         print("Solving iteration n="+str(n))
         
         if n>0:
-            p_toe = p_toe + dp
+            p_toe += dp 
             p[0] = p_toe
         
         for i in range(0,len(x)-1):
@@ -231,16 +233,28 @@ def RungeKutta_solver(model):#{{{
             Q[i+1] = Q[i] + (h/6)*(Q1 + 2*Q2 + 2*Q3 + Q4)
             p[i+1] = p[i] + (h/6)*(p1 + 2*p2 + 2*p3 + p4)
 
-        dp = p_heel-p[-1] 
-        rel_error = abs((dp)/p_heel)
+        dp_old = dp
+        dp = p_heel-p[-1] # difference between the imposed pressure (BC) p_heel and the estimated by the rK solver (p[-1])
+        p_rel_error = abs((dp)/p_heel)
+      
+        # apply a relaxation and/or a change in dp to avoid error increasing
+        dp*=0.5 #FIXME
+        if abs(dp)>abs(dp_old):
+            dp /= 2 # decrease dp (divide it by 2)
+
         print("Done iteration n="+str(n))
-        print("rel_error="+str(rel_error))
+        print("P heel relative error (%) = "+str(p_rel_error*100))
+        print(dp) #FIXME
+        print(dp_old)
+
         if verbose>0:
-            print("BC\t\t\tModel solution")
-            print("p_res="+str(p_res)+",\tp[toe]="+str(p[0]))
-            print("p_heel="+str(p_heel)+",\tp[heel]="+str(p[-1]))
-            print("Q_toe="+str(Q_toe)+",\t\tQ[toe]="+str(Q[0]))
-            print("Q_heel=?\t\tQ[heel]="+str(Q[-1]))
+            print("\tSolution for iteration n="+str(n)+":")
+            print("\tBC\t\t\tModel solution")
+            print("\tp_res="+str(p_res)+",\tp[toe]="+str(p[0]))
+            print("\tp_heel="+str(p_heel)+",\tp[heel]="+str(p[-1]))
+            print("\tQ_toe="+str(Q_toe)+",\t\tQ[toe]="+str(Q[0]))
+            print("\tQ_heel=?\t\tQ[heel]="+str(Q[-1]))
+        
         n = n+1
 
     return x, Q, p
@@ -490,8 +504,16 @@ def test_only_to_show_all_plots():#{{{
 def main():
     
     model = model_settings()
-    model["reservoir_prop"]["K_type"] = 2# 0: K=cte from vertical wellbore; 1: K=linear func; 2: parabolic func; 3: K comes from an ANN 
+    model["reservoir_prop"]["K_type"] = 1# 0: K=cte from vertical wellbore; 1: K=linear func; 2: parabolic func; 3: K comes from an ANN 
     model["wellbore_prop"]["f_type"] = 2 # 0: default friction factor (linear or non-linear); 1: linear only; 2: non-linear only 
+    model["RK_settigns"]["verbose"] = 0 
+
+    model["wellbore_prop"]["D"] = 0.05 # 0.06 to 1 worked fine 
+    #model["RK_settigns"]["idp"] = 1.6324689395162981e+7 - 1.177e+7 
+    model["RK_settigns"]["idp"] = 0.005e+7 # [Pa] initial delta P
+    # 0.50e+7 # [Pa] initial delta P
+    #model["RK_settigns"]["npoints"] = 201
+    #model["RK_settigns"]["rtol"] = 1e-10
 
     # calling the RK solver. Solver for Q and p
     x, Q, p = RungeKutta_solver(model)
