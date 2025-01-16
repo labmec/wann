@@ -94,7 +94,8 @@ int main() {
   // TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev04.msh");
 //   TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev05.msh");
   // TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev06.msh");
-  TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev07.msh");
+  // TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev07.msh");
+  TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev08.msh");
 
   const int dim = gmesh->Dimension();
   {
@@ -233,7 +234,7 @@ int main() {
   TPZStack<std::string> fieldnames; 
   fieldnames.Push("Pressure");
   fieldnames.Push("Flux");
-  TPZVTKGenerator vtkGen(cmesh, fieldnames, filename, 0);
+  TPZVTKGenerator vtkGen(cmesh, fieldnames, filename, 0, 3, true);
   vtkGen.SetNThreads(0);
   vtkGen.Do();
 
