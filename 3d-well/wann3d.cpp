@@ -234,7 +234,7 @@ int main() {
   TPZStack<std::string> fieldnames; 
   fieldnames.Push("Pressure");
   fieldnames.Push("Flux");
-  TPZVTKGenerator vtkGen(cmesh, fieldnames, filename, 0, 3, true);
+  TPZVTKGenerator vtkGen(cmesh, fieldnames, filename, 0, 3);
   vtkGen.SetNThreads(0);
   vtkGen.Do();
 

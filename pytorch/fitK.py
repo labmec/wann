@@ -47,7 +47,7 @@ t_boundaryB = torch.tensor(1.).view(-1,1).requires_grad_(True)
 # Create model with input features
 torch.manual_seed(42)
   
-model0 = KNN(input_features=1,output_features=1,hidden_units=40,n_hiddenlayers=10)
+model0 = KNN(input_features=2,output_features=1,hidden_units=40,n_hiddenlayers=10)
 # model0 = torch.nn.parallel.DistributedDataParallel(
 #     model,
 #     device_ids=[local_rank],
@@ -63,6 +63,7 @@ optimizer = torch.optim.AdamW(params=model0.parameters(),lr=0.00009)
 
 # ---------------- Train the model -----------------
 torch.manual_seed(42)
+# epochs = 200
 epochs = 25000
 for epoch in range(epochs):
   model0.train() # sets requires_grad = True
@@ -89,15 +90,16 @@ for epoch in range(epochs):
   # print(f"lossav: {lossav}")
 
   # Calculate the error in the first and last point
-  y_pred_bcA = model0(t_boundaryA)
-  y_pred_bcB = model0(t_boundaryB)
-  weight = 0.025
-  first_point_error = weight*torch.abs(torch.squeeze(y_pred_bcA) - y_train[0])
-  last_point_error = weight*torch.abs(torch.squeeze(y_pred_bcB) - y_train[-1])
+  # y_pred_bcA = model0(t_boundaryA)
+  # y_pred_bcB = model0(t_boundaryB)
+  # weight = 0.025
+  # first_point_error = weight*torch.abs(torch.squeeze(y_pred_bcA) - y_train[0])
+  # last_point_error = weight*torch.abs(torch.squeeze(y_pred_bcB) - y_train[-1])
   # print(f"first_point_error: {first_point_error}")
 
   # Add the errors to the loss
-  loss = torch.squeeze(first_point_error) + torch.squeeze(last_point_error) + lossav
+  # loss = torch.squeeze(first_point_error) + torch.squeeze(last_point_error) + lossav
+  loss = lossav
 
   # 3. Optimizer zero grad
   optimizer.zero_grad()
@@ -122,13 +124,14 @@ for epoch in range(epochs):
 # Lets see the results
 
 # Plot decision boundary of the model
-test_pred = model0(X)
-plot_predictions(train_data=X_train.detach().numpy(),
-                 train_labels=y_train.detach().numpy(),
-                 test_data=X_test.detach().numpy(),
-                 test_labels=y_test.detach().numpy(),
-                 predictions=test_pred.detach().numpy(),
-                 all_data=X.detach().numpy())
+Xtensor = torch.tensor([[-1 + i * 0.0005, 0.0005] for i in range(4001)], dtype=torch.float32)
+test_pred = model0(Xtensor)
+plot_predictions(train_data=X_train[:, 0].detach().numpy(),
+                train_labels=y_train.detach().numpy(),
+                test_data=Xtensor[:, 0].detach().numpy(),
+                test_labels=test_pred.detach().numpy(),
+                predictions=test_pred.detach().numpy(),
+                all_data=Xtensor[:, 0].detach().numpy())
 plt.show()
 
 # Save model
