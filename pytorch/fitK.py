@@ -28,10 +28,16 @@ MODEL_PATH = Path("models")
 # Create model save path
 MODEL_NAME = "fitK-one-curve.pth"
 saveModel = False
+isUseBCasExtraCost = False
 
 data = torch.from_numpy(np.loadtxt('../../kpts.txt', delimiter='\t',dtype=np.float32))
 X = data[:, :-1]
 y = data[:, -1].unsqueeze(dim=1)
+
+if isUseBCasExtraCost:
+  databc = torch.from_numpy(np.loadtxt('../../kpts_bc.txt', delimiter='\t',dtype=np.float32))
+  Xbc = databc[:, :-1]
+  ybc = databc[:, -1].unsqueeze(dim=1)
 
 # Split data into train and test
 X_train, X_test, y_train, y_test = train_test_split(X,y,
@@ -64,7 +70,7 @@ optimizer = torch.optim.AdamW(params=model0.parameters(),lr=0.00009)
 # ---------------- Train the model -----------------
 torch.manual_seed(42)
 # epochs = 200
-epochs = 25000
+epochs = 15000
 for epoch in range(epochs):
   model0.train() # sets requires_grad = True
 
@@ -90,16 +96,16 @@ for epoch in range(epochs):
   # print(f"lossav: {lossav}")
 
   # Calculate the error in the first and last point
-  # y_pred_bcA = model0(t_boundaryA)
-  # y_pred_bcB = model0(t_boundaryB)
-  # weight = 0.025
-  # first_point_error = weight*torch.abs(torch.squeeze(y_pred_bcA) - y_train[0])
-  # last_point_error = weight*torch.abs(torch.squeeze(y_pred_bcB) - y_train[-1])
-  # print(f"first_point_error: {first_point_error}")
-
-  # Add the errors to the loss
-  # loss = torch.squeeze(first_point_error) + torch.squeeze(last_point_error) + lossav
-  loss = lossav
+  if isUseBCasExtraCost:
+    weight = 0.0025
+    y_pred_bc = model0(Xbc)
+    bc_error = 0
+    for i in range(len(ybc)):
+      bc_error += weight * torch.abs(y_pred_bc[i] - ybc[i])
+    # bc_error = bc_error / len(ybc)
+    loss = lossav + torch.squeeze(bc_error)
+  else:
+    loss = lossav
 
   # 3. Optimizer zero grad
   optimizer.zero_grad()
