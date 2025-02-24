@@ -497,6 +497,59 @@ def test_RungeKuttaNonLinearFrictionParabolicK():#{{{
     assert np.allclose(Q_heel_expected, Q_RK[-1], rtol= 6.0e-8, atol=1.0e-12)
 
 #}}}
+def test_h_convergence(): #{{{
+    
+    model = model_settings_for_tests()
+    model["reservoir_prop"]["K_type"] = 2 # 2: parabolic func; 
+    model["wellbore_prop"]["f_type"] = 0  # default, linear and non-linear
+
+    Lw    =  model["wellbore_prop"]["Lw"] 
+    nele  = 1 # initial number of elements
+    ndiv  = 10 # number of simulations with increased mesh resolution
+
+    Q_heel = []
+    p_toe  = []
+    h = []
+
+    for i in range(ndiv):
+        # run the RungeKutta model
+        model["RK_settigns"]["npoints"] = nele+1 # nele -> npoints
+        x_RK, Q_RK, p_RK = RungeKutta_solver(model)
+        
+        Q_heel.append( Q_RK[-1] )
+        p_toe.append( p_RK[0] )
+        h.append( Lw/nele ) 
+    
+        nele = 2*nele
+    
+    print("###################################################")
+    print("###################################################")
+    print("h convergence test - K parabolic function, f linear/nonlinear")
+    print("h\t\tQ_heel\t\t\tp_toe")
+    for i in range(ndiv-1):
+        print(str(h[i]) +"\t"+ str(abs(Q_heel[i]-Q_heel[-1])) + "\t"+ str(abs(p_toe[i]-p_toe[-1])), flush=True )
+    print("###################################################")
+    print("###################################################")
+
+    e_i = abs(Q_heel[0]-Q_heel[-1])
+    e_rk = []
+    e_rk.append(e_i)
+    for i in range(1,ndiv):
+        e_rk.append(e_rk[i-1]/(2**4))
+
+    print(e_rk)
+
+    fig, ax = plt.subplots()
+    ax.plot(h[0:-1:],abs(Q_heel[0:-1:]-Q_heel[-1]))
+    ax.plot(h[0:-1:],e_rk[0:-1:])
+    ax.set_xlabel("h [m]")
+    ax.set_ylabel("error")
+    ax.set_yscale('log')
+    ax.set_xscale('log')
+    ax.grid(True)
+    plt.show(block=False)
+    
+#}}}
 def test_only_to_show_all_plots():#{{{
     plt.show()
 #}}}
