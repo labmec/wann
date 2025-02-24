@@ -131,6 +131,18 @@ def K(model, x, K_x=None, K_v=None): #{{{
         Kvw = 2*np.pi*k/(mu*np.log(Dr/D))
         K = 4*Kvw * (x/Lw)**2 - 4*Kvw * (x/Lw) + 3*Kvw/2     
     elif K_type==3:
+        # K pn  (based on a vertical wellbore) 
+        pn=16 # used in the tests
+        if verbose>1:
+            print("K with p="+str(12) + "(singular function)")
+        k = model["reservoir_prop"]["k"]
+        Dr= model["reservoir_prop"]["Dr"]
+        D = model["wellbore_prop"]["D"]
+        Lw= model["wellbore_prop"]["Lw"]
+        mu= model["fluid_prop"]["mu"]
+        Kvw = 2*np.pi*k/(mu*np.log(Dr/D))
+        K = Kvw*(2*x/Lw - 1)**pn + (1/2)*Kvw 
+    elif K_type==4:
         sys.exit("K not defined yet")
     else:
         sys.exit("K not defined yet")
@@ -244,8 +256,9 @@ def RungeKutta_solver(model):#{{{
 
         print("Done iteration n="+str(n))
         print("P heel relative error (%) = "+str(p_rel_error*100))
-        print(dp) #FIXME
-        print(dp_old)
+        if verbose>0:
+            print("dp="+str(dp)) 
+            print("dp old="+str(dp_old))
 
         if verbose>0:
             print("\tSolution for iteration n="+str(n)+":")
@@ -428,6 +441,30 @@ def test_RungeKuttaLinearFrictionParabolicK():#{{{
     assert np.allclose(Q_heel_expected, Q_RK[-1], rtol= 3.0e-9, atol=1.0e-12)
 
 #}}}
+def test_RungeKuttaLinearFrictionSingularK():#{{{
+    # from Mathematica (using NDSolve)
+    # K singular, linear friction coeficient
+    p_toe_expected  = 1.178187991e+7
+    p_heel_expected = 1.177000000e+7  
+    Q_heel_expected = 0.02916429353
+
+    model = model_settings_for_tests()
+    model["reservoir_prop"]["K_type"] = 3 # K singular
+    model["wellbore_prop"]["f_type"] = 1 # linear only
+    model["RK_settigns"]["npoints"] = 301 # because K is singular here, we need more points
+
+    # run the RungeKutta model
+    x_RK, Q_RK, p_RK = RungeKutta_solver(model)
+
+    #print(p_RK[0])
+    #print(p_RK[-1])
+    #print(Q_RK[-1]-Q_heel_expected)
+
+    assert np.allclose(p_toe_expected,  p_RK[0],  rtol= 3.e-11)
+    assert np.allclose(p_heel_expected, p_RK[-1], rtol= 1.e-10)
+    assert np.allclose(Q_heel_expected, Q_RK[-1], rtol= 3.0e-9, atol=1.2e-10)
+
+#}}}
 def test_RungeKuttaNonLinearFrictionConstantK():#{{{
     # from Mathematica (using NDSolve)
     # K constant (vertical wellbore), non linear friction coeficient
@@ -497,10 +534,34 @@ def test_RungeKuttaNonLinearFrictionParabolicK():#{{{
     assert np.allclose(Q_heel_expected, Q_RK[-1], rtol= 6.0e-8, atol=1.0e-12)
 
 #}}}
+def test_RungeKuttaNonLinearFrictionSingularK():#{{{
+    # from Mathematica (using NDSolve)
+    # K singular, non linear friction coeficient
+    p_toe_expected  = 1.192414383e+7
+    p_heel_expected = 1.177000002e+7  
+    Q_heel_expected = 0.02887920864
+
+    model = model_settings_for_tests()
+    model["reservoir_prop"]["K_type"] = 3 # K singular
+    model["wellbore_prop"]["f_type"] = 2 # non linear only
+    model["RK_settigns"]["npoints"] = 301 # because K is singular here, we need more points
+
+    # run the RungeKutta model
+    x_RK, Q_RK, p_RK = RungeKutta_solver(model)
+
+    #print(p_RK[0])
+    #print(p_RK[-1])
+    print(Q_RK[-1]-Q_heel_expected)
+
+    assert np.allclose(p_toe_expected,  p_RK[0],  rtol= 2.e-10)
+    assert np.allclose(p_heel_expected, p_RK[-1], rtol= 3.e-09)
+    assert np.allclose(Q_heel_expected, Q_RK[-1], rtol= 3.0e-9, atol=1.5e-9)
+
+#}}}
 def test_h_convergence(): #{{{
     
     model = model_settings_for_tests()
-    model["reservoir_prop"]["K_type"] = 2 # 2: parabolic func; 
+    model["reservoir_prop"]["K_type"] = 3 # 2: parabolic func; 3: singular K 
     model["wellbore_prop"]["f_type"] = 0  # default, linear and non-linear
 
     Lw    =  model["wellbore_prop"]["Lw"] 
@@ -557,15 +618,15 @@ def test_only_to_show_all_plots():#{{{
 def main():
     
     model = model_settings()
-    model["reservoir_prop"]["K_type"] = 1# 0: K=cte from vertical wellbore; 1: K=linear func; 2: parabolic func; 3: K comes from an ANN 
-    model["wellbore_prop"]["f_type"] = 2 # 0: default friction factor (linear or non-linear); 1: linear only; 2: non-linear only 
+    model["reservoir_prop"]["K_type"] = 3# 0: K=cte from vertical wellbore; 1: K=linear func; 2: parabolic func; 3: singular K; 4: K comes from an ANN 
+    model["wellbore_prop"]["f_type"] = 1 # 0: default friction factor (linear or non-linear); 1: linear only; 2: non-linear only 
     model["RK_settigns"]["verbose"] = 0 
 
-    model["wellbore_prop"]["D"] = 0.05 # 0.06 to 1 worked fine 
+    model["wellbore_prop"]["D"] = 0.1 # 0.06 to 1 worked fine 
     #model["RK_settigns"]["idp"] = 1.6324689395162981e+7 - 1.177e+7 
     model["RK_settigns"]["idp"] = 0.005e+7 # [Pa] initial delta P
     # 0.50e+7 # [Pa] initial delta P
-    #model["RK_settigns"]["npoints"] = 201
+    model["RK_settigns"]["npoints"] = 301
     #model["RK_settigns"]["rtol"] = 1e-10
 
     # calling the RK solver. Solver for Q and p
@@ -579,6 +640,11 @@ def main():
     # transforming RK x to FEM x
     Lw = model["wellbore_prop"]["Lw"]
     x_fem = Lw-x  
+
+    # print final results
+    print("Q heel = "+str(Q[-1]))
+    print("p heel = "+str(p[-1]))
+    print("p toe  = "+str(p[0]))
 
     # now, plot
     MPa = 1.e6
