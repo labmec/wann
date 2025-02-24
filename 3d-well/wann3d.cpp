@@ -64,7 +64,7 @@ enum EMatid { ENone,
               EPointToe,
               EHDivBoundInterface };
 
-const int global_nthread = 8;
+const int global_nthread = 32;
 
 TPZGeoMesh* ReadMeshFromGmsh(std::string file_name);
 void ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh);
@@ -74,6 +74,7 @@ void AddWellboreElements(TPZVec<TPZCompMesh*>& meshvec, const int pordWell, cons
 void AddInterfaceElements(TPZMultiphysicsCompMesh* cmesh, const int matidpressure, const int matidinterface, const int laglevel);
 void AddHDivBoundInterfaceElements(TPZCompMesh* cmesh, const int porder);
 void EqualizePressureConnects(TPZCompMesh* cmesh);
+void PostProceDataForANN(TPZGeoMesh* gmesh, std::string& filename, const int curveWell, const REAL pff, const int npts, const REAL rad);
 
 int main() {
   std::cout << "--------- Starting simulation ---------" << std::endl;
@@ -89,6 +90,8 @@ int main() {
   // Physical parameters
   const REAL reservoirPerm = 1.;
   const REAL wellPerm = reservoirPerm*10.;
+  const REAL pff = 1.;
+  const REAL wellRad = 0.1;
 
 
   // TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev04.msh");
@@ -156,7 +159,7 @@ int main() {
   hdivCreator.InsertMaterialObject(matdarcy);
 
   TPZFMatrix<STATE> val1(1, 1, 0.);
-  TPZManVector<STATE> val2(1, 1.);
+  TPZManVector<STATE> val2(1, pff);
   TPZBndCondT<STATE>* BCond1 = matdarcy->CreateBC(matdarcy, EFarField, diri, val1, val2);
   hdivCreator.InsertMaterialObject(BCond1);
 
@@ -234,7 +237,7 @@ int main() {
   TPZStack<std::string> fieldnames; 
   fieldnames.Push("Pressure");
   fieldnames.Push("Flux");
-  TPZVTKGenerator vtkGen(cmesh, fieldnames, filename, 0, 3);
+  TPZVTKGenerator vtkGen(cmesh, fieldnames, filename, 0, 3, true);
   vtkGen.SetNThreads(0);
   vtkGen.Do();
 
@@ -249,6 +252,10 @@ int main() {
   TPZVTKGenerator vtkGen1D(cmesh, fieldnames, filename1d, 0, 1);
   vtkGen1D.SetNThreads(0);
   vtkGen1D.Do();
+
+  std::string anndatafile = "anndata.txt";
+  const int npts = 401;
+  PostProceDataForANN(gmesh, anndatafile, ECurveWell, pff, npts, wellRad);
 
 
   // delete cmesh;
@@ -814,4 +821,62 @@ void EqualizePressureConnects(TPZCompMesh* cmesh) {
     std::cout << std::endl;
   }
   cmesh->CleanUpUnconnectedNodes();
+}
+
+void PostProceDataForANN(TPZGeoMesh* gmesh, std::string& filename, const int curveWellId, const REAL pff,
+                         const int npts, const REAL wellRad) {
+  
+  std::ofstream out(filename);
+  const REAL xf = 1., x0 = 0.;
+  const REAL dx = (xf - x0) / (npts - 1);
+  const REAL ywell = -wellRad/sqrt(2.), zwell = wellRad/sqrt(2.);
+
+  int64_t InitialElIndex = -1;
+  for (auto gel : gmesh->ElementVec()) {
+    if (gel && gel->MaterialId() == curveWellId) {
+      InitialElIndex = gel->Index();
+      break;
+    }
+  }
+
+  TPZManVector<REAL,3> xvec(3, 0.);
+  xvec[1] = ywell;
+  xvec[2] = zwell;
+  for (int i = 0; i < npts; i++) {
+    const REAL x = x0 + i * dx;
+    TPZManVector<REAL,3> qsi(1, 0.0);    
+    xvec[0] = x;
+    TPZGeoEl* gel = TPZGeoMeshTools::FindElementByMatId(gmesh, xvec, qsi, InitialElIndex, {curveWellId});
+    if (!gel) {
+      std::cout << "Element not found for x = " << x << std::endl;
+      DebugStop();
+    }
+#ifdef PZDEBUG
+    TPZManVector<REAL, 3> xcheck(3);
+    gel->X(qsi, xcheck);
+    REAL distance = dist(xvec, xcheck);
+    if(distance > 1.e-8){
+      DebugStop(); // check if the element found is the correct one
+    }
+#endif
+    // Now postprocess the pressure and div q of the cel reference by gel
+    TPZCompEl* cel = gel->Reference();
+    TPZMaterial* mat = cel->Material();
+    TPZMixedDarcyFlow* darcy = dynamic_cast<TPZMixedDarcyFlow*>(mat);
+    if(!darcy) DebugStop();
+    
+    const int pind = darcy->VariableIndex("Pressure");
+    const int qind = darcy->VariableIndex("Divergence");
+    TPZManVector<STATE, 3> output(1);
+    cel->Solution(qsi,pind,output);
+    const REAL pressure = output[0];
+    cel->Solution(qsi, qind, output);
+    const REAL divq = output[0];
+
+    const REAL K = divq / (pff - pressure);
+
+    std::cout << "x = " << x << " p = " << pressure << " divq = " << divq << " K = " << K << std::endl;
+    out << x << " " << K << " " << wellRad << std::endl;
+
+  }
 }
