@@ -22,7 +22,7 @@ def model_settings():
 
     model["reservoir_prop"] = {
         "p_res": 2.206e+7, # Pa == 225 kgf/cm2
-        "k": 1e-13, # m2 
+        "k": 1e-13, # m2 = 101.3249970000 Milli Darcy 
         "Dr": 2000, # [m] diameter of the reservoir
         "K_type": 0, # 0: K=cte from vertical wellbore; 1: K=linear func; 2: parabolic func; 3: K comes from an ANN  
     }
@@ -634,6 +634,11 @@ def main():
     # 0.50e+7 # [Pa] initial delta P
     model["RK_settigns"]["npoints"] = 301
     #model["RK_settigns"]["rtol"] = 1e-10
+
+    #model["fluid_prop"]["rho"] = 800. # 100 to 5000
+    #model["fluid_prop"]["mu"] = 0.050 # 0.0005 to 0.050
+    
+    model["reservoir_prop"]["k"] = 1e-13 # 0.0001e-13 to 10e-13 
 
     # calling the RK solver. Solver for Q and p
     x, Q, p = RungeKutta_solver(model)
