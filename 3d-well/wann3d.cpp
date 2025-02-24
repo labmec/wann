@@ -706,6 +706,7 @@ void AddWellboreElements(TPZVec<TPZCompMesh*>& meshvec, const int pordWell, cons
     TPZCompEl* cel = meshvec[1]->Element(iel);
     if (!cel) continue;
     if (cel->Material()->Id() != matid) continue;
+    if (cel->Reference()->HasSubElement()) continue;
     TPZGeoEl* gel = cel->Reference();
     if(gel->NNodes() != 2) DebugStop();
     TPZInterpolatedElement* intEl = dynamic_cast<TPZInterpolatedElement*>(cel);
@@ -759,6 +760,7 @@ void AddInterfaceElements(TPZMultiphysicsCompMesh* cmesh, const int matidpressur
     TPZGeoEl* gel = gmesh->Element(iel);
     if (!gel) continue;
     if (gel->MaterialId() != EPressureInterface) continue;
+    if (gel->HasSubElement()) DebugStop();
     if (gel->Dimension() != dim-1) DebugStop();
     TPZCompElSide comp_pressureSide, comp_hdivSide;
     TPZGeoElSide gelSide(gel);
