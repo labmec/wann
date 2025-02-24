@@ -34,7 +34,8 @@ def model_settings():
         "eps": 1.e-6,
         "Re_min": 1, #FIXME not sure if 100 is ok
         "rtol": 1e-10,
-        "max_n": 100
+        "max_n": 100,
+        "relax_param": 0.5
     }
 
     return model
@@ -65,6 +66,7 @@ def model_settings_for_tests():
     model["RK_settigns"]["Re_min"] = 100
     model["RK_settigns"]["rtol"] = 1e-10
     model["RK_settigns"]["max_n"] = 100
+    model["RK_settigns"]["relax_param"] = 0.5
 
     return model
 #}}}
@@ -194,6 +196,7 @@ def RungeKutta_solver(model):#{{{
     Q_toe = model["wellbore_prop"]["Q_toe"]
     rtol = model["RK_settigns"]["rtol"]
     max_n = model["RK_settigns"]["max_n"]
+    relax_param = model["RK_settigns"]["relax_param"]
     p_toe = p_heel + dp  
     p_rel_error = 1
 
@@ -250,7 +253,7 @@ def RungeKutta_solver(model):#{{{
         p_rel_error = abs((dp)/p_heel)
       
         # apply a relaxation and/or a change in dp to avoid error increasing
-        dp*=0.5 #FIXME
+        dp*=relax_param 
         if abs(dp)>abs(dp_old):
             dp /= 2 # decrease dp (divide it by 2)
 
@@ -269,6 +272,9 @@ def RungeKutta_solver(model):#{{{
             print("\tQ_heel=?\t\tQ[heel]="+str(Q[-1]))
         
         n = n+1
+        
+    if n>=max_n:
+        sys.exit("ERROR: maximum number of iterations exceeded ("+str(max_n)+")! Check the input parameters.")
 
     return x, Q, p
 #}}}
@@ -619,10 +625,10 @@ def main():
     
     model = model_settings()
     model["reservoir_prop"]["K_type"] = 3# 0: K=cte from vertical wellbore; 1: K=linear func; 2: parabolic func; 3: singular K; 4: K comes from an ANN 
-    model["wellbore_prop"]["f_type"] = 1 # 0: default friction factor (linear or non-linear); 1: linear only; 2: non-linear only 
+    model["wellbore_prop"]["f_type"] = 0 # 0: default friction factor (linear or non-linear); 1: linear only; 2: non-linear only 
     model["RK_settigns"]["verbose"] = 0 
 
-    model["wellbore_prop"]["D"] = 0.1 # 0.06 to 1 worked fine 
+    model["wellbore_prop"]["D"] = 0.1 # 0.04 to 1 worked fine 
     #model["RK_settigns"]["idp"] = 1.6324689395162981e+7 - 1.177e+7 
     model["RK_settigns"]["idp"] = 0.005e+7 # [Pa] initial delta P
     # 0.50e+7 # [Pa] initial delta P
