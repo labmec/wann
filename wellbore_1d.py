@@ -1,6 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
+import torch
+sys.path.insert(0, './pytorch')
+
+from pathlib import Path
+from knn import KNN
 
 # model settings {{{
 def model_settings():
@@ -25,6 +30,7 @@ def model_settings():
         "k": 1e-13, # m2 = 101.3249970000 Milli Darcy 
         "Dr": 2000, # [m] diameter of the reservoir
         "K_type": 0, # 0: K=cte from vertical wellbore; 1: K=linear func; 2: parabolic func; 3: K comes from an ANN  
+        "K_ann_model": None # ANN-based K model
     }
 
     model["RK_settigns"] = {
@@ -67,6 +73,17 @@ def model_settings_for_tests():
     model["RK_settigns"]["rtol"] = 1e-10
     model["RK_settigns"]["max_n"] = 100
     model["RK_settigns"]["relax_param"] = 0.5
+
+    return model
+#}}}
+# ANN settings - K from PyTorch-based ANN %{{{
+def ANN_settings(): 
+    #FIXME define the path for the test ANN 
+    MODEL_PATH = Path("./pytorch/models")
+    MODEL_NAME = "fitK-one-curve.pth"
+    MODEL_SAVE_PATH = MODEL_PATH / MODEL_NAME
+    model = KNN(input_features=1,output_features=1,hidden_units=40,n_hiddenlayers=10) # These numbers have to match the model that was saved
+    model.load_state_dict(torch.load(f=MODEL_SAVE_PATH))
 
     return model
 #}}}
@@ -145,7 +162,24 @@ def K(model, x, K_x=None, K_v=None): #{{{
         Kvw = 2*np.pi*k/(mu*np.log(Dr/D))
         K = Kvw*(2*x/Lw - 1)**pn + (1/2)*Kvw 
     elif K_type==4:
-        sys.exit("K not defined yet")
+        
+        K_ann = model["reservoir_prop"]["K_ann_model"]
+        Lw = model["wellbore_prop"]["Lw"]
+        
+        _qsi = 1 - 2*x/Lw # changing to the domain space of the ANN [-1, 1] 
+        X_test = torch.linspace(_qsi,_qsi,1).view(-1,1) #FIXME find a simpler way to define X_test
+        Y_test = model["reservoir_prop"]["k"]*K_ann(X_test) # FIXME scaling here           
+        
+        K = Y_test.item()
+        
+        #FIXME
+        #print(x)
+        #print(X_test.item())
+        #print(Y_test.item())
+        #print(K)
+
+        #sys.exit("exit")
+        
     else:
         sys.exit("K not defined yet")
 
@@ -564,15 +598,42 @@ def test_RungeKuttaNonLinearFrictionSingularK():#{{{
     assert np.allclose(Q_heel_expected, Q_RK[-1], rtol= 3.0e-9, atol=1.5e-9)
 
 #}}}
+def test_RungeKuttaANNK(): #{{{
+    # perform a simple test using K from an ANN
+    # this tests the read and the RK appoach reagardless the expected values of P and Q
+    p_toe_expected  = 11770005.732566662
+    p_heel_expected = 11770000.000744963
+    Q_heel_expected = 1.4000975277209234e-05
+    
+    model = model_settings_for_tests()
+    model["reservoir_prop"]["K_type"] = 4 # 2: parabolic func; 3: singular K, 4: K ANN 
+    model["wellbore_prop"]["f_type"] = 0  # default, linear and non-linear
+    model["RK_settigns"]["npoints"] = 301 # because K is singular here, we need more points
+    
+    if model["reservoir_prop"]["K_type"]==4: # K from ANN
+        model["reservoir_prop"]["K_ann_model"] = ANN_settings() 
+    
+    # run the RungeKutta model
+    x_RK, Q_RK, p_RK = RungeKutta_solver(model)
+    
+    assert np.allclose(p_toe_expected,  p_RK[0],  rtol= 1.e-12)
+    assert np.allclose(p_heel_expected, p_RK[-1], rtol= 1.e-12)
+    assert np.allclose(Q_heel_expected, Q_RK[-1], rtol= 1.0e-12, atol=1.e-12)
+
+#}}}
 def test_h_convergence(): #{{{
     
     model = model_settings_for_tests()
-    model["reservoir_prop"]["K_type"] = 3 # 2: parabolic func; 3: singular K 
+    model["reservoir_prop"]["K_type"] = 4 # 2: parabolic func; 3: singular K, 4: K ANN 
     model["wellbore_prop"]["f_type"] = 0  # default, linear and non-linear
+    
+    if model["reservoir_prop"]["K_type"]==4: # K from ANN
+        model["reservoir_prop"]["K_ann_model"] = ANN_settings() 
 
     Lw    =  model["wellbore_prop"]["Lw"] 
     nele  = 1 # initial number of elements
-    ndiv  = 10 # number of simulations with increased mesh resolution
+    #ndiv  = 16 # number of simulations with increased mesh resolution (only for K from ANN)
+    ndiv  = 10 # number of simulations with increased mesh resolution (for all analytical K)
 
     Q_heel = []
     p_toe  = []
@@ -624,7 +685,7 @@ def test_only_to_show_all_plots():#{{{
 def main():
     
     model = model_settings()
-    model["reservoir_prop"]["K_type"] = 3# 0: K=cte from vertical wellbore; 1: K=linear func; 2: parabolic func; 3: singular K; 4: K comes from an ANN 
+    model["reservoir_prop"]["K_type"] = 4# 0: K=cte from vertical wellbore; 1: K=linear func; 2: parabolic func; 3: singular K; 4: K comes from an ANN 
     model["wellbore_prop"]["f_type"] = 0 # 0: default friction factor (linear or non-linear); 1: linear only; 2: non-linear only 
     model["RK_settigns"]["verbose"] = 0 
 
@@ -639,6 +700,45 @@ def main():
     #model["fluid_prop"]["mu"] = 0.050 # 0.0005 to 0.050
     
     model["reservoir_prop"]["k"] = 1e-13 # 0.0001e-13 to 10e-13 
+
+    if model["reservoir_prop"]["K_type"]==4: # K from ANN
+        model["reservoir_prop"]["K_ann_model"] = ANN_settings() 
+        # test K ANN {{{
+        if 0: 
+            K_ann = model["reservoir_prop"]["K_ann_model"]
+
+            X_test = torch.linspace(-1,1,200).view(-1,1)
+            y_test = model["reservoir_prop"]["k"]*K_ann(X_test)
+
+            # Plot the X_test and y_test using matplotlib
+            plt.plot(X_test.numpy(), y_test.detach().numpy())
+            plt.xlabel('Position')
+            plt.ylabel('K')
+            plt.grid(True)
+            plt.show()
+
+            X_test = torch.linspace(0,1,1).view(-1,1)
+            Y_test = model["reservoir_prop"]["k"]*K_ann(X_test)
+            print(X_test.item())
+            print(Y_test.item())
+
+            Lw = model["wellbore_prop"]["Lw"]
+            _x = 0
+            _qsi = 1 - 2*_x/Lw 
+            X_test = torch.linspace(_qsi,_qsi,1).view(-1,1)
+            Y_test = model["reservoir_prop"]["k"]*K_ann(X_test)            
+            print(X_test.item())
+            print(Y_test.item())
+            
+            _x = 400
+            _qsi = 1 - 2*_x/Lw 
+            X_test = torch.linspace(_qsi,_qsi,1).view(-1,1)
+            Y_test = model["reservoir_prop"]["k"]*K_ann(X_test)            
+            print(X_test.item())
+            print(Y_test.item())
+
+            sys.exit("exit")
+        #}}}
 
     # calling the RK solver. Solver for Q and p
     x, Q, p = RungeKutta_solver(model)
