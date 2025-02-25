@@ -755,17 +755,39 @@ def main():
         
         model["reservoir_prop"]["K_ann_model"] = load_ann_K_model(ann_save_path, ann_model_param) 
         # test K ANN {{{
-        if 0: 
+        if 1: 
             K_ann = model["reservoir_prop"]["K_ann_model"]
 
             X_test = torch.linspace(-1,1,200).view(-1,1)
             y_test = model["reservoir_prop"]["k"]*K_ann(X_test)
-
             # Plot the X_test and y_test using matplotlib
             plt.plot(X_test.numpy(), y_test.detach().numpy())
             plt.xlabel('Position')
             plt.ylabel('K')
             plt.grid(True)
+            plt.show()
+            
+            X_20 = torch.linspace(-1,1,20).view(-1,1)
+            y_20 = model["reservoir_prop"]["k"]*K_ann(X_20)
+            
+            X_200 = torch.linspace(-1,1,200).view(-1,1)
+            y_200 = model["reservoir_prop"]["k"]*K_ann(X_200)
+            
+            X_400 = torch.linspace(-1,1,400).view(-1,1)
+            y_400 = model["reservoir_prop"]["k"]*K_ann(X_400)
+            
+            X_800 = torch.linspace(-1,1,800).view(-1,1)
+            y_800 = model["reservoir_prop"]["k"]*K_ann(X_800)
+            
+            # Plot the X_test and y_test using matplotlib
+            plt.plot(X_20.numpy(), y_20.detach().numpy(),label="20 elem",linewidth=4)
+            plt.plot(X_200.numpy(), y_200.detach().numpy(),label="200 elem",linewidth=4)
+            plt.plot(X_400.numpy(), y_400.detach().numpy(),label="400 elem",linewidth=4)
+            plt.plot(X_800.numpy(), y_800.detach().numpy(),label="800 elem",linewidth=4)
+            plt.xlabel('Position')
+            plt.ylabel('K')
+            plt.grid(True)
+            plt.legend()
             plt.show()
 
             X_test = torch.linspace(0,1,1).view(-1,1)
