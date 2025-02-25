@@ -76,16 +76,49 @@ def model_settings_for_tests():
 
     return model
 #}}}
-# ANN settings - K from PyTorch-based ANN %{{{
-def ANN_settings(): 
-    #FIXME define the path for the test ANN 
-    MODEL_PATH = Path("./pytorch/models")
-    MODEL_NAME = "fitK-one-curve.pth"
-    MODEL_SAVE_PATH = MODEL_PATH / MODEL_NAME
-    model = KNN(input_features=1,output_features=1,hidden_units=40,n_hiddenlayers=10) # These numbers have to match the model that was saved
-    model.load_state_dict(torch.load(f=MODEL_SAVE_PATH))
+# ann model settings {{{
+def ann_model_settings():
+    
+    ann_model_param = {}
+    
+    ann_model_param["input_feat"] = 1
+    ann_model_param["output_feat"] = 1
+    ann_model_param["hidden_units"] = 40
+    ann_model_param["n_hiddenlayers"] = 10
 
-    return model
+    return ann_model_param
+#}}}
+# ann model settings for numerical tests {{{
+def ann_model_settings_for_tests():
+    
+    ann_model_param = ann_model_settings()
+    
+    ann_model_param["input_feat"] = 1
+    ann_model_param["output_feat"] = 1
+    ann_model_param["hidden_units"] = 40
+    ann_model_param["n_hiddenlayers"] = 10
+
+    return ann_model_param
+#}}}
+# load ann K model - K from PyTorch-based ANN %{{{
+def load_ann_K_model(ann_save_path, ann_model_param): 
+    
+    # These numbers have to match the saved model 
+    _input_features = ann_model_param["input_feat"]
+    _output_features= ann_model_param["output_feat"]
+    _hidden_units   = ann_model_param["hidden_units"]
+    _n_hiddenlayers = ann_model_param["n_hiddenlayers"]
+    
+    # build the ann model
+    ann_model = KNN(input_features=_input_features,
+                    output_features=_output_features,
+                    hidden_units=_hidden_units,
+                    n_hiddenlayers=_n_hiddenlayers) # These numbers have to match the model that was saved
+    
+    # load the ann model state
+    ann_model.load_state_dict(torch.load(f=ann_save_path))
+
+    return ann_model
 #}}}
 def Reynolds(model, Q): #{{{
     rho = model["fluid_prop"]["rho"]
@@ -610,8 +643,13 @@ def test_RungeKuttaANNK(): #{{{
     model["wellbore_prop"]["f_type"] = 0  # default, linear and non-linear
     model["RK_settigns"]["npoints"] = 301 # because K is singular here, we need more points
     
-    if model["reservoir_prop"]["K_type"]==4: # K from ANN
-        model["reservoir_prop"]["K_ann_model"] = ANN_settings() 
+    ann_model_param = ann_model_settings_for_tests()
+        
+    ann_path = Path("./pytorch/models")
+    ann_name = "fitK-one-curve.pth"
+    ann_save_path = ann_path / ann_name
+
+    model["reservoir_prop"]["K_ann_model"] = load_ann_K_model(ann_save_path, ann_model_param) 
     
     # run the RungeKutta model
     x_RK, Q_RK, p_RK = RungeKutta_solver(model)
@@ -628,7 +666,13 @@ def test_h_convergence(): #{{{
     model["wellbore_prop"]["f_type"] = 0  # default, linear and non-linear
     
     if model["reservoir_prop"]["K_type"]==4: # K from ANN
-        model["reservoir_prop"]["K_ann_model"] = ANN_settings() 
+        ann_path = Path("./pytorch/models")
+        ann_name = "fitK-one-curve.pth"
+        ann_save_path = ann_path / ann_name
+
+        ann_model_param = ann_model_settings_for_tests()
+        
+        model["reservoir_prop"]["K_ann_model"] = load_ann_K_model(ann_save_path, ann_model_param) 
 
     Lw    =  model["wellbore_prop"]["Lw"] 
     nele  = 1 # initial number of elements
@@ -702,7 +746,14 @@ def main():
     model["reservoir_prop"]["k"] = 1e-13 # 0.0001e-13 to 10e-13 
 
     if model["reservoir_prop"]["K_type"]==4: # K from ANN
-        model["reservoir_prop"]["K_ann_model"] = ANN_settings() 
+        
+        ann_path = Path("./pytorch/models")
+        ann_name = "fitK-one-curve.pth"
+        ann_save_path = ann_path / ann_name
+
+        ann_model_param = ann_model_settings_for_tests()
+        
+        model["reservoir_prop"]["K_ann_model"] = load_ann_K_model(ann_save_path, ann_model_param) 
         # test K ANN {{{
         if 0: 
             K_ann = model["reservoir_prop"]["K_ann_model"]
