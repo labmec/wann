@@ -1,8 +1,10 @@
 SetFactory("OpenCASCADE");
 
-Geometry.MatchMeshTolerance = 1e-10;
-Geometry.Tolerance = 1e-12;
+Geometry.MatchMeshTolerance = 1e-12;
+Geometry.Tolerance = 1e-16;
 Mesh.ToleranceReferenceElement = 1e-10;
+General.Terminal = 1;
+Geometry.SnapPoints = 0;
 
 //wellbore dimensions
 Lw = 1; //[m] wellbore length //400 m
@@ -24,16 +26,16 @@ s = Sin(Pi/4.);
 
 //points of the heel part {{{
 p1 = newp; Point(p1) = {0, 0, 0, 1.0};//center of the domain (wellbore heel)
-p2 = newp; Point(p2) = {0, -Dw*s, Dw*s, 1.0};//well
-p3 = newp; Point(p3) = {0, Dw*s, Dw*s, 1.0};//well
-p4 = newp; Point(p4) = {0, Dw*s, -Dw*s, 1.0};//well
+p2 = newp; Point(p2) = {0, -Dw*s,  Dw*s, 1.0};//well
+p3 = newp; Point(p3) = {0,  Dw*s,  Dw*s, 1.0};//well
+p4 = newp; Point(p4) = {0,  Dw*s, -Dw*s, 1.0};//well
 p5 = newp; Point(p5) = {0, -Dw*s, -Dw*s, 1.0};//well
 //}}}
 //circles and lines of the wellbore heel {{{
-Circle(1) = {2, 1, 3};
-Circle(2) = {3, 1, 4};
-Circle(3) = {4, 1, 5};
-Circle(4) = {5, 1, 2};
+Circle(1) = {p2, p1, p3};
+Circle(2) = {p3, p1, p4};
+Circle(3) = {p4, p1, p5};
+Circle(4) = {p5, p1, p2};
 //}}}
 //extrude to generate the wellbore toe (wellbore cylinder is also generated {{{
 ids() = Extrude {Lw, 0, 0}{
@@ -123,11 +125,22 @@ cl18 = newcl;Curve Loop(cl18) = {l15,8,-l19,-l3};//y-positive
 sf17 = news; Plane Surface(sf17) = {cl17};
 sf18 = news; Plane Surface(sf18) = {cl18};
 //surfaces of the wellbore heel and wellbore toe
+
+//FIXME not sure why this curve loop command is chanfing the coordinates of point 2
 cl19 = newcl; Curve Loop(cl19) = {1,2,3,4};//heel
+
+//c[] = Point{p2};
+//Printf("%f", c[1]); //to debug
+//Printf("%f", c[2]); //to debug
+//Abort;
+
 cl20 = newcl; Curve Loop(cl20) = {7,9,11,12};//toe
 sf19 = news; Surface(sf19) = {cl19};
 sf20 = news; Surface(sf20) = {cl20};
+
 //}}}
+
+
 //create volumes {{{
 sfl1 = newsl; Surface Loop(sfl1) = {1,sf7,sf11,sf15,sf16,sf5}; //top 
 sfl2 = newsl; Surface Loop(sfl2) = {3,sf9,sf13,sf17,sf18,sf6}; //bottom 
@@ -143,6 +156,7 @@ vl4 = newv; Volume(vl4) = {sfl4};
 vl5 = newv; Volume(vl5) = {sfl5};
 vl6 = newv; Volume(vl6) = {sfl6};
 ///}}}
+
 
 //Printf("%f", l1); //to debug
 
@@ -171,7 +185,7 @@ all_volumes[] = Volume "*";
 Physical Volume("volume_reservoir",110) = all_volumes[]; //reservoir
 //}}}
 
-Delete{ Point{1}; 
+Delete{ Point{p1}; 
 }
 
 General.NumThreads = 4;
