@@ -8,7 +8,8 @@ Geometry.SnapPoints = 0;
 
 //wellbore dimensions
 Lw = 1; //[m] wellbore length //400 m
-Dw = 0.1; //[m] wellbore diameter //0.1 m
+//Dw = 0.1; //[m] wellbore diameter //0.1 m
+Dw = 0.001; //[m] wellbore diameter //0.1 m FIXME this Dw value generates the error
 
 //reservoir dimensions
 Lr = 4; //[m] length //2000 m
@@ -126,7 +127,7 @@ sf17 = news; Plane Surface(sf17) = {cl17};
 sf18 = news; Plane Surface(sf18) = {cl18};
 //surfaces of the wellbore heel and wellbore toe
 
-//FIXME not sure why this curve loop command is chanfing the coordinates of point 2
+//FIXME not sure why this curve loop command is changing the coordinates of point 2
 cl19 = newcl; Curve Loop(cl19) = {1,2,3,4};//heel
 
 //c[] = Point{p2};
