@@ -729,7 +729,7 @@ def test_only_to_show_all_plots():#{{{
 def main():
     
     model = model_settings()
-    model["reservoir_prop"]["K_type"] = 4# 0: K=cte from vertical wellbore; 1: K=linear func; 2: parabolic func; 3: singular K; 4: K comes from an ANN 
+    model["reservoir_prop"]["K_type"] = 0# 0: K=cte from vertical wellbore; 1: K=linear func; 2: parabolic func; 3: singular K; 4: K comes from an ANN 
     model["wellbore_prop"]["f_type"] = 0 # 0: default friction factor (linear or non-linear); 1: linear only; 2: non-linear only 
     model["RK_settigns"]["verbose"] = 0 
 

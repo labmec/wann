@@ -28,7 +28,8 @@ def get_geometric_parameters(case): #{{{
     # wellbore:
     #   Lw [400 1200] m
     #   Dw [0.127 0.1778] m // 5" to 7"
-    # 
+    #   ecc [-90 90] % wellbore eccentricity 0: no eccentricity, -90%: very close to the reservoir bottom, 90% very close to the reservoir top   
+    #
     # reservoir:
     #   Lr [1.5 3.0] x Lw 
     #   Wr [1.0 3.0] x Lw

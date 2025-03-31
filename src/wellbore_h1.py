@@ -16,10 +16,11 @@ Dr    = 2000
 Lw    = 400
 Nelem = 100
 dpdx  = 0.000001e+7  
-p_toe_expected  = 1.219297411e+7 #from Mathematica NDsolve
+p_toe_expected  = 1.219297411e+7 #from Mathematica NDsolve (nonlinear equation only)
 
 # K from a vertical wellbore (constant)
 K = 2*np.pi*k/(mu*np.log(Dr/D))
+print(K)
 
 mesh = IntervalMesh(Nelem,0,Lw)
 V = FunctionSpace(mesh, "CG",1)
@@ -99,6 +100,14 @@ print("P heel="+str(p.dat.data[ 0]))
 print("P toe ="+str(p.dat.data[-1]))
 print("dP toe (Pa)="+str(abs(p.dat.data[-1]-p_toe_expected)))
 print("dP toe (%) ="+str(100*abs(p.dat.data[-1]-p_toe_expected)/p_toe_expected))
+
+
+#compute Q
+Q = Function(V).interpolate( -C(p)*Dx(p,0) )
+print(Q.dat.data[:])
+print(len(Q.dat.data[:]))
+
+File("Q_wellbore_h1.pvd").write(Q)
 
 #solve(F==0,u, bcs=p_well)
 
