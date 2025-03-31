@@ -30,12 +30,12 @@ MODEL_NAME = "fitK-one-curve.pth"
 saveModel = False
 isUseBCasExtraCost = False
 
-data = torch.from_numpy(np.loadtxt('../../kpts.txt', delimiter='\t',dtype=np.float32))
+data = torch.from_numpy(np.loadtxt('../training/kpts.txt', delimiter='\t',dtype=np.float32))
 X = data[:, :-1]
 y = data[:, -1].unsqueeze(dim=1)
 
 if isUseBCasExtraCost:
-  databc = torch.from_numpy(np.loadtxt('../../kpts_bc.txt', delimiter='\t',dtype=np.float32))
+  databc = torch.from_numpy(np.loadtxt('../training/kpts_bc.txt', delimiter='\t',dtype=np.float32))
   Xbc = databc[:, :-1]
   ybc = databc[:, -1].unsqueeze(dim=1)
 
