@@ -1,0 +1,3 @@
+#ifndef INPUTSDIR
+#define INPUTDIR "@INPUTSDIR@/"
+#endif
