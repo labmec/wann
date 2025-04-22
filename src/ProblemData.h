@@ -13,6 +13,37 @@
 
 class ProblemData
 {
+  struct BoundaryData
+  {
+    std::string name; // name of the bc
+    int matid;             // bc material ID
+    int type;              // bc type 0: direct, 1: neumann
+    REAL value;            // bc value
+  };
+
+  struct DomainData
+  {
+    std::string name; // name of the domain
+    int matid;             // domain material ID
+    REAL perm;            // domain permeability
+    REAL pOrder;           // polynomial approximation order for flux
+    TPZManVector<BoundaryData, 5> BCs; // vector containing all the bcs info
+  };
+
+  struct WellboreData : public DomainData
+  {
+    REAL radius; // domain radius
+    REAL length; // domain length
+  };
+
+  struct ReservoirData : public DomainData
+  {
+    REAL height;
+    REAL width;
+    REAL length;
+  };
+
+public:
   enum EMatid
   {
     ENone,
@@ -33,52 +64,25 @@ class ProblemData
     EHDivBoundInterface
   };
 
-  struct BoundaryData
-  {
-    std::string name = "none"; // name of the bc
-    int matid = 0;             // bc material ID
-    int type = 0;              // bc type 0: direct, 1: neumann
-    REAL value = 0;            // bc value
-  };
-
-  struct DomainData
-  {
-    std::string name = "none"; // name of the domain
-    int matid = 0;             // domain material ID
-    REAL perm = 1.;            // domain permeability
-    REAL pOrder = 1;           // polynomial approximation order for flux
-    TPZManVector<BoundaryData, 5> BCs; // vector containing all the bcs info
-  };
-
-  struct WellboreData : public DomainData
-  {
-    REAL radius = 0.1; // domain radius
-    REAL length = 0.1; // domain length
-  };
-
-  struct ReservoirData : public DomainData
-  {
-    REAL height = 0.1;
-    REAL width = 0.1;
-    REAL length = 0.1;
-  };
-
-public:
   using json = nlohmann::json; // declaration of json class
 
-  std::string m_MeshName = "none"; // name of the mesh file
+  std::string m_MeshName; // name of the mesh file
 
-  int m_NumUniformRef = 0; // number of uniform refinements
+  int m_Dimension; // dimension of the problem
+  
+  int m_NumUniformRef; // number of uniform refinements
+  
+  int m_NumDirRef; // number of directional refinements
 
-  int m_NumDirRef = 0; // number of directional refinements
+  int m_Resolution; // VTK mesh resolution
 
-  int m_Dimension = 3; // dimension of the problem
+  bool m_ToCylindrical; // whether to use cylyndrical map to the wellbore surface
 
+  int m_Verbose; // verbosity level
+  
   WellboreData m_Wellbore; // wellbore data
   
   ReservoirData m_Reservoir; // reservoir data
-
-  int fResolution = 0; // VTK mesh resolution
 
 public:
   ProblemData();
