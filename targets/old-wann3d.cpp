@@ -2,16 +2,79 @@
 #include <pz_config.h>
 #endif
 
-#include <iostream>
-#include "TPZWannTools.h"
+#include <DarcyFlow/TPZDarcyFlow.h>
+#include <DarcyFlow/TPZMixedDarcyFlow.h>
+#include <TPZGmshReader.h>
 #include <TPZLinearAnalysis.h>
+#include <TPZNullMaterial.h>
+#include <TPZRefPatternTools.h>
 #include <TPZSSpStructMatrix.h>  //symmetric sparse matrix storage
+#include <TPZSimpleTimer.h>
+#include <pzbuildmultiphysicsmesh.h>
+#include <pzskylstrmatrix.h>
 #include <pzstepsolver.h>
+
+#include <iostream>
+
+#include "TPZAnalyticSolution.h"
+#include "TPZCompElH1.h"
+#include "TPZElementMatrixT.h"
+#include "TPZGenGrid2D.h"
+#include "TPZGeoMeshTools.h"
+#include "TPZRefPatternDataBase.h"
+#include "TPZRefPatternTools.h"
+#include "TPZSYSMPMatrix.h"
 #include "TPZVTKGenerator.h"
+#include "TPZVTKGeoMesh.h"
+#include "pzcmesh.h"
+#include "pzcompelwithmem.h"
+#include "pzgmesh.h"
+#include "pzlog.h"
+#include "pzshapequad.h"
+#include "pzvisualmatrix.h"
+#include "tpzchangeel.h"
+#include "pzvec_extras.h"
+#include "TPZCylinderMap.h"
+#include "tpzgeoelrefpattern.h"
+#include "tpzchangeel.h"
+#include "TPZHDivApproxCreator.h"
+#include "TPZLinearAnalysis.h"
+#include "TPZVTKGenerator.h"
+#include "TPZMultiphysicsCompMesh.h"
+#include "Projection/TPZL2ProjectionCS.h"
+#include "TPZNullMaterialCS.h"
+#include "TPZLagrangeMultiplierCS.h"
 
 using namespace std;
 
+enum EMatid { ENone,
+              EDomain,              
+              EFarField,
+              ESurfWellCyl,
+              ESurfHeel,
+              ESurfToe, //5
+              ECurveWell,
+              ECurveHeel,
+              ECurveToe,
+              ESurfWellCylNonLin,
+              ECapRock, // 10
+              EPressure2DSkin,
+              EPressureInterface,
+              EPointHeel,
+              EPointToe,
+              EHDivBoundInterface };
+
 const int global_nthread = 32;
+
+TPZGeoMesh* ReadMeshFromGmsh(std::string file_name);
+void ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh);
+void CreatePressure2DElsAndOrderIds(TPZGeoMesh* gmesh);
+void AddPressureSkinElements(TPZCompMesh* cmesh, const int pordWell, const int laglevel);
+void AddWellboreElements(TPZVec<TPZCompMesh*>& meshvec, const int pordWell, const int laglevel);
+void AddInterfaceElements(TPZMultiphysicsCompMesh* cmesh, const int matidpressure, const int matidinterface, const int laglevel);
+void AddHDivBoundInterfaceElements(TPZCompMesh* cmesh, const int porder);
+void EqualizePressureConnects(TPZCompMesh* cmesh);
+void PostProceDataForANN(TPZGeoMesh* gmesh, std::string& filename, const int curveWell, const REAL pff, const int npts, const REAL rad);
 
 int main() {
   std::cout << "--------- Starting simulation ---------" << std::endl;
@@ -19,14 +82,146 @@ int main() {
   TPZLogger::InitializePZLOG();
 #endif
 
-  // Problem data
-  ProblemData SimData;
-  SimData.ReadJson("wann3d.json");
+  // Mesh parameters
+  const int nrefdirectional = 0;
+  const int nref = 0;
+  const int pOrder = 1, pOrdWell = 2;
+
+  // Physical parameters
+  const REAL reservoirPerm = 1.;
+  const REAL wellPerm = reservoirPerm*10.;
+  const REAL pff = 1.;
+  const REAL wellRad = 0.1;
+
+
+  // TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev04.msh");
+//   TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev05.msh");
+  // TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev06.msh");
+  // TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev07.msh");
+  TPZGeoMesh* gmesh = ReadMeshFromGmsh("../../geo/mesh3D_rev08.msh");
+
+  const int dim = gmesh->Dimension();
+  {
+    std::ofstream out("gmeshorig.vtk");
+    TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
+  }
   
-  TPZGeoMesh* gmesh = TPZWannGeometryTools::CreateGeoMesh(&SimData);
+  ModifyGeometricMeshToCylWell(gmesh);
+
+  {
+    TPZCheckGeom checkgeom(gmesh);
+    checkgeom.UniformRefine(nref);
+    // const int nref = 3;
+    // for (int i = 0; i < nref; i++) {
+    //   const int64_t nel = gmesh->NElements();
+    //   for (int64_t iel = 0; iel < nel; iel++) {
+    //     TPZGeoEl* gel = gmesh->Element(iel);
+    //     if(gel->MaterialId() != ESurfWellCyl) continue;
+    //     TPZManVector<TPZGeoEl*,4> subels;
+    //     gel->Divide(subels);
+    //   }      
+    // }
+    std::ofstream out("gmeshnonlin.vtk");
+    TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
+  }
+
+
+  // refine directional towards heel and dedao
+  if (nrefdirectional) {
+    gRefDBase.InitializeRefPatterns(gmesh->Dimension());
+    for (int i = 0; i < nrefdirectional; i++) {
+      TPZRefPatternTools::RefineDirectional(gmesh, {ECurveHeel, ECurveToe});
+    }
+  }
+
+  {
+    std::ofstream out("gmeshnonlin_ref.vtk");
+    TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);    
+  }
+
+  // Create GeoelBCs in same location as geoels with ESurfWell
+  CreatePressure2DElsAndOrderIds(gmesh);
   
-  TPZMultiphysicsCompMesh* cmesh = TPZWannApproxTools::CreateMultiphysicsCompMesh(gmesh, &SimData);
+  // Create computational mesh for Darcy problem
+  TPZHDivApproxCreator hdivCreator(gmesh);
+  hdivCreator.ProbType() = ProblemType::EDarcy;
+  // hdivCreator.HdivFamily() = hdivfam;
+  // hdivCreator.IsRigidBodySpaces() = false;
+  hdivCreator.SetDefaultOrder(pOrder);
+  // hdivCreator.SetExtraInternalOrder(0);
+  hdivCreator.SetShouldCondense(false);
+  // hdivCreator.HybridType() = HybridizationType::ENone;
+
+  // Insert Materials
+  const int diri = 0, neu = 1, mixed = 2;
+  TPZMixedDarcyFlow* matdarcy = new TPZMixedDarcyFlow(EDomain, dim);
+  matdarcy->SetConstantPermeability(reservoirPerm);
+  hdivCreator.InsertMaterialObject(matdarcy);
+
+  TPZFMatrix<STATE> val1(1, 1, 0.);
+  TPZManVector<STATE> val2(1, pff);
+  TPZBndCondT<STATE>* BCond1 = matdarcy->CreateBC(matdarcy, EFarField, diri, val1, val2);
+  hdivCreator.InsertMaterialObject(BCond1);
+
+  val2[0] = 0.;
+  // TPZBndCondT<STATE>* BCond2 = matdarcy->CreateBC(matdarcy, ESurfWellCyl, diri, val1, val2);
+  // hdivCreator.InsertMaterialObject(BCond2);
+
+  TPZBndCondT<STATE>* BCond3 = matdarcy->CreateBC(matdarcy, ESurfHeel, neu, val1, val2);
+  hdivCreator.InsertMaterialObject(BCond3);
   
+  TPZBndCondT<STATE>* BCond4 = matdarcy->CreateBC(matdarcy, ESurfToe, neu, val1, val2);
+  hdivCreator.InsertMaterialObject(BCond4);
+
+  // Creating material for pressure skin
+  // TPZL2ProjectionCS<STATE>* matl2proj = new TPZL2ProjectionCS<STATE>(EPressure2DSkin, dim-1, 1/*nstate*/);
+  // matl2proj->SetScaleFactor(0.);
+  // matl2proj->SetSol({0.});
+  TPZNullMaterialCS<STATE>* matl2proj = new TPZNullMaterialCS<STATE>(EPressure2DSkin, dim-1, 1/*nstate*/);
+  hdivCreator.InsertMaterialObject(matl2proj);
+
+  // Creating mateterial for 1D wellbore and bcs
+  int dimwell = 1;
+  TPZMixedDarcyFlow* matdarcyWell = new TPZMixedDarcyFlow(ECurveWell, dimwell);
+  matdarcyWell->SetConstantPermeability(wellPerm);
+  hdivCreator.InsertMaterialObject(matdarcyWell); // This will only be used in the creation of the multiphysics mesh since the dimension is smaller than the dimension of the geometric mesh
+  val2[0] = 2.;
+  TPZBndCondT<STATE>* BCond5 = matdarcyWell->CreateBC(matdarcyWell, EPointHeel, diri, val1, val2);
+  hdivCreator.InsertMaterialObject(BCond5);
+  val2[0] = 0.;
+  TPZBndCondT<STATE>* BCond6 = matdarcyWell->CreateBC(matdarcyWell, EPointToe, neu, val1, val2);
+  hdivCreator.InsertMaterialObject(BCond6);
+
+  // Create null material for hdivbound elements in multiphysics mesh
+  TPZNullMaterialCS<STATE>* matnull = new TPZNullMaterialCS<STATE>(EHDivBoundInterface,2,1);
+  hdivCreator.InsertMaterialObject(matnull);
+
+  int lagmultilevel = 1;
+  TPZManVector<TPZCompMesh*,7> meshvec(hdivCreator.NumMeshes());
+  hdivCreator.CreateAtomicMeshes(meshvec, lagmultilevel); // This method increments the lagmultilevel
+  AddPressureSkinElements(meshvec[1],pOrdWell,lagmultilevel); // lagmultilevel is 2 here
+  AddWellboreElements(meshvec,pOrdWell,lagmultilevel);
+  EqualizePressureConnects(meshvec[1]);
+  AddHDivBoundInterfaceElements(meshvec[0], pOrder);
+  TPZMultiphysicsCompMesh* cmesh = nullptr;
+  hdivCreator.CreateMultiPhysicsMesh(meshvec, lagmultilevel, cmesh);
+  
+  // Add material for interface elements (has to be done after autobuild so it does not create the interface elements automatically)
+  TPZLagrangeMultiplierCS<STATE> *matinterface = new TPZLagrangeMultiplierCS<STATE>(EPressureInterface, dim-1, 1);
+  cmesh->InsertMaterialObject(matinterface);
+  AddInterfaceElements(cmesh, EPressure2DSkin, EPressureInterface, lagmultilevel);
+
+
+
+  if (0) {
+    std::cout << "Number of connects in multiphysics mesh: " << cmesh->NConnects() << std::endl;
+    for (int i = 0; i < meshvec.size(); i++) {
+      std::cout << "Number of connects in atomic mesh " << i << ": " << meshvec[i]->NConnects() << std::endl;
+    }
+    std::ofstream out("multiphysics_mesh.txt");
+    cmesh->Print(out);
+  }
+
   TPZLinearAnalysis analysis(cmesh);
   TPZSSpStructMatrix<STATE> skylstr(cmesh);
   skylstr.SetNumThreads(global_nthread);
@@ -42,10 +237,16 @@ int main() {
   TPZStack<std::string> fieldnames; 
   fieldnames.Push("Pressure");
   fieldnames.Push("Flux");
-
   TPZVTKGenerator vtkGen(cmesh, fieldnames, filename, 0, 3, true);
   vtkGen.SetNThreads(0);
   vtkGen.Do();
+
+  // matl2proj->SetScaleFactor(1.);
+  // std::set<int> mats = {EPressure2DSkin};
+  // TPZVTKGenerator vtkGen2D(cmesh, mats, {"Solution"}, filenamePressureSkin, 0);
+  // vtkGen2D.SetNThreads(0);
+  // vtkGen2D.Do();
+
 
   fieldnames.Push("Divergence");
   TPZVTKGenerator vtkGen1D(cmesh, fieldnames, filename1d, 0, 1);
@@ -54,10 +255,11 @@ int main() {
 
   std::string anndatafile = "anndata.txt";
   const int npts = 401;
-  PostProceDataForANN(gmesh, SimData, anndatafile, npts);
+  PostProceDataForANN(gmesh, anndatafile, ECurveWell, pff, npts, wellRad);
 
-  delete cmesh;
-  delete gmesh;
+
+  // delete cmesh;
+  // delete gmesh;
   std::cout << "--------- Simulation finished ---------" << std::endl;
 }
 
@@ -623,18 +825,17 @@ void EqualizePressureConnects(TPZCompMesh* cmesh) {
   cmesh->CleanUpUnconnectedNodes();
 }
 
-void PostProceDataForANN(TPZGeoMesh* gmesh, ProblemData* SimData, std::string& filename, const int npts) {
+void PostProceDataForANN(TPZGeoMesh* gmesh, std::string& filename, const int curveWellId, const REAL pff,
+                         const int npts, const REAL wellRad) {
   
   std::ofstream out(filename);
-
-  auto& WellboreData = SimData->m_Wellbore;
   const REAL xf = 1., x0 = 0.;
   const REAL dx = (xf - x0) / (npts - 1);
-  const REAL ywell = -WellboreData.radius /sqrt(2.), zwell = WellboreData.radius/sqrt(2.);
+  const REAL ywell = -wellRad/sqrt(2.), zwell = wellRad/sqrt(2.);
 
   int64_t InitialElIndex = -1;
   for (auto gel : gmesh->ElementVec()) {
-    if (gel && gel->MaterialId() == SimData->ECurveWell) {
+    if (gel && gel->MaterialId() == curveWellId) {
       InitialElIndex = gel->Index();
       break;
     }
@@ -647,7 +848,7 @@ void PostProceDataForANN(TPZGeoMesh* gmesh, ProblemData* SimData, std::string& f
     const REAL x = x0 + i * dx;
     TPZManVector<REAL,3> qsi(1, 0.0);    
     xvec[0] = x;
-    TPZGeoEl* gel = TPZGeoMeshTools::FindElementByMatId(gmesh, xvec, qsi, InitialElIndex, {SimData->ECurveWell}, 1.e-6);
+    TPZGeoEl* gel = TPZGeoMeshTools::FindElementByMatId(gmesh, xvec, qsi, InitialElIndex, {curveWellId});
     if (!gel) {
       std::cout << "Element not found for x = " << x << std::endl;
       DebugStop();

@@ -1,0 +1,61 @@
+{
+  "MeshData": {
+    "file": "mesh3D_rev08.msh",
+    "NumUniformRef": 0,
+    "NumDirRef": 0,
+    "Resolution": 0,
+    "ToCylindrical": 0
+  },
+  "WellboreData": {
+    "name": "curve_wellbore",
+    "perm": 10.0,
+    "pOrder": 2,
+    "radius": 0.1,
+    "length": 10.0,
+    "excentricity": 0.0,
+    "BCs": [
+      {
+        "name": "point_heel",
+        "type": 0, //dirichlet:0    neumann:1
+        "value": 2.0
+      },
+      {
+        "name": "point_toe",
+        "type": 1,
+        "value": 0.0
+      }
+    ]
+  },
+  "ReservoirData": {
+    "name": "volume_reservoir",
+    "perm": 1.0,
+    "porosity": 1.0,
+    "pOrder": 1,
+    "height": 1,
+    "width": 1,
+    "length": 1,
+    "BCs": [
+      {
+        "name": "surface_farfield",
+        "type": 0,
+        "value": 1.0
+      },
+      {
+        "name": "surface_heel",
+        "type": 1,
+        "value": 0.0
+      },
+      {
+        "name": "surface_toe",
+        "type": 1,
+        "value": 0.0
+      }
+    ]
+  },
+  "FluidData": {
+    "name": "oil",
+    "viscosity": 0.005, // Pa.s
+    "density": 800.0 // kg/m^3
+  },
+  "Verbosity": 0
+}
