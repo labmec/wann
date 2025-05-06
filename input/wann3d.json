@@ -57,5 +57,5 @@
     "viscosity": 0.005, // Pa.s
     "density": 800.0 // kg/m^3
   },
-  "Verbosity": 0
+  "VerbosityLevel": 0
 }

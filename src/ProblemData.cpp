@@ -9,135 +9,196 @@
 using namespace std;
 
 // constructor
-ProblemData::ProblemData() :
-    m_MeshName(""),
-    m_NumUniformRef(0),
-    m_NumDirRef(0),
-    m_Dimension(3),
-    m_Resolution(0),
-    m_ToCylindrical(false),
-    m_Verbose(0)
-    
-    {
-      m_Wellbore.BCs.resize(2);
-      m_Reservoir.BCs.resize(3);
-    }
+ProblemData::ProblemData() : m_VerbosityLevel(0)
 
+{
+    m_Wellbore.BCs.reserve(2);
+    m_Reservoir.BCs.reserve(3);
+}
 
 // deconstructor
 ProblemData::~ProblemData() {}
 
 // readjson function. takes a json function as parameter and completes the required simulation data
-void ProblemData::ReadJson(std::string file){
+void ProblemData::ReadJson(std::string file)
+{
     std::string path(std::string(INPUTDIR) + "/" + file);
     std::ifstream filejson(path);
-    json input = json::parse(filejson,nullptr,true,true); // to ignore comments in json file
-    
-    if(input.find("MeshName") == input.end()) DebugStop();
-    m_MeshName = input["MeshName"];
-    if(input.find("Dimension") == input.end()) DebugStop();
-    m_Dimension = input["Dimension"];
-    if(input.find("NumUniformRef") == input.end()) DebugStop();
-    m_NumUniformRef = input["NumUniformRef"];
-    if(input.find("NumDirRef") == input.end()) DebugStop();
-    m_NumDirRef = input["NumDirRef"];
-    if(input.find("Resolution") == input.end()) DebugStop();
-    m_Resolution = input["Resolution"];
-    if(input.find("ToCylindrical") == input.end()) DebugStop();
-    m_ToCylindrical = input["ToCylindrical"];
+    json input = json::parse(filejson, nullptr, true, true); // to ignore comments in json file
 
-    if(input.find("WellboreData") == input.end()) DebugStop();
+    if (input.find("MeshData") == input.end())
+        DebugStop();
+    json meshdata = input["MeshData"];
+    if (meshdata.find("file") == meshdata.end())
+        DebugStop();
+    m_Mesh.file = meshdata["file"];
+    if (meshdata.find("NumUniformRef") == meshdata.end())
+        DebugStop();
+    m_Mesh.NumUniformRef = meshdata["NumUniformRef"];
+    if (meshdata.find("NumDirRef") == meshdata.end())
+        DebugStop();
+    m_Mesh.NumDirRef = meshdata["NumDirRef"];
+    if (meshdata.find("Resolution") == meshdata.end())
+        DebugStop();
+    m_Mesh.Resolution = meshdata["Resolution"];
+    if (meshdata.find("ToCylindrical") == meshdata.end())
+        DebugStop();
+    m_Mesh.ToCylindrical = meshdata["ToCylindrical"];
+
+    if (input.find("WellboreData") == input.end())
+        DebugStop();
     json wellbore = input["WellboreData"];
-    if(wellbore.find("name") == wellbore.end()) DebugStop();
+    if (wellbore.find("name") == wellbore.end())
+        DebugStop();
     m_Wellbore.name = wellbore["name"];
-    if(wellbore.find("matid") == wellbore.end()) DebugStop();
-    m_Wellbore.matid = wellbore["matid"];
-    if(wellbore.find("perm") == wellbore.end()) DebugStop();
+    if (wellbore.find("perm") == wellbore.end())
+        DebugStop();
     m_Wellbore.perm = wellbore["perm"];
-    if(wellbore.find("pOrder") == wellbore.end()) DebugStop();
+    if (wellbore.find("pOrder") == wellbore.end())
+        DebugStop();
     m_Wellbore.pOrder = wellbore["pOrder"];
-    if(wellbore.find("BCs") == wellbore.end()) DebugStop();
-    json bcs = wellbore["BCs"];
-    for(int i = 0; i < bcs.size(); i++){
-        if(bcs[i].find("name") == bcs[i].end()) DebugStop();
-        m_Wellbore.BCs[i].name = bcs[i]["name"];
-        if(bcs[i].find("matid") == bcs[i].end()) DebugStop();
-        m_Wellbore.BCs[i].matid = bcs[i]["matid"];
-        if(bcs[i].find("type") == bcs[i].end()) DebugStop();
-        m_Wellbore.BCs[i].type = bcs[i]["type"];
-        if(bcs[i].find("value") == bcs[i].end()) DebugStop();
-        m_Wellbore.BCs[i].value = bcs[i]["value"];
-    }
-    if(wellbore.find("radius") == wellbore.end()) DebugStop();
-    m_Wellbore.radius = wellbore["radius"];
-    if(wellbore.find("length") == wellbore.end()) DebugStop();
+    if (wellbore.find("radius") == wellbore.end())
+        DebugStop();
+    m_Wellbore.radius = wellbore["matid"];
+    if (wellbore.find("length") == wellbore.end())
+        DebugStop();
     m_Wellbore.length = wellbore["length"];
-
-    if(input.find("ReservoirData") == input.end()) DebugStop();
-    json reservoir = input["ReservoirData"];
-    if(reservoir.find("name") == reservoir.end()) DebugStop();
-    m_Reservoir.name = reservoir["name"];
-    if(reservoir.find("matid") == reservoir.end()) DebugStop();
-    m_Reservoir.matid = reservoir["matid"];
-    if(reservoir.find("perm") == reservoir.end()) DebugStop();
-    m_Reservoir.perm = reservoir["perm"];
-    if(reservoir.find("pOrder") == reservoir.end()) DebugStop();
-    m_Reservoir.pOrder = reservoir["pOrder"];
-    if(reservoir.find("BCs") == reservoir.end()) DebugStop();
-    json bcsres = reservoir["BCs"];
-    for(int i = 0; i < bcsres.size(); i++){
-        if(bcsres[i].find("name") == bcsres[i].end()) DebugStop();
-        m_Reservoir.BCs[i].name = bcsres[i]["name"];
-        if(bcsres[i].find("matid") == bcsres[i].end()) DebugStop();
-        m_Reservoir.BCs[i].matid = bcsres[i]["matid"];
-        if(bcsres[i].find("type") == bcsres[i].end()) DebugStop();
-        m_Reservoir.BCs[i].type = bcsres[i]["type"];
-        if(bcsres[i].find("value") == bcsres[i].end()) DebugStop();
-        m_Reservoir.BCs[i].value = bcsres[i]["value"];
+    if (wellbore.find("excentricity") == wellbore.end())
+        DebugStop();
+    m_Wellbore.excentricity = wellbore["excentricity"];
+    if (wellbore.find("BCs") == wellbore.end())
+        DebugStop();
+    json bcs = wellbore["BCs"];
+    for (int i = 0; i < bcs.size(); i++)
+    {
+        if (bcs[i].find("name") == bcs[i].end())
+            DebugStop();
+        std::pair<std::string, BoundaryData> bcpair;
+        bcpair.first = bcs[i]["name"];
+        if (bcs[i].find("type") == bcs[i].end())
+            DebugStop();
+        bcpair.second.type = bcs[i]["type"];
+        if (bcs[i].find("value") == bcs[i].end())
+            DebugStop();
+        bcpair.second.value = bcs[i]["value"];
+        m_Wellbore.BCs.insert(bcpair);
     }
-    if(reservoir.find("height") == reservoir.end()) DebugStop();
+
+    if (input.find("ReservoirData") == input.end())
+        DebugStop();
+    json reservoir = input["ReservoirData"];
+    if (reservoir.find("name") == reservoir.end())
+        DebugStop();
+    m_Reservoir.name = reservoir["name"];
+    if (reservoir.find("perm") == reservoir.end())
+        DebugStop();
+    m_Reservoir.perm = reservoir["perm"];
+    if (reservoir.find("porosity") == reservoir.end())
+        DebugStop();
+    m_Reservoir.porosity = reservoir["porosity"];
+    if (reservoir.find("pOrder") == reservoir.end())
+        DebugStop();
+    m_Reservoir.pOrder = reservoir["pOrder"];
+    if (reservoir.find("height") == reservoir.end())
+        DebugStop();
     m_Reservoir.height = reservoir["height"];
-    if(reservoir.find("width") == reservoir.end()) DebugStop();
+    if (reservoir.find("width") == reservoir.end())
+        DebugStop();
     m_Reservoir.width = reservoir["width"];
-    if(reservoir.find("length") == reservoir.end()) DebugStop();
+    if (reservoir.find("length") == reservoir.end())
+        DebugStop();
     m_Reservoir.length = reservoir["length"];
+    if (reservoir.find("BCs") == reservoir.end())
+        DebugStop();
+    json bcsres = reservoir["BCs"];
+    for (int i = 0; i < bcsres.size(); i++)
+    {
+        if (bcsres[i].find("name") == bcsres[i].end())
+            DebugStop();
+        std::pair<std::string, BoundaryData> bcpair;
+        bcpair.first = bcsres[i]["name"];
+        if (bcsres[i].find("type") == bcsres[i].end())
+            DebugStop();
+        bcpair.second.type = bcsres[i]["type"];
+        if (bcsres[i].find("value") == bcsres[i].end())
+            DebugStop();
+        bcpair.second.value = bcsres[i]["value"];
+        m_Reservoir.BCs.insert(bcpair);
+    }
+
+    if (input.find("FluidData") == input.end())
+        DebugStop();
+    json fluid = input["FluidData"];
+    if (fluid.find("name") == fluid.end())
+        DebugStop();
+    m_Fluid.name = fluid["name"];
+    if (fluid.find("viscosity") == fluid.end())
+        DebugStop();
+    m_Fluid.viscosity = fluid["viscosity"];
+    if (fluid.find("density") == fluid.end())
+        DebugStop();
+    m_Fluid.density = fluid["density"];
+
+    if (input.find("VerbosityLevel") == input.end())
+        DebugStop();
+    m_VerbosityLevel = input["VerbosityLevel"];
 }
 
-void ProblemData::Print(std::ostream& out){
+void ProblemData::Print(std::ostream &out)
+{
     out << "\nSimulation inputs: \n\n";
-    out << "Mesh Name: " << m_MeshName << std::endl << std::endl;
-    out << "Dimension: " << m_Dimension << std::endl << std::endl;
-    out << "Number of uniform refinements: " << m_NumUniformRef << std::endl << std::endl;
-    out << "Number of directional refinements: " << m_NumDirRef << std::endl << std::endl;
-    out << "VTK mesh resolution: " << m_Resolution << std::endl << std::endl;
-    out << "Cylindrical map: " << m_ToCylindrical << std::endl << std::endl;
-    out << "Wellbore data: \n";
+    out << "Mesh Data:\n";
+    out << "File: " << m_Mesh.file << std::endl;
+    out << "Number of uniform refinements: " << m_Mesh.NumUniformRef << std::endl;
+    out << "Number of directional refinements: " << m_Mesh.NumDirRef << std::endl;
+    out << "VTK mesh resolution: " << m_Mesh.Resolution << std::endl;
+    out << "Cylindrical map: " << (m_Mesh.ToCylindrical ? "Yes" : "No") << std::endl
+        << std::endl;
+
+    out << "Wellbore Data:\n";
     out << "Name: " << m_Wellbore.name << std::endl;
     out << "Material ID: " << m_Wellbore.matid << std::endl;
     out << "Permeability: " << m_Wellbore.perm << std::endl;
     out << "Polynomial order: " << m_Wellbore.pOrder << std::endl;
     out << "Radius: " << m_Wellbore.radius << std::endl;
     out << "Length: " << m_Wellbore.length << std::endl;
-    out << "Boundary conditions: \n";
-    for(int i = 0; i < m_Wellbore.BCs.size(); i++){
-        out << "Name: " << m_Wellbore.BCs[i].name << std::endl;
-        out << "Material ID: " << m_Wellbore.BCs[i].matid << std::endl;
-        out << "Type: " << m_Wellbore.BCs[i].type << std::endl;
-        out << "Value: " << m_Wellbore.BCs[i].value << std::endl;
+    out << "Excentricity: " << m_Wellbore.excentricity << std::endl;
+    out << "Boundary conditions:\n";
+    for (const auto &bc : m_Wellbore.BCs)
+    {
+        out << "  Name: " << bc.first << std::endl;
+        out << "  Material ID: " << bc.second.matid << std::endl;
+        out << "  Type: " << bc.second.type << std::endl;
+        out << "  Value: " << bc.second.value << std::endl;
     }
-    out << "Reservoir data: \n";
+    out << std::endl;
+
+    out << "Reservoir Data:\n";
     out << "Name: " << m_Reservoir.name << std::endl;
     out << "Material ID: " << m_Reservoir.matid << std::endl;
     out << "Permeability: " << m_Reservoir.perm << std::endl;
+    out << "Porosity: " << m_Reservoir.porosity << std::endl;
     out << "Polynomial order: " << m_Reservoir.pOrder << std::endl;
     out << "Height: " << m_Reservoir.height << std::endl;
     out << "Width: " << m_Reservoir.width << std::endl;
     out << "Length: " << m_Reservoir.length << std::endl;
-    out << "Boundary conditions: \n";
-    for(int i = 0; i < m_Reservoir.BCs.size(); i++){
-        out << "Name: " << m_Reservoir.BCs[i].name << std::endl;
-        out << "Material ID: " << m_Reservoir.BCs[i].matid << std::endl;
-        out << "Type: " << m_Reservoir.BCs[i].type << std::endl;
-        out << "Value: " << m_Reservoir.BCs[i].value << std::endl;
+    out << "Boundary conditions:\n";
+    for (const auto &bc : m_Reservoir.BCs)
+    {
+        out << "  Name: " << bc.first << std::endl;
+        out << "  Material ID: " << bc.second.matid << std::endl;
+        out << "  Type: " << bc.second.type << std::endl;
+        out << "  Value: " << bc.second.value << std::endl;
     }
+    out << std::endl;
+
+    out << "Fluid Data:\n";
+    out << "Name: " << m_Fluid.name << std::endl;
+    out << "Viscosity: " << m_Fluid.viscosity << std::endl;
+    out << "Density: " << m_Fluid.density << std::endl
+        << std::endl;
+
+    out << std::endl;
+
+    out << "Verbosity Level: " << m_VerbosityLevel << std::endl;
 }
