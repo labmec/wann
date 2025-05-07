@@ -11,7 +11,7 @@ import torch.distributed as dist
 import os
 from knn import KNN
 # Download helper functions (if it is not already there)
-if Path("helper_functions.py").is_file():
+if Path("pytorch/helper_functions.py").is_file():
   print("helper_functions.py already exists, skipping download")
 else:
   print("Downloading helper_functions.py...")
