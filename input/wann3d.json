@@ -3,7 +3,6 @@
     "file": "mesh3D_rev08.msh",
     "NumUniformRef": 0,
     "NumDirRef": 0,
-    "Resolution": 0,
     "ToCylindrical": 0
   },
   "WellboreData": {
@@ -11,8 +10,8 @@
     "perm": 10.0,
     "pOrder": 2,
     "radius": 0.1,
-    "length": 10.0,
-    "excentricity": 0.0,
+    "length": 1.0,
+    "eccentricity": [0.0, 0.0, 0.0],
     "BCs": [
       {
         "name": "point_heel",
@@ -41,12 +40,12 @@
         "value": 1.0
       },
       {
-        "name": "surface_heel",
+        "name": "surface_wellbore_heel",
         "type": 1,
         "value": 0.0
       },
       {
-        "name": "surface_toe",
+        "name": "surface_wellbore_toe",
         "type": 1,
         "value": 0.0
       }
@@ -56,6 +55,14 @@
     "name": "oil",
     "viscosity": 0.005, // Pa.s
     "density": 800.0 // kg/m^3
+  },
+  "PostProcData": {
+    "wellbore_vtk": "postproc_wellbore",
+    "reservoir_vtk": "postproc_reservoir",
+    "training_data": "training_data.txt",
+    "vtk_resolution": 0,
+    "training_resolution": 400, //number of subdivisions to generate training data
+    "nthreads": 0
   },
   "VerbosityLevel": 0
 }

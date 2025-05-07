@@ -1,0 +1,11 @@
+#ifndef INPUTSDIR
+#define INPUTDIR "@INPUTSDIR@"
+#endif
+
+#ifndef TRAININGSDIR
+#define TRAININGDIR "@TRAININGSDIR@"
+#endif
+
+#ifndef MESHESDIR
+#define MESHDIR "@MESHESDIR@"
+#endif

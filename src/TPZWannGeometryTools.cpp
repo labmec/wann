@@ -11,6 +11,13 @@ TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
 
   if (simData->m_Mesh.ToCylindrical) {
     ModifyGeometricMeshToCylWell(gmesh, simData);
+
+    
+    // simData->m_Wellbore.BCs["point_heel"].value *= -1;
+  }
+  else {
+    //Any ideia how to do this in a more elegant way? it seems that the cylindrical map changes normal vector orientation of some elements
+    simData->m_Wellbore.BCs["point_heel"].value *= -1;
   }
 
   if (simData->m_Mesh.NumUniformRef) {
@@ -42,7 +49,8 @@ TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
 
 TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
 
-  std::string file_name = simData->m_Mesh.file;
+  std::string file = simData->m_Mesh.file;
+  std::string path(std::string(MESHDIR) + "/" + file);
   TPZGeoMesh* gmesh = new TPZGeoMesh();
   {
     TPZGmshReader reader;
@@ -58,7 +66,6 @@ TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
     stringtoint[2]["surface_farfield"] = simData->EFarField;
     simData->m_Reservoir.BCs["surface_farfield"].matid = simData->EFarField;
     stringtoint[2]["surface_cap_rock"] = simData->EFarField;
-    simData->m_Reservoir.BCs["surface_cap_rock"].matid = simData->EFarField;
     
     stringtoint[1]["curve_wellbore"] = simData->ECurveWell;
     simData->m_Wellbore.matid = simData->ECurveWell;
@@ -71,7 +78,7 @@ TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
     simData->m_Wellbore.BCs["point_toe"].matid = simData->EPointToe;
     
     reader.SetDimNamePhysical(stringtoint);
-    reader.GeometricGmshMesh(file_name, gmesh);
+    reader.GeometricGmshMesh(path, gmesh);
 
     //remember to modify the matids in ProblemData according to the map
   }

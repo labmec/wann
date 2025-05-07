@@ -7,7 +7,7 @@
 #include <pzfmatrix.h>
 #include <pzvec.h>
 #include <string>
-#include "input_config.h"
+#include "dirs_config.h"
 
 // declaration of simulation data class.
 // all the data herein used are storaged in a .json file. It can be called and storaged using ReadJson
@@ -16,7 +16,7 @@ class ProblemData
 {
   struct BoundaryData
   {
-    int matid;             // bc material ID
+    int matid = -1;             // bc material ID
     int type;              // bc type 0: direct, 1: neumann
     REAL value;            // bc value
   };
@@ -24,7 +24,7 @@ class ProblemData
   struct DomainData
   {
     std::string name; // name of the domain
-    int matid;             // domain material ID
+    int matid = -1;             // domain material ID
     REAL perm;            // domain permeability
     REAL pOrder;           // polynomial approximation order for flux
     std::unordered_map<std::string, BoundaryData> BCs; // map containing all the bcs info
@@ -34,7 +34,7 @@ class ProblemData
   {
     REAL radius; // domain radius
     REAL length; // domain length
-    REAL excentricity; // domain excentricity
+    TPZManVector<REAL,3> eccentricity; // domain excentricity
   };
 
   struct ReservoirData : public DomainData
@@ -57,8 +57,17 @@ class ProblemData
     std::string file;
     int NumUniformRef;
     int NumDirRef;
-    int Resolution;
-    bool ToCylindrical;
+    int ToCylindrical;
+  };
+
+  struct PostProcData
+  {
+    std::string wellbore_vtk;
+    std::string reservoir_vtk;
+    std::string training_data;
+    int vtk_resolution;
+    int training_resolution;
+    int nthreads;
   };
 
 public:
@@ -91,6 +100,8 @@ public:
   FluidData m_Fluid; // fluid data
   
   MeshData m_Mesh; // mesh data
+
+  PostProcData m_PostProc; // post process data
   
   int m_VerbosityLevel; // verbosity level
 

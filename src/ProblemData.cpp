@@ -12,6 +12,7 @@ using namespace std;
 ProblemData::ProblemData() : m_VerbosityLevel(0)
 
 {
+    m_Wellbore.eccentricity.resize(3);
     m_Wellbore.BCs.reserve(2);
     m_Reservoir.BCs.reserve(3);
 }
@@ -38,9 +39,6 @@ void ProblemData::ReadJson(std::string file)
     if (meshdata.find("NumDirRef") == meshdata.end())
         DebugStop();
     m_Mesh.NumDirRef = meshdata["NumDirRef"];
-    if (meshdata.find("Resolution") == meshdata.end())
-        DebugStop();
-    m_Mesh.Resolution = meshdata["Resolution"];
     if (meshdata.find("ToCylindrical") == meshdata.end())
         DebugStop();
     m_Mesh.ToCylindrical = meshdata["ToCylindrical"];
@@ -59,13 +57,18 @@ void ProblemData::ReadJson(std::string file)
     m_Wellbore.pOrder = wellbore["pOrder"];
     if (wellbore.find("radius") == wellbore.end())
         DebugStop();
-    m_Wellbore.radius = wellbore["matid"];
+    m_Wellbore.radius = wellbore["radius"];
     if (wellbore.find("length") == wellbore.end())
         DebugStop();
     m_Wellbore.length = wellbore["length"];
-    if (wellbore.find("excentricity") == wellbore.end())
+    if (wellbore.find("eccentricity") == wellbore.end())
         DebugStop();
-    m_Wellbore.excentricity = wellbore["excentricity"];
+    for (int i = 0; i < 3; i++)
+    {
+        if (wellbore["eccentricity"][i].is_null())
+            DebugStop();
+        m_Wellbore.eccentricity[i] = wellbore["eccentricity"][i];
+    }
     if (wellbore.find("BCs") == wellbore.end())
         DebugStop();
     json bcs = wellbore["BCs"];
@@ -139,9 +142,33 @@ void ProblemData::ReadJson(std::string file)
         DebugStop();
     m_Fluid.density = fluid["density"];
 
-    if (input.find("VerbosityLevel") == input.end())
+    if (input.find("PostProcData") == input.end())
         DebugStop();
-    m_VerbosityLevel = input["VerbosityLevel"];
+    json postproc = input["PostProcData"];
+    if (postproc.find("wellbore_vtk") == postproc.end())
+        DebugStop();
+    m_PostProc.wellbore_vtk = postproc["wellbore_vtk"];
+    if (postproc.find("reservoir_vtk") == postproc.end())
+        DebugStop();
+    m_PostProc.reservoir_vtk = postproc["reservoir_vtk"];
+    if (postproc.find("training_data") == postproc.end())
+        DebugStop();
+    m_PostProc.training_data = postproc["training_data"];
+    if (postproc.find("vtk_resolution") == postproc.end())
+        DebugStop();
+    m_PostProc.vtk_resolution = postproc["vtk_resolution"];
+    if (postproc.find("training_resolution") == postproc.end())
+        DebugStop();
+    m_PostProc.training_resolution = postproc["training_resolution"];
+    if (postproc.find("nthreads") != postproc.end())
+        m_PostProc.nthreads = postproc["nthreads"];
+    else
+        m_PostProc.nthreads = 0;
+
+    if (input.find("VerbosityLevel") != input.end())
+        m_VerbosityLevel = input["VerbosityLevel"];
+    else
+        m_VerbosityLevel = 0;
 }
 
 void ProblemData::Print(std::ostream &out)
@@ -151,7 +178,6 @@ void ProblemData::Print(std::ostream &out)
     out << "File: " << m_Mesh.file << std::endl;
     out << "Number of uniform refinements: " << m_Mesh.NumUniformRef << std::endl;
     out << "Number of directional refinements: " << m_Mesh.NumDirRef << std::endl;
-    out << "VTK mesh resolution: " << m_Mesh.Resolution << std::endl;
     out << "Cylindrical map: " << (m_Mesh.ToCylindrical ? "Yes" : "No") << std::endl
         << std::endl;
 
@@ -162,7 +188,7 @@ void ProblemData::Print(std::ostream &out)
     out << "Polynomial order: " << m_Wellbore.pOrder << std::endl;
     out << "Radius: " << m_Wellbore.radius << std::endl;
     out << "Length: " << m_Wellbore.length << std::endl;
-    out << "Excentricity: " << m_Wellbore.excentricity << std::endl;
+    out << "Eccentricity: " << m_Wellbore.eccentricity << std::endl;
     out << "Boundary conditions:\n";
     for (const auto &bc : m_Wellbore.BCs)
     {
@@ -196,9 +222,15 @@ void ProblemData::Print(std::ostream &out)
     out << "Name: " << m_Fluid.name << std::endl;
     out << "Viscosity: " << m_Fluid.viscosity << std::endl;
     out << "Density: " << m_Fluid.density << std::endl
-        << std::endl;
+        << std::endl << std::endl;
 
-    out << std::endl;
+    out << "Post Processing Data:\n";
+    out << "Wellbore VTK: " << m_PostProc.wellbore_vtk << std::endl;
+    out << "Reservoir VTK: " << m_PostProc.reservoir_vtk << std::endl;
+    out << "Training Data: " << m_PostProc.training_data << std::endl;
+    out << "VTK Resolution: " << m_PostProc.vtk_resolution << std::endl;
+    out << "Training Data Resolution: " << m_PostProc.training_resolution << std::endl;
+    out << "Number of threads: " << m_PostProc.nthreads << std::endl << std::endl;
 
     out << "Verbosity Level: " << m_VerbosityLevel << std::endl;
 }
