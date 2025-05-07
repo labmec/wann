@@ -14,8 +14,6 @@ using namespace std;
 
 const int global_nthread = 32;
 
-void PostProceDataForANN(TPZGeoMesh* gmesh, ProblemData* SimData, std::string& filename, const int npts);
-
 int main() {
   std::cout << "--------- Starting simulation ---------" << std::endl;
 #ifdef PZ_LOG
