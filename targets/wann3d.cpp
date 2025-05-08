@@ -14,7 +14,21 @@ using namespace std;
 
 const int global_nthread = 32;
 
-int main() {
+int main(int argc, char *argv[]) {
+
+  std::string jsonfile = "wann3d.json";
+
+  if (argc > 2) {
+    std::cout << argv[0] << " being called with too many arguments." << std::endl;
+    DebugStop();
+  } else if (argc == 2) {
+    jsonfile = argv[1];
+  }
+
+  if (jsonfile.find(".json") == std::string::npos) {
+    jsonfile += ".json";
+  }
+  std::cout << "Using json file: " << jsonfile << std::endl;
   std::cout << "--------- Starting simulation ---------" << std::endl;
 #ifdef PZ_LOG
   TPZLogger::InitializePZLOG();
@@ -22,7 +36,7 @@ int main() {
 
   // Problem data
   ProblemData SimData;
-  SimData.ReadJson("wann3d.json");
+  SimData.ReadJson(jsonfile);
   
   TPZGeoMesh* gmesh = TPZWannGeometryTools::CreateGeoMesh(&SimData);
   
