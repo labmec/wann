@@ -8,8 +8,8 @@ Geometry.SnapPoints = 0;
 
 //wellbore dimensions
 Lw = 1; //[m] wellbore length //400 m
-//Dw = 0.1; //[m] wellbore diameter //0.1 m
-Dw = 0.001; //[m] wellbore diameter //0.1 m FIXME this Dw value generates the error
+Dw = 0.1; //[m] wellbore diameter //0.1 m
+//Dw = 0.001; //[m] wellbore diameter //0.1 m FIXME this Dw value generates the error
 
 //reservoir dimensions
 Lr = 4; //[m] length //2000 m
@@ -197,7 +197,7 @@ For k In {0:40:1}
    Printf("k = %f", k );
    k++;
 EndFor
-Mesh 3;
+//Mesh 3;
 
-Coherence Mesh;
+//Coherence Mesh;
 
