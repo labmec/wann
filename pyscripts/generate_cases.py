@@ -110,7 +110,7 @@ def get_geometric_parameters(case): #{{{
     #Lw = random.uniform(400., 600.)
     #Lw = random.randint(400, 600)
     Lw = random.randrange(100, 250, 50) 
-    Dw = random.uniform(0.127, 0.1778)
+    Rw = random.uniform(0.127*2, 0.1778*2) #VERIFICAR ESSES VALORES
 
     Lr = round(random.uniform(1.2, 2.0) * Lw)
     Wr = round(random.uniform(1.0, 2.0) * Lw)
@@ -120,12 +120,12 @@ def get_geometric_parameters(case): #{{{
 
     if 0:
         Lw = 2
-        Dw = 0.2
+        Rw = 0.2
         Lr = 5
         Wr = 4
         Hr = 2
 
-    return Lw, Dw, Lr, Wr, Hr
+    return Lw, Rw, Lr, Wr, Hr
 #}}}
 
 def search_root_directory():
@@ -151,10 +151,10 @@ for case in range(1,number_of_cases+1):
     caseparam = "case_"+str(case)+".json"
     
     print("   get geometric and physical parameters")
-    Lw, Dw, Lr, Wr, Hr = get_geometric_parameters(case)
+    Lw, Rw, Lr, Wr, Hr = get_geometric_parameters(case)
     params = SimulationParameters()
     params.WellboreData["length"] = Lw
-    params.WellboreData["radius"] = Dw / 2
+    params.WellboreData["radius"] = Rw
     params.ReservoirData["length"] = Lr
     params.ReservoirData["width"] = Wr
     params.ReservoirData["height"] = Hr
@@ -166,11 +166,12 @@ for case in range(1,number_of_cases+1):
     print("   open base mesh file and replace geometric parameters")
     with open(basemesh, 'r') as file:
         data = file.read()
-        # data = data.replace("Lw = 1",   "Lw = "+str(Lw))
-        # data = data.replace("Dw = 0.1", "Dw = "+str(Dw))
-        # data = data.replace("Lr = 4",   "Lr = "+str(Lr))
-        # data = data.replace("Wr = 3",   "Wr = "+str(Wr))
-        # data = data.replace("Hr = 1",   "Hr = "+str(Hr))
+        data = data.replace("Lw = 1",   "Lw = "+str(Lw))
+        data = data.replace("Rw = 0.2", "Rw = "+str(Rw))
+        data = data.replace("Lr = 4",   "Lr = "+str(Lr))
+        data = data.replace("Wr = 3",   "Wr = "+str(Wr))
+        data = data.replace("Hr = 1",   "Hr = "+str(Hr))
+        data = data.replace("file.msh",   input_dir+"/"+casemesh)
         file.close()
 
     print("   save .geo")
@@ -178,8 +179,10 @@ for case in range(1,number_of_cases+1):
         file.write(data) 
         file.close()
     
+    f = open(input_dir+"/gmsh_log_case_"+str(case)+".txt", "w")
     print("   call gmsh to generate the mesh")
-    subprocess.run(["gmsh", "-3", "-o", input_dir+"/"+casemesh, geo_dir+"/"+casegeo, "Mesh.Coherence"], check=True)
+    # subprocess.run(["gmsh", "-3", "-o", input_dir+"/"+casemesh, geo_dir+"/"+casegeo, "Mesh.Coherence"], check=True, stdout=f)
+    subprocess.run(["gmsh", geo_dir+"/"+casegeo, "-"], check=True, stdout=f)
     
     # print("   save .txt")
     # with open(caseparam, 'w') as file: 

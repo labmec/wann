@@ -8,7 +8,8 @@ Geometry.SnapPoints = 0;
 
 //wellbore dimensions
 Lw = 1; //[m] wellbore length //400 m
-Dw = 0.1; //[m] wellbore diameter //0.1 m
+//Dw = 0.1; //[m] wellbore diameter //0.1 m
+Rw = 0.2; //[m] wellbore radius
 //Dw = 0.001; //[m] wellbore diameter //0.1 m FIXME this Dw value generates the error
 
 //reservoir dimensions
@@ -27,10 +28,10 @@ s = Sin(Pi/4.);
 
 //points of the heel part {{{
 p1 = newp; Point(p1) = {0, 0, 0, 1.0};//center of the domain (wellbore heel)
-p2 = newp; Point(p2) = {0, -Dw*s,  Dw*s, 1.0};//well
-p3 = newp; Point(p3) = {0,  Dw*s,  Dw*s, 1.0};//well
-p4 = newp; Point(p4) = {0,  Dw*s, -Dw*s, 1.0};//well
-p5 = newp; Point(p5) = {0, -Dw*s, -Dw*s, 1.0};//well
+p2 = newp; Point(p2) = {0, -Rw*s,  Rw*s, 1.0};//well
+p3 = newp; Point(p3) = {0,  Rw*s,  Rw*s, 1.0};//well
+p4 = newp; Point(p4) = {0,  Rw*s, -Rw*s, 1.0};//well
+p5 = newp; Point(p5) = {0, -Rw*s, -Rw*s, 1.0};//well
 //}}}
 //circles and lines of the wellbore heel {{{
 Circle(1) = {p2, p1, p3};
@@ -197,7 +198,7 @@ For k In {0:40:1}
    Printf("k = %f", k );
    k++;
 EndFor
-//Mesh 3;
+Mesh 3;
 
-//Coherence Mesh;
-
+Coherence Mesh;
+Save "file.msh";

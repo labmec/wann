@@ -4,7 +4,7 @@ TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
 
   TPZGeoMesh* gmesh = ReadMeshFromGmsh(simData);
 
-  if (simData->m_VerbosityLevel) {
+  if (1) {
     std::ofstream out("gmeshorig.vtk");
     TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
   }
@@ -50,7 +50,7 @@ TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
 TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
 
   std::string file = simData->m_Mesh.file;
-  std::string path(std::string(MESHDIR) + "/" + file);
+  std::string path(std::string(INPUTDIR) + "/" + file);
   TPZGeoMesh* gmesh = new TPZGeoMesh();
   {
     TPZGmshReader reader;
@@ -86,7 +86,7 @@ TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
 }
 
 void TPZWannGeometryTools::ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh, ProblemData* SimData) {
-  const REAL cylradius = 0.1;
+  const REAL cylradius = SimData->m_Wellbore.radius;
   const TPZManVector<REAL,3> cylcenter = {0.,0.,0.}, cylaxis = {1.,0.,0.};
   int64_t nel = gmesh->NElements();
   for(int64_t iel = 0; iel < nel ; iel++) {

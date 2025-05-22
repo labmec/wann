@@ -16,7 +16,7 @@ const int global_nthread = 32;
 
 int main(int argc, char *argv[]) {
 
-  std::string jsonfile = "wann3d.json";
+  std::string jsonfile = "case_1.json";
 
   if (argc > 2) {
     std::cout << argv[0] << " being called with too many arguments." << std::endl;
