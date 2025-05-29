@@ -17,7 +17,7 @@ Wr = 3; //[m] width  //1000 m
 Hr = 1; //[m] height //100 m
 
 //wellbore eccentricity
-ecc = 0.5; //[] 0<=ecc<=0.5 wellbore eccentricity (only over the z-axis) 
+ecc = 0; //[] 0<=ecc<=0.5 wellbore eccentricity (only over the z-axis) 
 max_vert_disp = Hr/2-Rw; //[m]  
 
 //wellbore division (chan
