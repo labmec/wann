@@ -60,7 +60,9 @@ TPZMultiphysicsCompMesh* createCompMeshMixed(TPZGeoMesh *gmesh, int order = 1);
 // Error estimation function - computes flux difference between H1 and Mixed methods
 int64_t ErrorEstimation(TPZCompMesh* cmesh, TPZMultiphysicsCompMesh* cmeshMixed);
 
-void FakeRefine(TPZCompMesh* cmesh);
+void RefineInteriorElement(TPZCompMesh* cmesh);
+
+void RefineBoundaryElement(TPZCompMesh* cmesh);
 
 // =============
 // Main function
@@ -88,8 +90,8 @@ int main (int argc, char * const argv[]) {
   int order = 1; // Polynomial order
 
   // Initial geometric mesh
-  // TPZGeoMesh* gmesh = createGeoMesh3D({3, 3, 3}, {0., 0., 0.}, {1., 1., 1.});
-  TPZGeoMesh* gmesh = createGeoMesh2D({3, 3}, {0., 0.}, {1., 1.});
+  TPZGeoMesh* gmesh = createGeoMesh3D({3, 3, 3}, {0., 0., 0.}, {1., 1., 1.});
+  // TPZGeoMesh* gmesh = createGeoMesh2D({3, 3}, {0., 0.}, {1., 1.});
   std::ofstream outGmesh("gmesh.txt");
   gmesh->Print(outGmesh);
 
@@ -139,7 +141,7 @@ int main (int argc, char * const argv[]) {
 
     // --- Fake refinement ---
 
-    FakeRefine(cmeshMixed);
+    RefineBoundaryElement(cmeshMixed);
 
     // --- Clean up ---
 
@@ -365,7 +367,7 @@ TPZMultiphysicsCompMesh* createCompMeshMixed(TPZGeoMesh *gmesh, int order) {
   return cmesh;
 }
 
-void FakeRefine(TPZCompMesh* cmesh) {
+void RefineInteriorElement(TPZCompMesh* cmesh) {
   TPZGeoMesh *gmesh = cmesh->Reference();
   if (!gmesh) DebugStop();
   int dim  = gmesh->Dimension();
@@ -386,6 +388,33 @@ void FakeRefine(TPZCompMesh* cmesh) {
     }
     TPZVec<TPZGeoEl *> pv;
     if (flag == true) gel->Divide(pv);
+  }
+}
+
+void RefineBoundaryElement(TPZCompMesh* cmesh) {
+  TPZGeoMesh *gmesh = cmesh->Reference();
+  if (!gmesh) DebugStop();
+  int dim  = gmesh->Dimension();
+
+  int64_t nels = gmesh->NElements();
+  for (int64_t el = 0; el < nels; ++el) {
+    bool flag = false;
+    TPZGeoEl *gel = gmesh->Element(el);
+    if (!gel || gel->Dimension() != dim || gel->HasSubElement()) continue;
+    int firstside = gel->FirstSide(dim-1);
+    int lastside = gel->FirstSide(dim);
+    for (int side = firstside; side < lastside; ++side){
+      TPZGeoElSide gelSide(gel,side);
+      TPZGeoElSide neigh = gelSide.Neighbour();
+      if (gelSide.HasNeighbour(EBack)) {
+        flag = true;
+      }
+    }
+    TPZVec<TPZGeoEl *> pv;
+    if (flag == true) {
+      gel->Divide(pv);
+      break;
+    }
   }
 }
 
