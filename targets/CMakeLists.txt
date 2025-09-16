@@ -6,3 +6,6 @@ target_link_libraries(oldwann3d PRIVATE WANN_lib)
 
 add_executable(hanging-nodes-test hanging-nodes-test.cpp)
 target_link_libraries(hanging-nodes-test PRIVATE WANN_lib)
+
+add_executable(test-divide test-divide.cpp)
+target_link_libraries(test-divide PRIVATE WANN_lib)
