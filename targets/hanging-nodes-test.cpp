@@ -104,8 +104,11 @@ int main (int argc, char * const argv[]) {
 
     // Mixed solver
     TPZLinearAnalysis anMixed(cmeshMixed, RenumType::EMetis);
-    TPZFStructMatrix<STATE> matMixed(cmeshMixed);
-    // TPZSSpStructMatrix<STATE> matMixed(cmeshMixed); 
+    #ifdef PZ_USING_MKL
+      TPZSSpStructMatrix<STATE> matMixed(cmeshMixed);
+    #else
+      TPZFStructMatrix<STATE> matMixed(cmeshMixed);
+    #endif
     matMixed.SetNumThreads(nthreads); 
     anMixed.SetStructuralMatrix(matMixed);
     TPZStepSolver<STATE> stepMixed;
@@ -115,8 +118,11 @@ int main (int argc, char * const argv[]) {
 
     // H1 solver
     TPZLinearAnalysis anH1(cmeshH1);
-    // TPZSSpStructMatrix<STATE> matH1(cmeshH1);
-    TPZFStructMatrix<STATE> matH1(cmeshH1);
+    #ifdef PZ_USING_MKL
+      TPZSSpStructMatrix<STATE> matH1(cmeshH1);
+    #else
+      TPZFStructMatrix<STATE> matH1(cmeshH1);
+    #endif
     matH1.SetNumThreads(nthreads);
     anH1.SetStructuralMatrix(matH1);
     TPZStepSolver<STATE> stepH1;
