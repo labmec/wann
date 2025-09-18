@@ -17,6 +17,7 @@
 #include "TPZAnalyticSolution.h"
 #include "pzlog.h"
 #include "pzintel.h"
+#include "pzvec_extras.h"
 
 // ================
 // Global variables
@@ -65,6 +66,8 @@ void RefineInteriorElement(TPZCompMesh* cmesh);
 
 void RefineBoundaryElement(TPZCompMesh* cmesh);
 
+void ComputeNormal(TPZGeoEl *gel, TPZManVector<REAL,3> &ax3);
+
 // =============
 // Main function
 // =============
@@ -93,12 +96,55 @@ int main (int argc, char * const argv[]) {
   // Initial geometric mesh
   TPZGeoMesh* gmesh = createGeoMesh3D({3, 3, 3}, {0., 0., 0.}, {1., 1., 1.});
   // TPZGeoMesh* gmesh = createGeoMesh2D({3, 3}, {0., 0.}, {1., 1.});
-  std::ofstream outGmesh("gmesh.txt");
-  gmesh->Print(outGmesh);
+
+  for (int igel = 0; igel < gmesh->NElements(); igel++) {
+    TPZGeoEl *gel = gmesh->Element(igel);
+    if (gel->Dimension() != 2) continue;
+    if (!gel) DebugStop();
+    TPZManVector<REAL,3> normal(3);
+    ComputeNormal(gel, normal);
+    // Check if the element is on a boundary and if normal points outward
+    int matid = gel->MaterialId();
+
+    // For each boundary, define the outward normal direction
+    // normal should point outward: +z (ETop), -z (EBottom), +x (ERight), -x (ELeft), +y (EBack), -y (EFront)
+    bool outward;
+    switch (matid)
+    {
+    case ETop:
+      outward = (normal[2] > 0);
+      break;
+    case EBottom:
+      outward = (normal[2] < 0);
+      break;
+    case ERight:
+      outward = (normal[0] > 0);
+      break;
+    case ELeft:
+      outward = (normal[0] < 0);
+      break;
+    case EBack:
+      outward = (normal[1] > 0);
+      break;
+    case EFront:
+      outward = (normal[1] < 0);
+      break;
+    default:
+      break;
+    }
+    if (!outward) {
+      std::cout << "Element " << gel->Index() << " with matid " << matid << " has inward normal!" << std::endl;
+      DebugStop();
+    }
+  }
 
   while (iteration < 2) {
     iteration++;
-
+    {
+      std::string filename = "gmesh_" + std::to_string(iteration) + ".vtk";
+      std::ofstream outGmesh(filename);
+      TPZVTKGeoMesh::PrintGMeshVTK(gmesh, outGmesh);
+    }
     TPZMultiphysicsCompMesh* cmeshMixed = createCompMeshMixed(gmesh, order);
     TPZCompMesh* cmeshH1 = createCompMeshH1(gmesh, order);
 
@@ -524,4 +570,18 @@ int64_t ErrorEstimation(TPZCompMesh* cmesh, TPZMultiphysicsCompMesh* cmeshMixed)
   std::cout << "\nError estimation in energy norm: " << totalError << std::endl;
 
   return imax;
+}
+
+void ComputeNormal(TPZGeoEl *gel, TPZManVector<REAL,3> &ax3) {
+    if(gel->Dimension() != 2) DebugStop();
+    TPZGeoElSide gelside(gel);
+    TPZManVector<REAL,3> qsi(2),ax1(3),ax2(3);
+    TPZFNMatrix<6,REAL> gradx(3,2);
+    gelside.CenterPoint(qsi);
+    gel->GradX(qsi,gradx);
+    for(int i=0; i<3; i++) {
+        ax1[i] = gradx(i,0);
+        ax2[i] = gradx(i,1);
+    }
+    Cross(ax1,ax2,ax3);
 }
