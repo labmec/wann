@@ -38,3 +38,6 @@ pytorch/__pycache__
 
 # config files
 src/dirs_config.h
+
+#training data
+training/training_data.txt
