@@ -80,6 +80,19 @@ TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
     reader.SetDimNamePhysical(stringtoint);
     reader.GeometricGmshMesh(path, gmesh);
 
+    //Remove gmsh boundary elements and create GeoElBC so normals are consistent
+    int64_t nel = gmesh->NElements();
+    for(int64_t el = 0; el < nel; el++){
+        TPZGeoEl *gel = gmesh->Element(el);
+        if(!gel || gel->Dimension() != gmesh->Dimension()-1) continue;
+        TPZGeoElSide gelside(gel);
+        TPZGeoElSide neigh = gelside.Neighbour();
+        gel->RemoveConnectivities();
+        int matid = gel->MaterialId();
+        delete gel;
+        TPZGeoElBC gbc(neigh, matid);
+    }
+
     //remember to modify the matids in ProblemData according to the map
   }
   return gmesh;
