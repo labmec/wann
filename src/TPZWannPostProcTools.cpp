@@ -105,6 +105,9 @@ void TPZWannPostProcTools::WriteVTKs(TPZCompMesh* cmesh, ProblemData* SimData) {
 
 void TPZWannPostProcTools::PostProcessAllData(TPZCompMesh* cmesh, TPZGeoMesh* gmesh, ProblemData* SimData) {
 
+  cmesh->Reference()->ResetReference();
+  cmesh->LoadReferences();
+
   WriteReservoirVTK(cmesh, SimData);
   WriteWellboreVTK(cmesh, SimData);
   GenerateTrainingData(gmesh, SimData);
