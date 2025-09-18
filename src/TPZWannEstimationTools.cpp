@@ -259,20 +259,20 @@ void TPZWannEstimationTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int64_t>& nee
 
   // From initial list of "to-refine" elements, add the boundary elements that 
   // need refinement
-  for (int64_t i = 0; i < needRefinement.size(); ++i) {
-    TPZGeoEl* gel = gmesh->Element(needRefinement[i]);
-    if (!gel) DebugStop();
-    if (gel->Dimension() != 3) continue; 
-    int firstside = gel->FirstSide(dim-1);
-    int lastside = gel->FirstSide(dim);
-    for (int side = firstside; side < lastside; ++side) {
-      TPZGeoElSide gelSide(gel, side);
-      TPZGeoElSide neigh = gelSide.HasNeighbour(SimData->EFarField);
-      if (neigh) {
-        needRefinement.push_back(neigh.Element()->Index());
-      }
-    }
-  }
+  // for (int64_t i = 0; i < needRefinement.size(); ++i) {
+  //   TPZGeoEl* gel = gmesh->Element(needRefinement[i]);
+  //   if (!gel) DebugStop();
+  //   if (gel->Dimension() != 3) continue; 
+  //   int firstside = gel->FirstSide(dim-1);
+  //   int lastside = gel->FirstSide(dim);
+  //   for (int side = firstside; side < lastside; ++side) {
+  //     TPZGeoElSide gelSide(gel, side);
+  //     TPZGeoElSide neigh = gelSide.HasNeighbour(SimData->EFarField);
+  //     if (neigh) {
+  //       needRefinement.push_back(neigh.Element()->Index());
+  //     }
+  //   }
+  // }
 
   // From xcoords2D, get the 2D elements that need refinement (fill needRefinement2D)
   for (int64_t iel = 0; iel < gmesh->NElements(); ++iel) {
