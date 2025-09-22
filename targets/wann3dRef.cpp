@@ -59,6 +59,76 @@ int main(int argc, char *argv[]) {
     analysis.SetSolver(step);
     analysis.Run();
 
+    {
+      std::ofstream out("solution.txt");
+      TPZFMatrix<REAL>& sol = analysis.Solution();
+      sol.Print("Solution", out, EMathematicaInput);
+    }
+
+    // if (refIt == 1) {
+
+    //   int64_t ncon = cmesh->NConnects();
+    //   for (int64_t icon = 0; icon < ncon; icon++)
+    //   {
+    //     TPZConnect &c = cmesh->ConnectVec()[icon];
+    //     if (c.HasDependency())
+    //       continue;
+    //     if (!c.LagrangeMultiplier()) // Flux
+    //     {
+    //       int nshape = c.NShape();
+    //       int blocksize = c.NShape() * c.NState();
+    //       int64_t seqnum = c.SequenceNumber();
+    //       if (seqnum < 0)
+    //         continue;
+    //       int64_t pos = cmesh->Block().Position(seqnum);
+    //       for (int i = 0; i < blocksize; i++)
+    //       {
+    //         TPZFMatrix<REAL> &sol = analysis.Solution();
+    //         sol(pos + i, 0) = 0.0;
+    //       }
+    //     }
+    //     else // Pressure
+    //     {
+    //       int nshape = c.NShape();
+    //       int blocksize = c.NShape() * c.NState();
+    //       int64_t seqnum = c.SequenceNumber();
+    //       if (seqnum < 0)
+    //         continue;
+    //       int64_t pos = cmesh->Block().Position(seqnum);
+    //       if (c.Order() == 1) // vertex functions
+    //       {
+    //         for (int i = 0; i < blocksize; i++)
+    //         {
+    //           TPZFMatrix<REAL> &sol = analysis.Solution();
+    //           sol(pos + i, 0) = 1.0;
+    //         }
+    //       }
+    //       else // internal functions
+    //       {
+    //         for (int i = 0; i < blocksize; i++)
+    //         {
+    //           TPZFMatrix<REAL> &sol = analysis.Solution();
+    //           sol(pos + i, 0) = 0.0;
+    //         }
+    //       }
+    //     }
+    //   }
+
+    //   TPZFMatrix<REAL>& sol = analysis.Solution();
+    //   {
+    //     std::ofstream out("solution2.txt");
+    //     sol.Print("Solution", out, EMathematicaInput);
+    //   }
+    //   TPZFMatrix<REAL>& rhs = analysis.Rhs();
+    //   auto mat = analysis.MatrixSolver<REAL>().Matrix();
+
+    //   TPZFMatrix<REAL> residual = rhs;
+    //   mat->MultAdd(sol, rhs, residual, 1., -1.);
+    //   analysis.LoadSolution(residual);
+    //   cmesh->TransferMultiphysicsSolution();
+    // }
+
+
     // ---- H1 analysis ----
     TPZLinearAnalysis analysisH1(cmeshH1);
     TPZSSpStructMatrix<STATE> skylstrH1(cmeshH1);

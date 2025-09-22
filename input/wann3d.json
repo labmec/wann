@@ -16,12 +16,12 @@
       {
         "name": "point_heel",
         "type": 0, //dirichlet:0    neumann:1
-        "value": 2.0
+        "value": 1.0
       },
       {
         "name": "point_toe",
-        "type": 1,
-        "value": 0.0
+        "type": 0,
+        "value": 1.0
       }
     ]
   },
@@ -41,13 +41,13 @@
       },
       {
         "name": "surface_wellbore_heel",
-        "type": 1,
-        "value": 0.0
+        "type": 0,
+        "value": 1.0
       },
       {
         "name": "surface_wellbore_toe",
-        "type": 1,
-        "value": 0.0
+        "type": 0,
+        "value": 1.0
       }
     ]
   },

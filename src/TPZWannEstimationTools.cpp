@@ -372,40 +372,41 @@ REAL TPZWannEstimationTools::ElementDiameter(TPZGeoEl* gel) {
 // Old or experimental stuff
 // ==============================
 
-void TPZWannEstimationTools::FakeRefine(TPZGeoMesh* gmesh, TPZVec<int64_t>& needRefinement, ProblemData* SimData) {
+void TPZWannEstimationTools::FakeRefine(TPZGeoMesh* gmesh, ProblemData* SimData) {
   REAL dim = gmesh->Dimension();
   REAL tol = 1e-6;
   int n_refined = 0;
-  std::set<REAL> xcoords2D;
-  TPZVec<int64_t> needRefinement1D;
-  TPZVec<int64_t> needRefinement2D;
-  TPZVec<int64_t> needRefinement3D;
 
   std::set<int> matIds = {
-      SimData->ESurfWellCyl, SimData->EPressure2DSkin, 
-      SimData->EPressureInterface, SimData->EHDivBoundInterface
+      SimData->EFarField
     };
 
+  int64_t nel = gmesh->NElements();
+
   // Perform h-refinement on the specified elements
-  for (int64_t i = 0; i < needRefinement.size(); ++i) {
+  for (int64_t i = 0; i < nel; ++i) {
     TPZVec<TPZGeoEl *> pv;
-    TPZGeoEl* gel = gmesh->Element(needRefinement[i]);
+    TPZGeoEl* gel = gmesh->Element(i);
     if (gel->Dimension() != 3) continue;
-    bool willRefine = true;
+    bool willRefine = false;
     int firstside = gel->FirstSide(2);
     int lastside = gel->FirstSide(3);
     for (int side = firstside; side < lastside; ++side){
       TPZGeoElSide gelSide(gel,side);
       TPZGeoElSide neigh = gelSide.HasNeighbour(matIds);
       if (neigh) {
-        willRefine = false;
+        willRefine = true;
       }
     }
     if (!gel) DebugStop();
     if (gel->HasSubElement()) continue; // We have to do this because of duplicated entries
-    if (!willRefine) continue;
-    gel->Divide(pv);
-    n_refined++;
+    if (willRefine) {
+      n_refined++;
+      if (n_refined >= 2) {
+        gel->Divide(pv);
+        break;
+      }
+    }
   }
   std::cout << n_refined << " elements were refined in the fake refinement." << std::endl;
 }
