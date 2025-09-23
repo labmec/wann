@@ -266,11 +266,6 @@ void TPZWannApproxTools::AddPressureSkinElements(TPZCompMesh *cmesh, ProblemData
     TPZConnect &c = cel->Connect(8);
     c.SetOrder(1);
     c.SetNShape(0);
-
-    for (int i = 0; i < 9; i++) {
-      TPZConnect &c = cel->Connect(i);
-      c.SetLagrangeMultiplier(laglevel);
-    }
   }
 
   for (auto iel : pressure2Dels) {
@@ -309,6 +304,11 @@ void TPZWannApproxTools::AddPressureSkinElements(TPZCompMesh *cmesh, ProblemData
       if (fabs(midpoint - closestX) > tol)
         DebugStop(); // Has to be in the middle!
       cel->SetConnectIndex(i, newconnects[2]);
+    }
+
+    for (int i = 0; i < 9; i++) {
+      TPZConnect &con = cel->Connect(i);
+      con.SetLagrangeMultiplier(laglevel);
     }
   }
 
