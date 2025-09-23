@@ -1,6 +1,6 @@
 #include "TPZWannApproxTools.h"
 
-TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData)
+TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TPZAnalyticSolution *exact)
 {
 
   const int dim = gmesh->Dimension();
@@ -10,12 +10,21 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
   hdivCreator.SetDefaultOrder(SimData->m_Reservoir.pOrder);
   hdivCreator.SetShouldCondense(false);
 
+  TLaplaceExample1* exactsol = dynamic_cast<TLaplaceExample1 *>(exact);
+  bool hasAnalyticSol = (exactsol != nullptr && exactsol->fExact != TLaplaceExample1::ENone);
+
   // Reservoir material
   auto &ReservoirData = SimData->m_Reservoir;
   {
 
     TPZMixedDarcyFlow *reservoirMat = new TPZMixedDarcyFlow(SimData->EDomain, dim);
-    reservoirMat->SetConstantPermeability(ReservoirData.perm);
+    if (hasAnalyticSol) {
+      reservoirMat->SetExactSol(exact->ExactSolution(), 3);
+      reservoirMat->SetForcingFunction(exact->ForceFunc(), 3);
+      reservoirMat->SetConstantPermeability(1.0);
+    } else {
+      reservoirMat->SetConstantPermeability(ReservoirData.perm);
+    }
     hdivCreator.InsertMaterialObject(reservoirMat);
 
     for (auto &bcpair : ReservoirData.BCs)
@@ -25,6 +34,7 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
       TPZManVector<STATE> val2(1, 0);
       val2[0] = bc.value;
       TPZBndCondT<STATE> *BCond = reservoirMat->CreateBC(reservoirMat, bc.matid, bc.type, val1, val2);
+      if (hasAnalyticSol) BCond->SetForcingFunctionBC(exact->ExactSolution(), 3);
       hdivCreator.InsertMaterialObject(BCond);
     }
 
@@ -55,7 +65,13 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
   {
     const int dimwell = 1;
     TPZMixedDarcyFlow *wellboreMat = new TPZMixedDarcyFlow(SimData->ECurveWell, dimwell);
-    wellboreMat->SetConstantPermeability(WellboreData.perm);
+    if (hasAnalyticSol) {
+      wellboreMat->SetExactSol(exact->ExactSolution(), 3);
+      wellboreMat->SetForcingFunction(exact->ForceFunc(), 3);
+      wellboreMat->SetConstantPermeability(1.0);
+    } else {
+      wellboreMat->SetConstantPermeability(WellboreData.perm);
+    }
     hdivCreator.InsertMaterialObject(wellboreMat); // This will only be used in the creation of the multiphysics mesh since the dimension is smaller than the dimension of the geometric mesh
 
     // Change boundary condition value as a workaround
@@ -71,6 +87,7 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
       TPZManVector<STATE> val2(1, 0);
       val2[0] = bc.value;
       TPZBndCondT<STATE> *BCond = wellboreMat->CreateBC(wellboreMat, bc.matid, bc.type, val1, val2);
+      if (hasAnalyticSol) BCond->SetForcingFunctionBC(exact->ExactSolution(), 3);
       hdivCreator.InsertMaterialObject(BCond);
     }
 

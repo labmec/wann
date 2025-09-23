@@ -30,6 +30,7 @@ TPZVec<int64_t> TPZWannEstimationTools::ErrorEstimation(TPZMultiphysicsCompMesh*
     std::ofstream clearlog("error_estimation.txt", std::ios_base::trunc);
   }
 
+  nthreads++;
   // Ensure references point to H1 cmesh
   cmesh->Reference()->ResetReference();
   cmesh->LoadReferences();
@@ -175,8 +176,7 @@ TPZVec<int64_t> TPZWannEstimationTools::ErrorEstimation(TPZMultiphysicsCompMesh*
     }
     partialErrors[tid] = localTotalError;
   };
-
-  int64_t chunk = ncel / nthreads;
+  int64_t chunk = ncel/nthreads;
   for (int t = 0; t < nthreads; ++t) {
     int64_t start = t * chunk;
     int64_t end = (t == nthreads - 1) ? ncel : (t + 1) * chunk;

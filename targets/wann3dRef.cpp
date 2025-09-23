@@ -10,12 +10,18 @@
 #include <TPZLinearAnalysis.h>
 #include <TPZSSpStructMatrix.h>  //symmetric sparse matrix storage
 #include <pzstepsolver.h>
+#include <TPZAnalyticSolution.h>
 
 using namespace std;
 
-const int global_nthread = 1;
+const int global_nthread = 0;
+
 
 int main(int argc, char *argv[]) {
+  
+  TLaplaceExample1 exact; // Global variable to be used in the material objects
+  exact.fDimension = 3;
+  exact.fExact = TLaplaceExample1::ENone;
 
   std::string jsonfile = "case_1.json";
   jsonfile = "wann3d.json";
@@ -45,7 +51,7 @@ int main(int argc, char *argv[]) {
   
   // Refinement loop (experimental)
   for (int refIt = 0; refIt < 2; refIt++) {
-    TPZMultiphysicsCompMesh* cmesh = TPZWannApproxTools::CreateMultiphysicsCompMesh(gmesh, &SimData);
+    TPZMultiphysicsCompMesh* cmesh = TPZWannApproxTools::CreateMultiphysicsCompMesh(gmesh, &SimData, &exact);
     TPZCompMesh* cmeshH1 = TPZWannApproxTools::CreateH1CompMesh(gmesh, &SimData);
 
     // ---- Hdiv analysis ----

@@ -10,11 +10,12 @@
 #include <Material/TPZLagrangeMultiplierCS.h>
 #include <Material/TPZLagrangeMultiplier.h>
 #include <Mesh/pzintel.h>
+#include <TPZAnalyticSolution.h>
 
 class TPZWannApproxTools {
 
 public:
-  static TPZMultiphysicsCompMesh* CreateMultiphysicsCompMesh(TPZGeoMesh* gmesh, ProblemData* SimData);
+  static TPZMultiphysicsCompMesh* CreateMultiphysicsCompMesh(TPZGeoMesh* gmesh, ProblemData* SimData, TPZAnalyticSolution* exactsol);
   static TPZCompMesh* CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData *SimData) ;
 
 private:
