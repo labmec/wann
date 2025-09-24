@@ -8,7 +8,8 @@
 #include "TPZWannPostProcTools.h"
 #include "TPZWannEstimationTools.h"
 #include <TPZLinearAnalysis.h>
-#include <TPZSSpStructMatrix.h>  //symmetric sparse matrix storage
+#include <TPZSSpStructMatrix.h>  //symmetric sparse matrix storage>
+#include <pzskylstrmatrix.h>
 #include <pzstepsolver.h>
 #include <TPZAnalyticSolution.h>
 
@@ -56,7 +57,11 @@ int main(int argc, char *argv[]) {
 
     // ---- Hdiv analysis ----
     TPZLinearAnalysis analysis(cmesh);
+    #ifdef PZ_USING_MKL
     TPZSSpStructMatrix<STATE> skylstr(cmesh);
+    #else
+    TPZSkylStrMatrix skylstr(cmesh);
+    #endif
     skylstr.SetNumThreads(global_nthread);
     analysis.SetStructuralMatrix(skylstr);
 
@@ -137,7 +142,11 @@ int main(int argc, char *argv[]) {
 
     // ---- H1 analysis ----
     TPZLinearAnalysis analysisH1(cmeshH1);
+    #ifdef PZ_USING_MKL
     TPZSSpStructMatrix<STATE> skylstrH1(cmeshH1);
+    #else
+    TPZSkylStrMatrix skylstrH1(cmeshH1);
+    #endif
     skylstrH1.SetNumThreads(global_nthread);
     analysisH1.SetStructuralMatrix(skylstrH1);
 
