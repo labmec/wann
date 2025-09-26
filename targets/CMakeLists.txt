@@ -12,3 +12,6 @@ target_link_libraries(hanging-nodes-test PRIVATE WANN_lib)
 
 add_executable(test-divide test-divide.cpp)
 target_link_libraries(test-divide PRIVATE WANN_lib)
+
+add_executable(test-sideOrient-1d test-sideOrient-1d.cpp)
+target_link_libraries(test-sideOrient-1d PRIVATE WANN_lib)

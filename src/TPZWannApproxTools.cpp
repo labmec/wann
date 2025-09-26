@@ -76,9 +76,9 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
 
     // Change boundary condition value as a workaround
     //Any ideia how to do this in a more elegant way? it seems that the cylindrical map changes normal vector orientation of some elements
-    if (!SimData->m_Mesh.ToCylindrical) {
-      SimData->m_Wellbore.BCs["point_heel"].value *= -1;
-    }
+    // if (!SimData->m_Mesh.ToCylindrical) {
+    //   SimData->m_Wellbore.BCs["point_heel"].value *= -1;
+    // }
 
     for (auto &bcpair : WellboreData.BCs)
     {
@@ -92,9 +92,9 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
     }
 
     //Reverse boundary condition change
-    if (!SimData->m_Mesh.ToCylindrical) {
-      SimData->m_Wellbore.BCs["point_heel"].value *= -1;
-    }
+    // if (!SimData->m_Mesh.ToCylindrical) {
+    //   SimData->m_Wellbore.BCs["point_heel"].value *= -1;
+    // }
 
   }
 
