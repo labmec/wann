@@ -3,7 +3,7 @@
     "file": "mesh3D_rev08.msh",
     "NumUniformRef": 0,
     "NumDirRef": 0,
-    "ToCylindrical": 0
+    "ToCylindrical": 1
   },
   "WellboreData": {
     "name": "curve_wellbore",

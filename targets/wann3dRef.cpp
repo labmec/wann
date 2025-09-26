@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
   TPZGeoMesh* gmesh = TPZWannGeometryTools::CreateGeoMesh(&SimData);
   
   // Refinement loop (experimental)
-  for (int refIt = 0; refIt < 2; refIt++) {
+  for (int refIt = 0; refIt < 1; refIt++) {
     TPZMultiphysicsCompMesh* cmesh = TPZWannApproxTools::CreateMultiphysicsCompMesh(gmesh, &SimData, &exact);
     TPZCompMesh* cmeshH1 = TPZWannApproxTools::CreateH1CompMesh(gmesh, &SimData);
 
