@@ -15,3 +15,6 @@ target_link_libraries(test-divide PRIVATE WANN_lib)
 
 add_executable(test-sideOrient-1d test-sideOrient-1d.cpp)
 target_link_libraries(test-sideOrient-1d PRIVATE WANN_lib)
+
+add_executable(test-nonlinear test-nonlinear.cpp)
+target_link_libraries(test-nonlinear PRIVATE WANN_lib)
