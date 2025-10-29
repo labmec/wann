@@ -7,18 +7,18 @@ class TPZWannEstimationTools {
 
 protected:
     static constexpr REAL estimator_tol = 1e-3;
+    static constexpr REAL relative_estimator_tol = 1e-3;
 
 public:
   static void EstimateAndRefine(TPZMultiphysicsCompMesh* cmeshHdiv, TPZCompMesh* cmeshH1, ProblemData* SimData, int nthreads = 1);
-  static TPZVec<int64_t> ErrorEstimation(TPZMultiphysicsCompMesh* cmeshHdiv, TPZCompMesh* cmeshH1, ProblemData* SimData, int nthreads = 1);
-  static TPZVec<int64_t> ErrorEstimationOld(TPZMultiphysicsCompMesh* cmeshHdiv, TPZCompMesh* cmeshH1, ProblemData* SimData);
+  static TPZVec<int> ErrorEstimation(TPZMultiphysicsCompMesh* cmeshHdiv, TPZCompMesh* cmeshH1, ProblemData* SimData, int nthreads = 0);
+  static TPZVec<int> ErrorEstimationOld(TPZMultiphysicsCompMesh* cmeshHdiv, TPZCompMesh* cmeshH1, ProblemData* SimData, int nthreads = 0);
   static void CheckRef(TPZCompMesh* cmesh);
-  static void FakeRefine2(TPZGeoMesh* gmesh, ProblemData* SimData);
   static void FakeRefine(TPZGeoMesh* gmesh, ProblemData* SimData);
-  // Maybe something between? MarkElements?
   
 private:
   static REAL ForcingFunctionWellbore(TPZCompEl* celMixed, const TPZManVector<REAL,3>& pt);
-  static void hRefinement(TPZGeoMesh* gmesh, TPZVec<int64_t>& needRefinement, ProblemData* SimData);
+  static void hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& RefinementIndicator, ProblemData* SimData);
   static REAL ElementDiameter(TPZGeoEl* gel);
+  static void meshSmoothing(TPZGeoMesh* gmesh, TPZVec<int>& RefinementIndicator);
 };
