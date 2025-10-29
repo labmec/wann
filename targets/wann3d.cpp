@@ -16,7 +16,11 @@ const int global_nthread = 32;
 
 int main(int argc, char *argv[]) {
 
-  std::string jsonfile = "case_1.json";
+  TLaplaceExample1 exact; // Global variable to be used in the material objects
+  exact.fDimension = 3;
+  exact.fExact = TLaplaceExample1::ENone;
+
+  std::string jsonfile = "wann3d.json";
 
   if (argc > 2) {
     std::cout << argv[0] << " being called with too many arguments." << std::endl;
@@ -40,7 +44,7 @@ int main(int argc, char *argv[]) {
   
   TPZGeoMesh* gmesh = TPZWannGeometryTools::CreateGeoMesh(&SimData);
   
-  TPZMultiphysicsCompMesh* cmesh = TPZWannApproxTools::CreateMultiphysicsCompMesh(gmesh, &SimData);
+  TPZMultiphysicsCompMesh* cmesh = TPZWannApproxTools::CreateMultiphysicsCompMesh(gmesh, &SimData, &exact);
   
   TPZLinearAnalysis analysis(cmesh);
   TPZSSpStructMatrix<STATE> skylstr(cmesh);
