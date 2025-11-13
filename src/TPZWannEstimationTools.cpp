@@ -323,40 +323,63 @@ void TPZWannEstimationTools::meshSmoothing(TPZGeoMesh* gmesh, TPZVec<int>& Refin
     }  
   }
 
-  // If an element has a neighbor with refinement two levels higher, then refine it too
+  // If an element is refined twice, ensure its neighbors are refined at least once
   for (int64_t iel = 0; iel < RefinementIndicator.size(); ++iel) {
     if (RefinementIndicator[iel] != 1) continue;
     TPZGeoEl* gel = gmesh->Element(iel);
-    if (!gel) DebugStop();
-    int matid = gel->MaterialId();
-    int firstside = gel->FirstSide(gel->Dimension()-1);
-    int lastside = gel->FirstSide(gel->Dimension());
+
+    // Get corner indexes of gel
+    TPZManVector<int64_t> cornerIndexes(gel->NCornerNodes());
+    for (int i = 0; i < gel->NCornerNodes(); ++i) {
+      cornerIndexes[i] = gel->NodeIndex(i);
+    }
+    TPZGeoEl* fatherGel = gel->Father();
+    if (!fatherGel) continue;
+    int firstside = fatherGel->FirstSide(fatherGel->Dimension()-1);
+    int lastside = fatherGel->FirstSide(fatherGel->Dimension());
     for (int side = firstside; side < lastside; ++side) {
-      TPZGeoElSide gelSide(gel, side);
-      TPZGeoElSide lowerSide = gelSide.HasLowerLevelNeighbour(matid);
-      if (lowerSide) {
-        TPZGeoEl* neighGel = lowerSide.Element();
-        if (!neighGel->HasSubElement()) RefinementIndicator[neighGel->Index()] = 1;
+      TPZGeoElSide gelSide(fatherGel, side);
+      TPZGeoElSide neigh = gelSide.Neighbour();
+      TPZGeoEl* neighGel = neigh.Element();
+      if (!neighGel) DebugStop();
+      if (neighGel->Dimension() != gel->Dimension()) continue;
+      if (neighGel->HasSubElement()) continue;
+
+      // Get corner idexes of neighGel
+      TPZManVector<int64_t> neighCornerIndexes(neighGel->NCornerNodes());
+      for (int i = 0; i < neighGel->NCornerNodes(); ++i) {
+        neighCornerIndexes[i] = neighGel->NodeIndex(i);
       }
+
+      // Verify if there are common corners
+      int commonCorners = 0;
+      for (int i = 0; i < gel->NCornerNodes(); ++i) {
+        for (int j = 0; j < neighGel->NCornerNodes(); ++j) {
+          if (cornerIndexes[i] == neighCornerIndexes[j]) {
+            commonCorners++;
+            break;
+          }
+        }
+      }
+      
+      if (commonCorners > 0) RefinementIndicator[neighGel->Index()] = 1;
     }
   }
-  
-  // Old version
+
+  // Old (wrong) version
   // for (int64_t iel = 0; iel < RefinementIndicator.size(); ++iel) {
   //   if (RefinementIndicator[iel] != 1) continue;
   //   TPZGeoEl* gel = gmesh->Element(iel);
-  //   TPZGeoEl* fatherGel = gel->Father();
-  //   if (!fatherGel) continue;
-  //   int firstside = fatherGel->FirstSide(fatherGel->Dimension()-1);
-  //   int lastside = fatherGel->FirstSide(fatherGel->Dimension());
+  //   if (!gel) DebugStop();
+  //   int matid = gel->MaterialId();
+  //   int firstside = gel->FirstSide(gel->Dimension()-1);
+  //   int lastside = gel->FirstSide(gel->Dimension());
   //   for (int side = firstside; side < lastside; ++side) {
-  //     TPZGeoElSide gelSide(fatherGel, side);
-  //     TPZGeoElSide neigh = gelSide.Neighbour();
-  //     TPZGeoEl* neighGel = neigh.Element();
-  //     if (!neighGel) DebugStop();
-  //     if (neighGel->Dimension() != gel->Dimension()) continue;
-  //     if (!neighGel->HasSubElement()) {
-  //       RefinementIndicator[neighGel->Index()] = 1;
+  //     TPZGeoElSide gelSide(gel, side);
+  //     TPZGeoElSide lowerSide = gelSide.HasLowerLevelNeighbour(matid);
+  //     if (lowerSide) {
+  //       TPZGeoEl* neighGel = lowerSide.Element();
+  //       if (!neighGel->HasSubElement()) RefinementIndicator[neighGel->Index()] = 1;
   //     }
   //   }
   // }
