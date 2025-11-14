@@ -18,23 +18,33 @@
 #include "TPZWannGeometryTools.h"
 
 void TPZWannEstimationTools::EstimateAndRefine(TPZMultiphysicsCompMesh* cmeshHdiv, TPZCompMesh* cmeshH1, ProblemData* SimData, int nthreads) {
-  TPZVec<int> RefinementIndicator = ErrorEstimation(cmeshHdiv, cmeshH1, SimData, nthreads);
-  REAL sumRef = std::accumulate(RefinementIndicator.begin(), RefinementIndicator.end(), 0);
+  int64_t ngel = cmeshHdiv->Reference()->NElements();
+  TPZVec<REAL> elementErrors(ngel, 0.0);
+  TPZVec<int> refinementIndicator(ngel, 0);
+
+  // Estimate error
+  REAL estimatedError = ErrorEstimation(cmeshHdiv, cmeshH1, SimData, elementErrors, nthreads);
+  std::cout << "Estimated error: " << estimatedError << std::endl;
+  
+  // Mark elements for refinement
+  MarkElementsForRefinement(elementErrors, refinementIndicator, estimator_tol, relative_estimator_tol);
+  REAL sumRef = std::accumulate(refinementIndicator.begin(), refinementIndicator.end(), 0);
   std::cout << "Initial number of to-refine elements: " << sumRef << std::endl;
 
-  meshSmoothing(cmeshHdiv->Reference(), RefinementIndicator);
-  sumRef = std::accumulate(RefinementIndicator.begin(), RefinementIndicator.end(), 0);
+  // Smooth the refinement map
+  meshSmoothing(cmeshHdiv->Reference(), refinementIndicator);
+  sumRef = std::accumulate(refinementIndicator.begin(), refinementIndicator.end(), 0);
   std::cout << "Number of to-refine elements after mesh smoothing: " << sumRef << std::endl;
 
-  hRefinement(cmeshHdiv->Reference(), RefinementIndicator, SimData);
-  sumRef = std::accumulate(RefinementIndicator.begin(), RefinementIndicator.end(), 0);
+  hRefinement(cmeshHdiv->Reference(), refinementIndicator, SimData);
+  sumRef = std::accumulate(refinementIndicator.begin(), refinementIndicator.end(), 0);
   std::cout << "Final number of to-refine elements: " << sumRef << std::endl;
 
   // After refining we have to reorder the well IDs again
   TPZWannGeometryTools::OrderIds(cmeshHdiv->Reference(), SimData);
 }
 
-TPZVec<int> TPZWannEstimationTools::ErrorEstimation(TPZMultiphysicsCompMesh* cmeshMixed, TPZCompMesh* cmesh, ProblemData* SimData, int nthreads) {
+REAL TPZWannEstimationTools::ErrorEstimation(TPZMultiphysicsCompMesh* cmeshMixed, TPZCompMesh* cmesh, ProblemData* SimData, TPZVec<REAL>& elementErrors, int nthreads) {
 
   {
     std::ofstream clearlog("error_estimation.txt", std::ios_base::trunc);
@@ -49,8 +59,10 @@ TPZVec<int> TPZWannEstimationTools::ErrorEstimation(TPZMultiphysicsCompMesh* cme
   int64_t ncel = cmeshMixed->NElements();
   int64_t ngel = cmeshMixed->Reference()->NElements();
   TPZAdmChunkVector<TPZCompEl *> &elementvec_m = cmeshMixed->ElementVec();
-  TPZVec<REAL> elementErrors(ncel, 0.0);
-  TPZVec<int> RefinementIndicator(ngel, 0);
+  elementErrors.Resize(ngel); // Ensure proper size
+  elementErrors.Fill(0.0); 
+
+  TPZVec<REAL> elementErrorsAux(ncel, 0.0); // Aux vector for plotting
 
   // Parallelization setup
   std::vector<std::thread> threads(nthreads);
@@ -148,9 +160,10 @@ TPZVec<int> TPZWannEstimationTools::ErrorEstimation(TPZMultiphysicsCompMesh* cme
       }
 
       REAL contribution = sqrt(fluxError) + (hk/(M_PI*sqrt(perm)))*sqrt(balanceError);
-      elementErrors[icel] = (contribution * contribution);
+      int64_t igeo = cmeshMixed->Element(icel)->Reference()->Index();
+      elementErrors[igeo] = (contribution * contribution);
 
-      localTotalError += elementErrors[icel];
+      localTotalError += elementErrors[igeo];
     }
     partialErrors[tid] = localTotalError;
   };
@@ -169,23 +182,28 @@ TPZVec<int> TPZWannEstimationTools::ErrorEstimation(TPZMultiphysicsCompMesh* cme
   totalError = sqrt(totalError);
 
   // VTK output
-  std::ofstream out_estimator("EstimatedError.vtk");
-  TPZVTKGeoMesh::PrintCMeshVTK(cmeshMixed, out_estimator, elementErrors, "EstimatedError");
-
-  std::cout << "\nTotal estimated error: " << totalError << std::endl;
-
-  // Indices of geoel elements that need refinement 
-  for (int64_t i = 0; i < ncel; ++i) {
-    if (elementErrors[i] > estimator_tol) {
-      int64_t igeo = cmeshMixed->Element(i)->Reference()->Index();
-      RefinementIndicator[igeo] = 1;
-    }
+  if (SimData->m_VerbosityLevel) {
+    std::ofstream out_estimator("EstimatedError.vtk");
+    TPZVTKGeoMesh::PrintCMeshVTK(cmeshMixed, out_estimator, elementErrors, "EstimatedError");
   }
 
-  return RefinementIndicator;
+  return totalError;
 }
 
-void TPZWannEstimationTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& RefinementIndicator, ProblemData* SimData) {
+void TPZWannEstimationTools::MarkElementsForRefinement(const TPZVec<REAL>& elementErrors, TPZVec<int>& refinementIndicator, REAL tol, REAL relative_tol) {
+  int64_t ngeo = elementErrors.size();
+  refinementIndicator.Resize(ngeo); // Ensure proper size
+  refinementIndicator.Fill(0);
+
+  // Simplest marking strategy: all elements with error > tol are marked
+  for (int64_t igeo = 0; igeo < ngeo; ++igeo) {
+    if (elementErrors[igeo] > estimator_tol) {
+      refinementIndicator[igeo] = 1;
+    }
+  }
+}
+
+void TPZWannEstimationTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& refinementIndicator, ProblemData* SimData) {
   REAL dim = gmesh->Dimension();
   REAL tol = 1e-6;
   std::set<REAL> xcoords2D;
@@ -198,8 +216,8 @@ void TPZWannEstimationTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& Refinem
 
   // From the initial list of "to-refine" elements, get the the centroids
   // of the faces that intersect the wellbore surface (fill xcoords2D)
-  for (int64_t i = 0; i < RefinementIndicator.size(); ++i) {
-    if (RefinementIndicator[i] == 0) continue;
+  for (int64_t i = 0; i < refinementIndicator.size(); ++i) {
+    if (refinementIndicator[i] == 0) continue;
     TPZGeoEl* gel = gmesh->Element(i);
     if (!gel) DebugStop();
     if (gel->Dimension() == 1) {
@@ -226,8 +244,8 @@ void TPZWannEstimationTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& Refinem
   }
 
   // Manually set BC elements to be refined
-  for (int64_t i = 0; i < RefinementIndicator.size(); ++i) {
-    if (RefinementIndicator[i] == 0) continue;
+  for (int64_t i = 0; i < refinementIndicator.size(); ++i) {
+    if (refinementIndicator[i] == 0) continue;
     TPZGeoEl* gel = gmesh->Element(i);
     if (!gel) DebugStop();
     if (gel->Dimension() != 3) continue; 
@@ -238,7 +256,7 @@ void TPZWannEstimationTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& Refinem
       std::set<int> bcIds = {SimData->EFarField, SimData->ESurfHeel, SimData->ESurfToe};
       TPZGeoElSide neigh = gelSide.HasNeighbour(bcIds);
       if (neigh) {
-        RefinementIndicator[neigh.Element()->Index()] = 1;
+        refinementIndicator[neigh.Element()->Index()] = 1;
       }
     }
   }
@@ -254,7 +272,7 @@ void TPZWannEstimationTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& Refinem
     gel->X(center, rcenter);
     if (TPZWannGeometryTools::CheckXInSet(rcenter[0], xcoords2D, tol)) {
       needRefinement2D.push_back(gel->Index());
-      RefinementIndicator[gel->Index()] = 1;
+      refinementIndicator[gel->Index()] = 1;
     }
   }
 
@@ -266,7 +284,7 @@ void TPZWannEstimationTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& Refinem
     TPZGeoElSide gelSide(gel);
     TPZGeoElSide neigh3D = gelSide.HasNeighbour(SimData->EDomain);
     if (neigh3D) {
-      RefinementIndicator[neigh3D.Element()->Index()] = 1;
+      refinementIndicator[neigh3D.Element()->Index()] = 1;
     }
     // Pick the 1D neighbor
     int firstside = gel->FirstSide(1);
@@ -275,14 +293,14 @@ void TPZWannEstimationTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& Refinem
       TPZGeoElSide gelSide(gel, side);
       TPZGeoElSide neigh = gelSide.HasNeighbour(SimData->ECurveWell);
       if (neigh) {
-        RefinementIndicator[neigh.Element()->Index()] = 1;
+        refinementIndicator[neigh.Element()->Index()] = 1;
       }
     }
   }
 
   // Perform h-refinement on the specified elements
-  for (int64_t i = 0; i < RefinementIndicator.size(); ++i) {
-    if (RefinementIndicator[i] == 0) continue;
+  for (int64_t i = 0; i < refinementIndicator.size(); ++i) {
+    if (refinementIndicator[i] == 0) continue;
     TPZVec<TPZGeoEl *> pv;
     TPZGeoEl* gel = gmesh->Element(i);
     if (!gel) DebugStop();

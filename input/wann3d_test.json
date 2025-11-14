@@ -1,9 +1,9 @@
 {
   "MeshData": {
-    "file": "mesh3D_rev08_test2.msh",
-    "NumUniformRef": 1,
+    "file": "mesh3D_rev08_test.msh",
+    "NumUniformRef": 0,
     "NumDirRef": 0,
-    "ToCylindrical": 1
+    "ToCylindrical": 0
   },
   "WellboreData": {
     "name": "curve_wellbore",
@@ -60,7 +60,7 @@
     "wellbore_vtk": "postproc_wellbore",
     "reservoir_vtk": "postproc_reservoir",
     "training_data": "training_data.txt",
-    "vtk_resolution": 2,
+    "vtk_resolution": 0,
     "training_resolution": 400, //number of subdivisions to generate training data
     "nthreads": 0
   },
