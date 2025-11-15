@@ -15,7 +15,7 @@
 
 using namespace std;
 
-const int global_nthread = 16;
+const int global_nthread = 18;
 
 
 int main(int argc, char *argv[]) {
@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
   TPZGeoMesh* gmesh = TPZWannGeometryTools::CreateGeoMesh(&SimData);
   
   // Refinement loop (experimental)
-  for (int refIt = 0; refIt < 3; refIt++) {
+  for (int refIt = 0; refIt < 1; refIt++) {
     TPZMultiphysicsCompMesh* cmesh = TPZWannApproxTools::CreateMultiphysicsCompMesh(gmesh, &SimData, &exact);
     TPZCompMesh* cmeshH1 = TPZWannApproxTools::CreateH1CompMesh(gmesh, &SimData);
 
@@ -168,6 +168,10 @@ int main(int argc, char *argv[]) {
   
     TPZWannPostProcTools::PostProcessAllData(cmesh, gmesh, &SimData);
     // TPZWannPostProcTools::WriteVTKs(cmeshH1, &SimData);
+    TPZVec<REAL> fluxes = TPZWannPostProcTools::ComputeWellFluxes(cmesh, &SimData);
+    TPZVec<REAL> fluxesH1 = TPZWannPostProcTools::ComputeWellFluxesH1(cmeshH1, &SimData);
+    std::cout << "Integrated well fluxes H(div): " << fluxes[0] <<std::endl;
+    std::cout << "Integrated well fluxes H1:    " << fluxesH1[0] <<std::endl;
 
     std::cout << "\n--------- Starting estimate and refine ---------" << std::endl;
 
