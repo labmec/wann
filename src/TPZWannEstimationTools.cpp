@@ -144,7 +144,7 @@ REAL TPZWannEstimationTools::ErrorEstimation(TPZMultiphysicsCompMesh* cmeshMixed
         balanceError += diffBalance * weight;
       }
 
-      if (SimData->m_VerbosityLevel) {
+      if (SimData->m_PostProc.verbosityLevel) {
         std::ofstream errorlog("error_estimation.txt", std::ios_base::app);
         if (errorlog.is_open()) {
           errorlog << "Element " << icel << " - MatId " << matid
@@ -182,7 +182,7 @@ REAL TPZWannEstimationTools::ErrorEstimation(TPZMultiphysicsCompMesh* cmeshMixed
   totalError = sqrt(totalError);
 
   // VTK output
-  if (SimData->m_VerbosityLevel) {
+  if (SimData->m_PostProc.verbosityLevel) {
     std::ofstream out_estimator("EstimatedError.vtk");
     TPZVTKGeoMesh::PrintCMeshVTK(cmeshMixed, out_estimator, elementErrors, "EstimatedError");
   }
@@ -544,7 +544,7 @@ TPZVec<int> TPZWannEstimationTools::ErrorEstimationOld(TPZMultiphysicsCompMesh* 
         conformityError += diffConformity * weight;
       }
 
-      if (SimData->m_VerbosityLevel) {
+      if (SimData->m_PostProc.verbosityLevel) {
         std::ofstream errorlog("error_estimation.txt", std::ios_base::app);
         if (errorlog.is_open()) {
           errorlog << "Element " << icel << " - MatId " << matid
@@ -580,7 +580,7 @@ TPZVec<int> TPZWannEstimationTools::ErrorEstimationOld(TPZMultiphysicsCompMesh* 
   
   totalError = sqrt(totalError);
 
-  if (SimData->m_VerbosityLevel > 0) {
+  if (SimData->m_PostProc.verbosityLevel > 0) {
     std::ofstream errorlog_total("error_estimation.txt", std::ios_base::app);
     if (errorlog_total.is_open()) {
       errorlog_total << "\nError estimation in energy norm: " << totalError << std::endl;

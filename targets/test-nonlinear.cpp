@@ -19,6 +19,7 @@
 #include "pzintel.h"
 #include "pzvec_extras.h"
 #include "TPZWannMixedDarcyNL.h"
+#include "TPZWannAnalysis.h"
 
 // ================
 // Global variables
@@ -41,7 +42,8 @@ enum EnumMatIds
 
 int nthreads = 0;
 
-auto SetBoundaryCondition = [](TPZVec<REAL> x, TPZVec<REAL> u, TPZFMatrix<REAL> &du) {
+auto SetBoundaryCondition = [](const TPZVec<REAL> &x, TPZVec<REAL> &u, TPZFMatrix<REAL> &du)
+{
     u[0] = x[1];
 };
 
@@ -68,6 +70,8 @@ void SolveLinear(int order, TPZGeoMesh *gmesh);
 
 void SolveNonLinear(int order, TPZGeoMesh *gmesh);
 
+void SolveNonLinearNew(int order, TPZGeoMesh *gmesh);
+
 // =============
 // Main function
 // =============
@@ -92,11 +96,11 @@ int main(int argc, char *const argv[])
     int order = 1; // Polynomial order
 
     // Initial geometric mesh
-    bool isNL = true; // Non-linear flag
-    TPZGeoMesh *gmesh = createGeoMesh3D({3, 3, 3}, {0., 0., 0.}, {1., 1., 1.});
+    bool newAnalysis = true; // Non-linear flag
+    TPZGeoMesh *gmesh = createGeoMesh3D({1, 1, 1}, {0., 0., 0.}, {1., 1., 1.});
     // TPZGeoMesh* gmesh = createGeoMesh2D({3, 3}, {0., 0.}, {1., 1.});
 
-    if (isNL)
+    if (!newAnalysis)
     {
         std::cout << "Solving non-linear Darcy problem..." << std::endl;
         SolveNonLinear(order, gmesh);
@@ -104,7 +108,7 @@ int main(int argc, char *const argv[])
     else
     {
         std::cout << "Solving linear Darcy problem..." << std::endl;
-        SolveLinear(order, gmesh);
+        SolveNonLinearNew(order, gmesh);
     }
 }
 
@@ -253,31 +257,33 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order, bool 
     // Create, set and add boundary conditions
     val2[0] = 0.;
     bcond = matDarcy->CreateBC(matDarcy, ERight, 1, val1, val2);
-    cmesh->InsertMaterialObject(bcond);
     // bcond->SetForcingFunctionBC(SetBoundaryCondition, 1);
-
+    cmesh->InsertMaterialObject(bcond);
+    val2[0] = 0.;
     bcond = matDarcy->CreateBC(matDarcy, ELeft, 1, val1, val2);
-    cmesh->InsertMaterialObject(bcond);
     // bcond->SetForcingFunctionBC(SetBoundaryCondition, 1);
+    cmesh->InsertMaterialObject(bcond);
 
     val2[0] = 0.;
     bcond = matDarcy->CreateBC(matDarcy, EFront, 0, val1, val2);
+    // bcond->SetForcingFunctionBC(SetBoundaryCondition, 1);
     cmesh->InsertMaterialObject(bcond);
 
-    val2[0] = -1.;
+    val2[0] = -1.0;
     bcond = matDarcy->CreateBC(matDarcy, EBack, 1, val1, val2);
+    // bcond->SetForcingFunctionBC(SetBoundaryCondition, 1);
     cmesh->InsertMaterialObject(bcond);
 
     if (gmesh->Dimension() == 3)
     {
         val2[0] = 0.;
         bcond = matDarcy->CreateBC(matDarcy, EBottom, 1, val1, val2);
-        cmesh->InsertMaterialObject(bcond);
         // bcond->SetForcingFunctionBC(SetBoundaryCondition, 1);
+        cmesh->InsertMaterialObject(bcond);
 
         bcond = matDarcy->CreateBC(matDarcy, ETop, 1, val1, val2);
-        cmesh->InsertMaterialObject(bcond);
         // bcond->SetForcingFunctionBC(SetBoundaryCondition, 1);
+        cmesh->InsertMaterialObject(bcond);
     }
 
     // Incorporate the atomic meshes into the multiphysics mesh
@@ -378,6 +384,44 @@ void SolveLinear(int order, TPZGeoMesh *gmesh)
     stepMixed.SetDirect(ELDLt);
     anMixed.SetSolver(stepMixed);
     anMixed.Run();
+
+    // ---- Plotting ---
+
+    {
+        const std::string plotfile = "darcy_mixed";
+        constexpr int vtkRes{0};
+        TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
+        auto vtk = TPZVTKGenerator(cmeshMixed, fields, plotfile, vtkRes);
+        vtk.Do();
+    }
+
+    // --- Clean up ---
+
+    delete cmeshMixed;
+}
+
+void SolveNonLinearNew(int order, TPZGeoMesh *gmesh)
+{
+    TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, order, true);
+    TPZWannAnalysis anMixed(cmeshMixed, RenumType::EMetis);
+    ProblemData simData;
+    simData.m_Numerics.maxIterations = 10;
+    simData.m_Numerics.res_tol = 1.e-6;
+    simData.m_Numerics.corr_tol = 1.e-6;
+    simData.m_Numerics.nthreads = 0;
+
+    simData.m_Reservoir.BCs["right"] = {ERight, 1, 0.0};
+    simData.m_Reservoir.BCs["left"] = {ELeft, 1, 0.0};
+    simData.m_Reservoir.BCs["front"] = {EFront, 0, 0.0};
+    simData.m_Reservoir.BCs["back"] = {EBack, 1, -1.0};
+    if (gmesh->Dimension() == 3)
+    {
+        simData.m_Reservoir.BCs["bottom"] = {EBottom, 1, 0.0};
+        simData.m_Reservoir.BCs["top"] = {ETop, 1, 0.0};
+    }
+    anMixed.SetProblemData(&simData);
+    anMixed.Initialize();
+    anMixed.NewtonIteration();
 
     // ---- Plotting ---
 

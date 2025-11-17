@@ -119,7 +119,7 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
   cmesh->InsertMaterialObject(matinterface);
   AddInterfaceElements(cmesh, SimData, lagmultilevel);
 
-  if (SimData->m_VerbosityLevel) {
+  if (SimData->m_PostProc.verbosityLevel) {
     std::ofstream out("cmesh.txt");
     cmesh->Print(out);
   }
@@ -192,7 +192,7 @@ TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData
 
   EqualizeH1Connects(cmesh, SimData);
 
-  if (SimData->m_VerbosityLevel)
+  if (SimData->m_PostProc.verbosityLevel)
   {
     std::ofstream out("cmeshH1.txt");
     cmesh->Print(out);
@@ -323,7 +323,7 @@ void TPZWannApproxTools::AddPressureSkinElements(TPZCompMesh *cmesh, ProblemData
   }
   cmesh->InitializeBlock();
 
-  if (SimData->m_VerbosityLevel)
+  if (SimData->m_PostProc.verbosityLevel)
   {
     std::ofstream out("cmesh.txt");
     cmesh->Print(out);
@@ -507,7 +507,7 @@ void TPZWannApproxTools::EqualizeH1Connects(TPZCompMesh *cmesh, ProblemData *Sim
   }
 
   // Print xToNodes and nodeCoordsX in a file
-  if (SimData->m_VerbosityLevel) {
+  if (SimData->m_PostProc.verbosityLevel) {
     std::ofstream out("xToNodes.txt");
     for (const auto& pair : xToNodes) {
       out << "x: " << pair.first << " -> nodes: ";
@@ -677,7 +677,7 @@ void TPZWannApproxTools::EqualizePressureConnects(TPZCompMesh *cmesh, ProblemDat
   }
   cmesh->CleanUpUnconnectedNodes();
 
-  if (SimData->m_VerbosityLevel)
+  if (SimData->m_PostProc.verbosityLevel)
   {
     std::ofstream out("cmesh.txt");
     cmesh->Print(out);

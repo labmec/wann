@@ -24,7 +24,7 @@ TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
     TPZCheckGeom checkgeom(gmesh);
     checkgeom.UniformRefine(simData->m_Mesh.NumUniformRef);
 
-    if (simData->m_VerbosityLevel) {
+    if (simData->m_PostProc.verbosityLevel) {
       std::ofstream out("gmeshnonlin.vtk");
       TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
     }
@@ -35,7 +35,7 @@ TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
     for (int i = 0; i < simData->m_Mesh.NumDirRef; i++) {
       TPZRefPatternTools::RefineDirectional(gmesh, {simData->ECurveHeel, simData->ECurveToe});
     }
-    if (simData->m_VerbosityLevel) {
+    if (simData->m_PostProc.verbosityLevel) {
       std::ofstream out("gmeshnonlin_ref.vtk");
       TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
     }

@@ -9,8 +9,7 @@
 using namespace std;
 
 // constructor
-ProblemData::ProblemData() : m_VerbosityLevel(0)
-
+ProblemData::ProblemData()
 {
     m_Wellbore.eccentricity.resize(3);
     m_Wellbore.BCs.reserve(2);
@@ -164,11 +163,30 @@ void ProblemData::ReadJson(std::string file)
         m_PostProc.nthreads = postproc["nthreads"];
     else
         m_PostProc.nthreads = 0;
-
-    if (input.find("VerbosityLevel") != input.end())
-        m_VerbosityLevel = input["VerbosityLevel"];
+    if (postproc.find("verbosityLevel") != postproc.end())
+        m_PostProc.verbosityLevel = postproc["verbosityLevel"];
     else
-        m_VerbosityLevel = 0;
+        m_PostProc.verbosityLevel = 0;
+
+    if (input.find("NumericsData") != input.end())
+        DebugStop();
+    json numerics = input["NumericsData"];
+    if (numerics.find("nthreads") != numerics.end())
+        m_Numerics.nthreads = numerics["nthreads"];
+    else
+        m_Numerics.nthreads = 0;
+    if (numerics.find("maxIterations") != numerics.end())
+        m_Numerics.maxIterations = numerics["maxIterations"];
+    else
+        m_Numerics.maxIterations = 10;
+    if (numerics.find("res_tol") != numerics.end())
+        m_Numerics.res_tol = numerics["res_tol"];
+    else
+        m_Numerics.res_tol = 1e-6;
+    if (numerics.find("corr_tol") != numerics.end())
+        m_Numerics.corr_tol = numerics["corr_tol"];
+    else
+        m_Numerics.corr_tol = 1e-6;
 }
 
 void ProblemData::Print(std::ostream &out)
@@ -222,7 +240,8 @@ void ProblemData::Print(std::ostream &out)
     out << "Name: " << m_Fluid.name << std::endl;
     out << "Viscosity: " << m_Fluid.viscosity << std::endl;
     out << "Density: " << m_Fluid.density << std::endl
-        << std::endl << std::endl;
+        << std::endl
+        << std::endl;
 
     out << "Post Processing Data:\n";
     out << "Wellbore VTK: " << m_PostProc.wellbore_vtk << std::endl;
@@ -230,7 +249,13 @@ void ProblemData::Print(std::ostream &out)
     out << "Training Data: " << m_PostProc.training_data << std::endl;
     out << "VTK Resolution: " << m_PostProc.vtk_resolution << std::endl;
     out << "Training Data Resolution: " << m_PostProc.training_resolution << std::endl;
-    out << "Number of threads: " << m_PostProc.nthreads << std::endl << std::endl;
+    out << "Number of threads: " << m_PostProc.nthreads << std::endl;
+    out << "Verbosity Level: " << m_PostProc.verbosityLevel << std::endl
+        << std::endl;
 
-    out << "Verbosity Level: " << m_VerbosityLevel << std::endl;
+    out << "Numerics Data:\n";
+    out << "Number of threads: " << m_Numerics.nthreads << std::endl;
+    out << "Maximum Iterations: " << m_Numerics.maxIterations << std::endl;
+    out << "Residual Tolerance: " << m_Numerics.res_tol << std::endl;
+    out << "Correction Tolerance: " << m_Numerics.corr_tol << std::endl;
 }

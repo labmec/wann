@@ -16,25 +16,25 @@ class ProblemData
 {
   struct BoundaryData
   {
-    int matid = -1;             // bc material ID
-    int type;              // bc type 0: direct, 1: neumann
-    REAL value;            // bc value
+    int matid = -1; // bc material ID
+    int type;       // bc type 0: direct, 1: neumann
+    REAL value;     // bc value
   };
 
   struct DomainData
   {
-    std::string name; // name of the domain
-    int matid = -1;             // domain material ID
-    REAL perm;            // domain permeability
-    REAL pOrder;           // polynomial approximation order for flux
+    std::string name;                                  // name of the domain
+    int matid = -1;                                    // domain material ID
+    REAL perm;                                         // domain permeability
+    REAL pOrder;                                       // polynomial approximation order for flux
     std::unordered_map<std::string, BoundaryData> BCs; // map containing all the bcs info
   };
 
   struct WellboreData : public DomainData
   {
-    REAL radius; // domain radius
-    REAL length; // domain length
-    TPZManVector<REAL,3> eccentricity; // domain excentricity
+    REAL radius;                        // domain radius
+    REAL length;                        // domain length
+    TPZManVector<REAL, 3> eccentricity; // domain excentricity
   };
 
   struct ReservoirData : public DomainData
@@ -67,7 +67,16 @@ class ProblemData
     std::string training_data;
     int vtk_resolution;
     int training_resolution;
+    int verbosityLevel;
     int nthreads;
+  };
+
+  struct NumericsData
+  {
+    int nthreads;
+    int maxIterations;
+    REAL res_tol;
+    REAL corr_tol;
   };
 
 public:
@@ -94,16 +103,16 @@ public:
   using json = nlohmann::json; // declaration of json class
 
   WellboreData m_Wellbore; // wellbore data
-  
+
   ReservoirData m_Reservoir; // reservoir data
-  
+
   FluidData m_Fluid; // fluid data
-  
+
   MeshData m_Mesh; // mesh data
 
   PostProcData m_PostProc; // post process data
-  
-  int m_VerbosityLevel; // verbosity level
+
+  NumericsData m_Numerics; // numerics data
 
 public:
   ProblemData();
