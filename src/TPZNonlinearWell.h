@@ -166,5 +166,7 @@ protected:
     REAL fKvw;
 
     REAL fC; // this stores c^{-7/4}, where c is computed as (2.252610888 Dw^(19/7))/(mu^(1/7) rho^(3/7))
+    
+    REAL fCLin; // this stores 128 mu /(pi Dw^4)
 
 };
