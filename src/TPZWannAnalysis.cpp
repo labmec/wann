@@ -90,6 +90,8 @@ void TPZWannAnalysis::NewtonIteration()
         sol += dsol;
         cmesh->LoadSolution(sol);
         cmesh->TransferMultiphysicsSolution();
+
+        PostProcessIteration(cmesh->Dimension(), fKiteration);
     }
 
     if (!converged)
@@ -168,7 +170,7 @@ void TPZWannAnalysis::SetInitialSolution(std::set<int> &neumannMatids)
 
         int64_t seq = compEl->Connect(0).SequenceNumber();
         int ncorner = el->NCornerNodes();
-        REAL volume = el->Volume();
+        REAL volume = el->Dimension() == 0 ? 1.0 : el->Volume();
 
         auto firstEq = fCompMesh->Block().Position(seq);
 
@@ -261,4 +263,33 @@ void TPZWannAnalysis::ApplyEquationFilter(std::set<int> &neumannMatids)
     TPZEquationFilter filter(fCompMesh->NEquations());
     filter.ExcludeEquations(removeEquations);
     fStructMatrix->EquationFilter() = filter;
+}
+
+void TPZWannAnalysis::PostProcessIteration(int dimToPost, int it)
+{
+    auto start_time_pp = std::chrono::steady_clock::now();
+
+    TPZStack<std::string, 10> scalnames;
+
+    scalnames.Push("Pressure");
+    scalnames.Push("Flux");
+
+    int div = 0;
+    if (dimToPost < 0)
+    {
+        dimToPost = Mesh()->Reference()->Dimension();
+    }
+
+    std::string file = "solution_it" + std::to_string(it) + ".vtk";
+    const int vtkRes = fSimData->m_PostProc.vtk_resolution;
+
+    const std::string plotfile = file.substr(0, file.find(".")); // sem o .vtk no final
+    auto vtk = TPZVTKGenerator(fCompMesh, scalnames, plotfile, vtkRes, dimToPost);
+    vtk.SetStep(it);
+    int nthreads = fSimData->m_PostProc.nthreads;
+    vtk.SetNThreads(nthreads);
+    vtk.Do();
+
+    auto total_time_pp = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time_pp).count() / 1000.;
+    cout << "Total time post process = " << total_time_pp << " seconds" << endl;
 }

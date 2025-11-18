@@ -11,6 +11,7 @@
 #include "pzskylstrmatrix.h"
 #include "pzstepsolver.h"
 #include <stdio.h>
+#include "TPZVTKGenerator.h"
 
 class TPZWannAnalysis : public TPZLinearAnalysis
 {
@@ -66,4 +67,7 @@ public:
     /// Remove equations related to Neumann BCs from the system
     /// This method is used to apply Neumann BCs without using BigNumbers
     void ApplyEquationFilter(std::set<int> &neumannMatids);
+
+    /// Render a vtk file with requested variables for a time step
+    void PostProcessIteration(int dimToPost = -1, int it = -1);
 };
