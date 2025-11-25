@@ -85,6 +85,7 @@ TPZMultiphysicsCompMesh* CreateMultiphysicsCompMesh(TPZGeoMesh * gmesh, ProblemD
 {
     const int dim = 1;
 
+    gmesh->SetDimension(dim);
     TPZHDivApproxCreator hdivCreator(gmesh);
     hdivCreator.ProbType() = ProblemType::EDarcy;
     hdivCreator.SetDefaultOrder(SimData->m_Wellbore.pOrder);
