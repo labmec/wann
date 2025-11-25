@@ -15,7 +15,7 @@
 
 using namespace std;
 
-const int global_nthread = 18;
+const int global_nthread = 0;
 
 
 int main(int argc, char *argv[]) {
@@ -163,16 +163,28 @@ int main(int argc, char *argv[]) {
     analysisH1.Run();
 
     std::cout << "--------- Simulation finished ---------" << std::endl;
+    std::cout << "\n--------- Starting post-processing ---------" << std::endl;
 
-    // ----
-  
     TPZWannPostProcTools::PostProcessAllData(cmesh, gmesh, &SimData);
     // TPZWannPostProcTools::WriteVTKs(cmeshH1, &SimData);
-    TPZVec<REAL> fluxes = TPZWannPostProcTools::ComputeWellFluxes(cmesh, &SimData);
-    TPZVec<REAL> fluxesH1 = TPZWannPostProcTools::ComputeWellFluxesH1(cmeshH1, &SimData);
-    std::cout << "Integrated well fluxes H(div): " << fluxes[0] <<std::endl;
-    std::cout << "Integrated well fluxes H1:    " << fluxesH1[0] <<std::endl;
 
+    // Integrated flux along segments of the well
+    TPZVec<REAL> segmentPoints = {0.0, SimData.m_Wellbore.length/2.0, SimData.m_Wellbore.length};
+    TPZVec<REAL> fluxes = TPZWannPostProcTools::ComputeWellFluxes(cmesh, &SimData, segmentPoints);
+    TPZVec<REAL> fluxesH1 = TPZWannPostProcTools::ComputeWellFluxes(cmeshH1, &SimData, segmentPoints);
+    
+    std::cout << "Integrated well fluxes H(div): ";
+    for (int iseg = 0; iseg < fluxes.size(); iseg++) {
+      std::cout << fluxes[iseg] << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "Integrated well fluxes H1:    ";
+    for (int iseg = 0; iseg < fluxesH1.size(); iseg++) {
+      std::cout << fluxesH1[iseg] << " ";
+    }
+    std::cout << std::endl;
+
+    std::cout << "\n--------- Post-processing finished ---------" << std::endl;
     std::cout << "\n--------- Starting estimate and refine ---------" << std::endl;
 
     TPZWannEstimationTools::EstimateAndRefine(cmesh, cmeshH1, &SimData, global_nthread);
