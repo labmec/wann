@@ -127,20 +127,25 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
   return cmesh;
 }
 
-TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData *SimData)
-{
-
+TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData *SimData) {
   const int dim = gmesh->Dimension();
   auto &ReservoirData = SimData->m_Reservoir;
   auto &WellboreData = SimData->m_Wellbore;
-  std::set<int> ReservoirBCMatIdSet;
+  std::set<int> reservoirMatIdSet;
+  std::set<int> wellboreMatIdSet;
 
   TPZCompMesh *cmesh = new TPZCompMesh(gmesh);
   cmesh->SetDimModel(dim);
-  cmesh->SetDefaultOrder(ReservoirData.pOrder);
+  cmesh->SetDefaultOrder(ReservoirData.pOrder); // First create everything with reservoir order
   cmesh->SetAllCreateFunctionsContinuous();
 
-  // Reservoir material and boundary conditions
+  // Pressure skin material (as null material)
+  {
+    TPZNullMaterial<STATE> *mat = new TPZNullMaterial<>(SimData->EPressure2DSkin, dim - 1);
+    cmesh->InsertMaterialObject(mat);
+  }
+
+  // Reservoir material and 3D boundary conditions
   {
     TPZDarcyFlow *reservoirMat = new TPZDarcyFlow(SimData->EDomain, dim);
     reservoirMat->SetConstantPermeability(ReservoirData.perm);
@@ -149,7 +154,7 @@ TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData
     for (auto &bcpair : ReservoirData.BCs)
     {
       auto &bc = bcpair.second;
-      ReservoirBCMatIdSet.insert(bc.matid);
+      reservoirMatIdSet.insert(bc.matid);
       TPZFMatrix<STATE> val1(1, 1, 0.);
       TPZManVector<STATE> val2(1, 0);
       val2[0] = bc.value;
@@ -158,24 +163,16 @@ TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData
     }
   }
 
-  // Build H1 mesh for the reservoir with order = ReservoirData.pOrder
-  cmesh->AutoBuild();
-
-  // Pressure skin material
+  // Wellbore material and 1D boundary conditions
   {
-    TPZNullMaterial<STATE> *mat = new TPZNullMaterial<>(SimData->EPressure2DSkin, dim - 1);
-    cmesh->InsertMaterialObject(mat);
-  }
-
-  // Wellbore material
-  {
-    TPZDarcyFlow *wellboreMat = new TPZDarcyFlow(SimData->ECurveWell, dim-2);
+    TPZDarcyFlow *wellboreMat = new TPZDarcyFlow(SimData->ECurveWell, 1);
     wellboreMat->SetConstantPermeability(WellboreData.perm);
     cmesh->InsertMaterialObject(wellboreMat);
 
     for (auto &bcpair : WellboreData.BCs)
     {
       auto &bc = bcpair.second;
+      wellboreMatIdSet.insert(bc.matid);
       TPZFMatrix<STATE> val1(1, 1, 0.);
       TPZManVector<STATE> val2(1, 0);
       val2[0] = bc.value;
@@ -184,12 +181,27 @@ TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData
     }
   }
 
-  // Build H1 mesh for the wellbore + pressure skin with order = WellboreData.pOrder
-  std::set<int> matidset = {SimData->EPressure2DSkin, SimData->ECurveWell, 
-    SimData->EPointHeel, SimData->EPointToe};
-  cmesh->SetDefaultOrder(WellboreData.pOrder);
-  cmesh->AutoBuild(matidset);
+  cmesh->AutoBuild();
 
+  // Ajust well polynomial order
+  // Warning: block sizes will only be ajusted after colapsing the connects in EqualizeH1Connects
+  for (int64_t iel = 0; iel < cmesh->NElements(); iel++) {
+    TPZCompEl *cel = cmesh->Element(iel);
+    if (!cel) continue;
+    if (cel->Material()->Id() != SimData->ECurveWell) continue;
+    if (cel->NConnects() > 3) DebugStop(); // Wellbore H1 elements should have only 2 connects
+    TPZConnect &c = cel->Connect(2);
+    c.SetOrder(WellboreData.pOrder);
+    c.SetNShape(WellboreData.pOrder - 1);
+  }
+
+  if (SimData->m_PostProc.verbosityLevel)
+  {
+    std::ofstream out("cmeshH1Init.txt");
+    cmesh->Print(out);
+  }
+
+  // Set dependencies for surface well connects and ajust block sizes
   EqualizeH1Connects(cmesh, SimData);
 
   if (SimData->m_PostProc.verbosityLevel)
@@ -478,9 +490,7 @@ void TPZWannApproxTools::EqualizeH1Connects(TPZCompMesh *cmesh, ProblemData *Sim
 
     // Corner connects
     for (int inodes = 0; inodes < gel->NCornerNodes(); inodes++) {
-      REAL x0 = gel->NodePtr(inodes % 4)->Coord(0);
-      TPZManVector<REAL,3> coor(3);
-      gel->NodePtr(inodes)->GetCoordinates(coor);
+      REAL x0 = gel->NodePtr(inodes)->Coord(0);
       REAL closestX = TPZWannGeometryTools::FindClosestX(x0, nodeCoordsX, tol);
       xToNodes[closestX].insert(cel->ConnectIndex(inodes));
     }
@@ -489,14 +499,16 @@ void TPZWannApproxTools::EqualizeH1Connects(TPZCompMesh *cmesh, ProblemData *Sim
     for (int inodes = 4; inodes < 8; inodes++) {
       REAL x0 = gel->NodePtr(inodes % 4)->Coord(0);
       REAL x1 = gel->NodePtr((inodes + 1) % 4)->Coord(0);
+      TPZConnect &c = cel->Connect(inodes);
       if (fabs(x0 - x1) < tol) {
         // Remove edge connect if x-coordinates are equal
-        TPZConnect &c = cel->Connect(inodes);
         c.SetOrder(1);
         c.SetNShape(0);
       } else {
         REAL closestX = TPZWannGeometryTools::FindClosestX((x0 + x1) / 2., nodeCoordsX, tol);
         xToNodes[closestX].insert(cel->ConnectIndex(inodes));
+        c.SetOrder(SimData->m_Wellbore.pOrder);
+        c.SetNShape(SimData->m_Wellbore.pOrder - 1); 
       }
     }
 
@@ -532,11 +544,11 @@ void TPZWannApproxTools::EqualizeH1Connects(TPZCompMesh *cmesh, ProblemData *Sim
 
     auto it = *nodes.begin();
 
-    // If nshape == 0 we can't add a dependency
+    // No need to set dependency for connects with no shape functions
     if (cmesh->ConnectVec()[it].NShape() == 0) continue;
 
     for (auto it2 : nodes) {
-      if (it2 == it) continue; // Skip the first one
+      if (it2 == it) continue; // Do not add dependency to itself
       TPZConnect &c = cmesh->ConnectVec()[it2];
 
       TPZFNMatrix<1,STATE> val(1,1,1.);

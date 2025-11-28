@@ -166,7 +166,7 @@ int main(int argc, char *argv[]) {
     std::cout << "\n--------- Starting post-processing ---------" << std::endl;
 
     TPZWannPostProcTools::PostProcessAllData(cmesh, gmesh, &SimData);
-    // TPZWannPostProcTools::WriteVTKs(cmeshH1, &SimData);
+    TPZWannPostProcTools::WriteVTKs(cmeshH1, &SimData);
 
     // Integrated flux along segments of the well
     TPZVec<REAL> segmentPoints = {0.0, SimData.m_Wellbore.length/2.0, SimData.m_Wellbore.length};
