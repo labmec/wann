@@ -62,7 +62,7 @@
     "training_data": "training_data.txt",
     "vtk_resolution": 0,
     "training_resolution": 400, //number of subdivisions to generate training data
-    "nthreads": 0
-  },
-  "VerbosityLevel": 1
+    "nthreads": 0,
+    "verbosityLevel": 1
+  }
 }
