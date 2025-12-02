@@ -109,7 +109,7 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order)
     TPZFMatrix<REAL> val1(1, 1, 0.);   // Part that goes to the Stiffnes matrix
     TPZBndCondT<REAL> *bcond;
 
-    val2[0] = 0.;
+    val2[0] = 0.05065050785314778;
     bcond = mat->CreateBC(mat, ERight, 1, val1, val2);
     cmeshFlux->InsertMaterialObject(bcond);
 
@@ -171,11 +171,17 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order)
     REAL rho = 800;                    // Fluid density
     REAL pres = 2.206e7;               // Reservoir pressure
     REAL Kvw = 1.2688833653495249e-11; // Pseudo resistivity
+
+    // REAL Dw = 0.1;     // Well diameter
+    // REAL mu = 1.e-3;   // Fluid viscosity
+    // REAL rho = 1000;   // Fluid density
+    // REAL pres = 1.e5;  // Reservoir pressure
+    // REAL Kvw = 1.e-12; // Pseudo resistivity
     TPZNonlinearWell *matWell = new TPZNonlinearWell(EMatId, Dw, mu, rho, pres, Kvw);
     cmesh->InsertMaterialObject(matWell);
 
     // Create, set and add boundary conditions
-    val2[0] = 5.065050785314778;
+    val2[0] = 0.05065050785314778;
     bcond = matWell->CreateBC(matWell, ELeft, 1, val1, val2);
     cmesh->InsertMaterialObject(bcond);
 

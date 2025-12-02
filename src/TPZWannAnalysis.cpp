@@ -3,6 +3,7 @@
 //
 
 #include "TPZWannAnalysis.h"
+#include "TPZNonlinearWell.h"
 
 using namespace std;
 
@@ -86,8 +87,9 @@ void TPZWannAnalysis::NewtonIteration()
         }
         Solve();
         TPZFMatrix<STATE> dsol = Solution();
-        corr_norm = Norm(dsol);
-        sol += dsol;
+        REAL eta = LineSearchStep(sol, dsol, ENONE);
+        corr_norm = eta * Norm(dsol);
+        sol += eta * dsol;
         cmesh->LoadSolution(sol);
         cmesh->TransferMultiphysicsSolution();
 
@@ -99,6 +101,90 @@ void TPZWannAnalysis::NewtonIteration()
         std::cout << "------Iterative method did not converge. res_norm: "
                   << res_norm << " corr_norm: " << corr_norm << std::endl;
     }
+}
+
+REAL TPZWannAnalysis::LineSearchStep(TPZFMatrix<STATE> &sol, TPZFMatrix<STATE> &dsol, LineSearchMethod method)
+{
+    REAL eta = 1.0;
+    switch (method)
+    {
+    case ENONE:
+        eta = 1.0;
+        break;
+    case EBISSECT:
+        // To be implemented
+        eta = BissectionMethod(sol, dsol);
+        break;
+    case EGOLDEN:
+        // To be implemented
+        DebugStop();
+        break;
+    case ESECANT:
+        // To be implemented
+        DebugStop();
+        break;
+    }
+    return eta;
+}
+
+REAL TPZWannAnalysis::BissectionMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STATE> &dsol)
+{
+    TPZNonlinearWell::fAssembleRHSOnly = true;
+
+    TPZFMatrix<STATE> &res_L = Rhs(); // lower point
+    TPZFMatrix<STATE> aux(1, 1, 0.0);
+    dsol.MultAdd(res_L, res_L, aux, 1.0, 0.0, 1);
+    REAL s_L = aux(0, 0);
+
+    TPZFMatrix<STATE> sol_n1 = sol_n;
+    sol_n1 += dsol; // upper point
+    Mesh()->LoadSolution(sol_n1);
+    Mesh()->TransferMultiphysicsSolution();
+    Assemble(); // Here, assemble only computes the RHS (residual)
+    TPZFMatrix<STATE> &res_U = Rhs();
+    dsol.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
+    REAL s_U = aux(0, 0);
+
+    REAL eta = 1.0;
+    if (std::abs(s_U) < 1e-6 || s_L * s_U > 0)
+    {
+        return eta; // upper point is root
+    }
+
+    eta = 0.5;
+    REAL deta = 0.25;
+    REAL s_M = 1.0;
+    while (std::abs(s_M) > 1e-6 && deta > 1e-3)
+    {
+        sol_n1 = sol_n + eta * dsol; // mid point
+        Mesh()->LoadSolution(sol_n1);
+        Mesh()->TransferMultiphysicsSolution();
+        Assemble(); // Here, assemble only computes the RHS (residual)
+        TPZFMatrix<STATE> &res_M = Rhs();
+        dsol.MultAdd(res_M, res_M, aux, 1.0, 0.0, 1);
+        s_M = aux(0, 0);
+
+        if (s_L * s_M < 0)
+        {
+            s_U = s_M;
+            eta -= deta;
+        }
+        else if (s_U * s_M < 0)
+        {
+            s_L = s_M;
+            eta += deta;
+        }
+        else
+        {
+            DebugStop(); // Something is wrong
+        }
+
+        std::cout << "Bissection step eta: " << eta << " s_M: " << s_M << std::endl;
+
+        deta *= 0.5;
+    }
+    TPZNonlinearWell::fAssembleRHSOnly = false;
+    return eta;
 }
 
 void TPZWannAnalysis::Assemble()

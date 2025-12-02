@@ -17,6 +17,14 @@ class TPZWannAnalysis : public TPZLinearAnalysis
 {
 
 public:
+    enum LineSearchMethod
+    {
+        ENONE,
+        EBISSECT,
+        EGOLDEN,
+        ESECANT
+    };
+
     /// Data transfer object
     ProblemData *fSimData;
 
@@ -49,6 +57,10 @@ public:
 
     /// Perform a Newton iteration
     void NewtonIteration();
+
+    REAL LineSearchStep(TPZFMatrix<STATE> &sol, TPZFMatrix<STATE> &dsol, LineSearchMethod method = ENONE);
+
+    REAL BissectionMethod(TPZFMatrix<STATE> &sol, TPZFMatrix<STATE> &dsol);
 
     /// override assemble to have timers
     void Assemble() override;

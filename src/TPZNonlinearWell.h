@@ -21,11 +21,12 @@
  */
 
 class TPZNonlinearWell : public TPZMatBase<STATE, TPZMatCombinedSpacesT<STATE>,
-        TPZMatErrorCombinedSpaces<STATE>> {
+                                           TPZMatErrorCombinedSpaces<STATE>>
+{
 
     // type alias to improve constructor readability
     using TBase = TPZMatBase<STATE, TPZMatCombinedSpacesT<STATE>,
-            TPZMatErrorCombinedSpaces<STATE>>;
+                             TPZMatErrorCombinedSpaces<STATE>>;
 
 public:
     /**
@@ -34,14 +35,14 @@ public:
     TPZNonlinearWell();
 
     /**
-	 * @brief Class constructor
-	 * @param [in] id material id
+     * @brief Class constructor
+     * @param [in] id material id
      * @param [in] Dw Well diameter
      * @param [in] mu Fluid viscosity
      * @param [in] rho Fluid density
      * @param [in] pres Reservoir pressure
      * @param [in] Kvw Pseudo resistivity
-	 */
+     */
     [[maybe_unused]] TPZNonlinearWell(int id, REAL Dw, REAL mu, REAL rho, REAL pres, REAL Kvw);
 
     /**
@@ -53,22 +54,22 @@ public:
      */
     TPZNonlinearWell &operator=(const TPZNonlinearWell &copy);
     /**
-	 * @brief Returns a 'std::string' with the name of the material
-	 */
+     * @brief Returns a 'std::string' with the name of the material
+     */
     [[nodiscard]] std::string Name() const override { return "TPZNonlinearWell"; }
 
     /**
-	 * @brief Returns the problem dimension
-	 */
+     * @brief Returns the problem dimension
+     */
     [[nodiscard]] int Dimension() const override { return this->fDim; }
 
     /**
-	 * @brief Returns the number of state variables
-	 */
+     * @brief Returns the number of state variables
+     */
     [[nodiscard]] int NStateVariables() const override { return 1; }
 
     /**
-	 * @brief Returns the number of errors to be evaluated
+     * @brief Returns the number of errors to be evaluated
      *
      * Returns the number of errors to be evaluated, that is, the number of error norms associated
      * with the problem.
@@ -84,6 +85,9 @@ public:
      */
     void Contribute(const TPZVec<TPZMaterialDataT<STATE>> &datavec, REAL weight, TPZFMatrix<STATE> &ek,
                     TPZFMatrix<STATE> &ef) override;
+
+    void ContributeResidual(const TPZVec<TPZMaterialDataT<STATE>> &datavec, REAL weight,
+                            TPZFMatrix<STATE> &ef);
 
     /**
      * @brief It computes a contribution to the stiffness matrix and load vector at one BC integration point
@@ -127,12 +131,12 @@ public:
     /*
      * @brief Fill requirements for volumetric contribute
      */
-    void FillDataRequirements(TPZVec<TPZMaterialDataT<STATE> > &datavec) const override;
+    void FillDataRequirements(TPZVec<TPZMaterialDataT<STATE>> &datavec) const override;
 
     /*
      * @brief Fill requirements for boundary contribute
      */
-    void FillBoundaryConditionDataRequirements(int type, TPZVec<TPZMaterialDataT<STATE> > &datavec) const override;
+    void FillBoundaryConditionDataRequirements(int type, TPZVec<TPZMaterialDataT<STATE>> &datavec) const override;
 
     /**
      * @brief Returns an unique class identifier
@@ -147,7 +151,9 @@ public:
     /**
      * @brief Prints data associated with the material.
      */
-    void Print(std::ostream & out) const override;
+    void Print(std::ostream &out) const override;
+
+    static bool fAssembleRHSOnly;
 
 protected:
     /**
@@ -166,7 +172,6 @@ protected:
     REAL fKvw;
 
     REAL fC; // this stores c^{-7/4}, where c is computed as (2.252610888 Dw^(19/7))/(mu^(1/7) rho^(3/7))
-    
-    REAL fCLin; // this stores 128 mu /(pi Dw^4)
 
+    REAL fCLin; // this stores 128 mu /(pi Dw^4)
 };

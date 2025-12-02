@@ -13,6 +13,8 @@ static TPZLogger logger("pz.material.darcy");
 
 #define USEBLAS
 
+bool TPZNonlinearWell::fAssembleRHSOnly = false;
+
 TPZNonlinearWell::TPZNonlinearWell() : TPZRegisterClassId(&TPZNonlinearWell::ClassId),
                                        TBase(), fDim(-1) {}
 
@@ -50,6 +52,11 @@ TPZNonlinearWell &TPZNonlinearWell::operator=(const TPZNonlinearWell &copy)
 void TPZNonlinearWell::Contribute(const TPZVec<TPZMaterialDataT<STATE>> &datavec, REAL weight, TPZFMatrix<STATE> &ek,
                                   TPZFMatrix<STATE> &ef)
 {
+    if (fAssembleRHSOnly)
+    {
+        ContributeResidual(datavec, weight, ef);
+        return;
+    }
 
     TPZFMatrix<REAL> &HDivphiQ = datavec[0].fDeformedDirections;
     TPZFMatrix<REAL> &phiP = datavec[1].phi;
@@ -71,6 +78,7 @@ void TPZNonlinearWell::Contribute(const TPZVec<TPZMaterialDataT<STATE>> &datavec
 
     REAL reynolds = (fRho * std::abs(Qsol) * fDw) / fMu;
     bool turbulent = reynolds > 1187.38;
+    // turbulent = reynolds > 0.1; // for testing purposes
 
     // Tangent matrix
     REAL factor = turbulent ? fC * weight * (pow(std::abs(Qsol), 3. / 4.) + 3. / 4. * pow(std::abs(Qsol), 3. / 4.)) : fCLin * weight;
@@ -129,6 +137,44 @@ void TPZNonlinearWell::ContributeBC(const TPZVec<TPZMaterialDataT<STATE>> &datav
         // }
         break;
     }
+}
+
+void TPZNonlinearWell::ContributeResidual(const TPZVec<TPZMaterialDataT<STATE>> &datavec, REAL weight, TPZFMatrix<STATE> &ef)
+{
+    TPZFMatrix<REAL> &HDivphiQ = datavec[0].fDeformedDirections;
+    TPZFMatrix<REAL> &phiP = datavec[1].phi;
+    TPZFMatrix<REAL> &divQ = datavec[0].divphi;
+    TPZFNMatrix<1, REAL> Aux(1, 1, 1.);
+    TPZFNMatrix<20, REAL> phiQ(HDivphiQ.Cols(), 1);
+
+    int nphiQ, nphiP;
+    nphiP = phiP.Rows();
+    nphiQ = datavec[0].fDeformedDirections.Cols();
+    for (int iq = 0; iq < nphiQ; iq++)
+    {
+        phiQ(iq, 0) = HDivphiQ(0, iq);
+    }
+
+    REAL Qsol = datavec[0].sol[0][0];
+    REAL psol = datavec[1].sol[0][0];
+    REAL divQsol = datavec[0].divsol[0][0];
+
+    REAL reynolds = (fRho * std::abs(Qsol) * fDw) / fMu;
+    bool turbulent = reynolds > 1187.38;
+
+    // Residual vector constitutive equation (negative)
+    REAL factor = turbulent ? fC * weight * Qsol * pow(std::abs(Qsol), 3. / 4.) : fCLin * Qsol * weight;
+    ef.AddContribution(0, 0, phiQ, 0, Aux, 0, -factor);
+    factor = -psol * weight;
+    ef.AddContribution(0, 0, divQ, 0, Aux, 1, -factor);
+
+    // Residual vector conservation equation (negative)
+    factor = -divQsol * weight;
+    ef.AddContribution(nphiQ, 0, phiP, 0, Aux, 0, -factor);
+    factor = -fKvw * psol * weight;
+    ef.AddContribution(nphiQ, 0, phiP, 0, Aux, 0, -factor);
+    factor = fKvw * fPres * weight;
+    ef.AddContribution(nphiQ, 0, phiP, 0, Aux, 0, -factor);
 }
 
 void TPZNonlinearWell::Solution(const TPZVec<TPZMaterialDataT<STATE>> &datavec, int var, TPZVec<STATE> &solOut)
