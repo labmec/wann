@@ -62,6 +62,8 @@ public:
 
     REAL BissectionMethod(TPZFMatrix<STATE> &sol, TPZFMatrix<STATE> &dsol);
 
+    REAL GoldenRatioMethod(TPZFMatrix<STATE> &sol, TPZFMatrix<STATE> &dsol);
+
     /// override assemble to have timers
     void Assemble() override;
 

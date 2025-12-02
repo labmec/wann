@@ -112,12 +112,11 @@ REAL TPZWannAnalysis::LineSearchStep(TPZFMatrix<STATE> &sol, TPZFMatrix<STATE> &
         eta = 1.0;
         break;
     case EBISSECT:
-        // To be implemented
         eta = BissectionMethod(sol, dsol);
         break;
     case EGOLDEN:
-        // To be implemented
-        DebugStop();
+        eta = GoldenRatioMethod(sol, dsol);
+        break;
         break;
     case ESECANT:
         // To be implemented
@@ -182,6 +181,87 @@ REAL TPZWannAnalysis::BissectionMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STAT
         std::cout << "Bissection step eta: " << eta << " s_M: " << s_M << std::endl;
 
         deta *= 0.5;
+    }
+    TPZNonlinearWell::fAssembleRHSOnly = false;
+    return eta;
+}
+
+REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STATE> &dsol)
+{
+    TPZNonlinearWell::fAssembleRHSOnly = true;
+    TPZFMatrix<STATE> ones = TPZFMatrix<STATE>(dsol.Rows(), dsol.Cols(), 1.0);
+
+    REAL a = 0;
+    REAL b = 1.0;
+    REAL ratio = 1.6180339887;
+    REAL m1 = b - (b - a) / ratio;
+    REAL m2 = a + (b - a) / ratio;
+    REAL eta;
+    REAL s_M1, s_M2;
+    
+    TPZFMatrix<STATE> sol_n1 = sol_n; 
+
+    TPZFMatrix<STATE> &res_L = Rhs(); // lower point (a)
+    TPZFMatrix<STATE> aux(1, 1, 0.0);
+    ones.MultAdd(res_L, res_L, aux, 1.0, 0.0, 1);
+    REAL r_a = std::abs(aux(0, 0));
+
+    sol_n1 =  sol_n + b * dsol; // upper point
+    Mesh()->LoadSolution(sol_n1);
+    Mesh()->TransferMultiphysicsSolution();
+    Assemble(); // Here, assemble only computes the RHS (residual)
+    TPZFMatrix<STATE> &res_U = Rhs();
+    ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
+    REAL r_b = std::abs(aux(0, 0));
+
+    sol_n1 =  sol_n + m1 * dsol; // upper point
+    Mesh()->LoadSolution(sol_n1);
+    Mesh()->TransferMultiphysicsSolution();
+    Assemble(); // Here, assemble only computes the RHS (residual)
+    res_U = Rhs();
+    ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
+    REAL r_m1 = std::abs(aux(0, 0));
+
+    sol_n1 =  sol_n + m2 * dsol; // upper point
+    Mesh()->LoadSolution(sol_n1);
+    Mesh()->TransferMultiphysicsSolution();
+    Assemble(); // Here, assemble only computes the RHS (residual)
+    res_U = Rhs();
+    ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
+    REAL r_m2 = std::abs(aux(0, 0));
+
+    while (std::abs(a-b) > 1e-3)
+    {
+        std::cout << "Golden Ratio step a: " << a << " b: " << b << " m1: " << m1 << " m2: " << m2 << std::endl;
+        if (r_m1 < r_m2) {
+            b = m2;
+            m2 = m1;
+            r_m2 = r_m1;
+            m1 = b - (b - a) / ratio;
+            eta = m1;
+
+            sol_n1 =  sol_n + m1 * dsol; // upper point
+            Mesh()->LoadSolution(sol_n1);
+            Mesh()->TransferMultiphysicsSolution();
+            Assemble();
+            res_U = Rhs();
+            ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
+            r_m1 = std::abs(aux(0, 0));
+        } else {
+            a = m1;
+            m1 = m2;
+            r_m1 = r_m2;
+            m2 = a + (b - a) / ratio;
+            eta = m2;
+
+            sol_n1 =  sol_n + m2 * dsol; // upper point
+            Mesh()->LoadSolution(sol_n1);
+            Mesh()->TransferMultiphysicsSolution();
+            Assemble();
+            res_U = Rhs();
+            ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
+            r_m2 = std::abs(aux(0, 0));
+        }
     }
     TPZNonlinearWell::fAssembleRHSOnly = false;
     return eta;
