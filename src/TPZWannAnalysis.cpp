@@ -67,7 +67,7 @@ void TPZWannAnalysis::NewtonIteration()
         Assemble();
 
         // Check residual convergence
-        if (fKiteration >= 0)
+        if (fKiteration > 0)
         {
             TPZFMatrix<STATE> rhs = Rhs();
             res_norm = Norm(rhs);
@@ -88,9 +88,12 @@ void TPZWannAnalysis::NewtonIteration()
         Solve();
         TPZFMatrix<STATE> dsol = Solution();
         REAL eta;
-        if (fKiteration == 0) {
+        if (fKiteration == 0)
+        {
             eta = 1.0;
-        } else {
+        }
+        else
+        {
             eta = LineSearchStep(sol, dsol, EGOLDEN);
         }
 
@@ -123,7 +126,6 @@ REAL TPZWannAnalysis::LineSearchStep(TPZFMatrix<STATE> &sol, TPZFMatrix<STATE> &
         break;
     case EGOLDEN:
         eta = GoldenRatioMethod(sol, dsol);
-        break;
         break;
     case ESECANT:
         // To be implemented
@@ -195,7 +197,7 @@ REAL TPZWannAnalysis::BissectionMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STAT
 
 REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STATE> &dsol)
 {
-    TPZNonlinearWell::fAssembleRHSOnly = false;
+    TPZNonlinearWell::fAssembleRHSOnly = true;
     TPZFMatrix<STATE> ones = TPZFMatrix<STATE>(dsol.Rows(), dsol.Cols(), 1.0);
 
     REAL a = 0;
@@ -206,8 +208,25 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
     REAL eta;
     REAL s_M1, s_M2;
     int it = 0;
-    
-    TPZFMatrix<STATE> sol_n1 = sol_n; 
+
+    if (0)
+    {
+        const int npoints = 1001;
+        std::cout << "x,rhs\n";
+        for (int ip = 0; ip < npoints; ++ip)
+        {
+            REAL x = ip / (REAL)(npoints - 1);
+            TPZFMatrix<STATE> sol_sample = sol_n + x * dsol;
+            Mesh()->LoadSolution(sol_sample);
+            Mesh()->TransferMultiphysicsSolution();
+            Assemble(); // compute RHS at this sample
+            TPZFMatrix<STATE> &res_local = Rhs();
+            REAL r = Norm(res_local);
+            std::cout << x << " " << r << "\n";
+        }
+    }
+
+    TPZFMatrix<STATE> sol_n1 = sol_n;
 
     TPZFMatrix<STATE> &res = Rhs(); // lower point (a)
     // TPZFMatrix<STATE> aux(1, 1, 0.0);
@@ -215,7 +234,7 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
     // REAL r_a = std::abs(aux(0, 0));
     REAL r_a = Norm(res);
 
-    sol_n1 =  sol_n + b * dsol; // upper point
+    sol_n1 = sol_n + b * dsol; // upper point
     Mesh()->LoadSolution(sol_n1);
     Mesh()->TransferMultiphysicsSolution();
     Assemble(); // Here, assemble only computes the RHS (residual)
@@ -224,7 +243,7 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
     // REAL r_b = std::abs(aux(0, 0));
     REAL r_b = Norm(res);
 
-    sol_n1 =  sol_n + m1 * dsol; // upper point
+    sol_n1 = sol_n + m1 * dsol; // first mid point
     Mesh()->LoadSolution(sol_n1);
     Mesh()->TransferMultiphysicsSolution();
     Assemble(); // Here, assemble only computes the RHS (residual)
@@ -233,7 +252,7 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
     // REAL r_m1 = std::abs(aux(0, 0));
     REAL r_m1 = Norm(res);
 
-    sol_n1 =  sol_n + m2 * dsol; // upper point
+    sol_n1 = sol_n + m2 * dsol; // second mid point
     Mesh()->LoadSolution(sol_n1);
     Mesh()->TransferMultiphysicsSolution();
     Assemble(); // Here, assemble only computes the RHS (residual)
@@ -242,27 +261,32 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
     // REAL r_m2 = std::abs(aux(0, 0));
     REAL r_m2 = Norm(res);
 
-    while (std::abs(a-b) > 1e-3 && it < 5)
+    while (std::abs(a - b) > 1e-9 && it < 100)
     {
 
-        std::cout << "Values: " << r_a << " " << r_m1 << " " << r_m2 << " " << r_b << std::endl;
-        std::cout << "Eta: " << eta << std::endl;
+        // if (r_b < r_m1 && r_b < r_m2)
+        // {
+        //     std::cout << "Something went wrong, returning eta = b" << std::endl;
+        //     eta = b;
+        //     break;
+        // }
+        // if (r_a < r_m1 && r_a < r_m2)
+        // {
+        //     std::cout << "Something went wrong, returning eta = b" << std::endl;
+        //     eta = b;
+        //     break;
+        // }
 
-        if (r_b < r_m1 && r_b < r_m2) {
-            std::cout << "Something went wrong, returning eta = b" << std::endl;
-            eta = b;
-            break;
-        }
-
-        if (r_m1 < r_m2) {
+        if (r_m1 < r_m2)
+        {
             b = m2;
             r_b = r_m2;
             m2 = m1;
             r_m2 = r_m1;
             m1 = b - (b - a) / ratio;
-            eta = m1;
+            eta = 0.5 * (a + b);
 
-            sol_n1 =  sol_n + m1 * dsol; // upper point
+            sol_n1 = sol_n + m1 * dsol; // first mid point
             Mesh()->LoadSolution(sol_n1);
             Mesh()->TransferMultiphysicsSolution();
             Assemble();
@@ -270,15 +294,17 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
             // ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
             // r_m1 = std::abs(aux(0, 0));
             r_m1 = Norm(res);
-        } else {
+        }
+        else
+        {
             a = m1;
             r_a = r_m1;
             m1 = m2;
             r_m1 = r_m2;
             m2 = a + (b - a) / ratio;
-            eta = m2;
+            eta = 0.5 * (a + b);
 
-            sol_n1 =  sol_n + m2 * dsol; // upper point
+            sol_n1 = sol_n + m2 * dsol; // second mid point
             Mesh()->LoadSolution(sol_n1);
             Mesh()->TransferMultiphysicsSolution();
             Assemble();
@@ -287,6 +313,10 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
             // r_m2 = std::abs(aux(0, 0));
             r_m2 = Norm(res);
         }
+        // std::cout << "Values: " << r_a << " " << r_m1 << " " << r_m2 << " " << r_b << std::endl;
+        // std::cout << "Values: " << a << " " << m1 << " " << m2 << " " << b << std::endl;
+        // std::cout << "Eta: " << eta << std::endl;
+        // std::cout << "it: " << it << std::endl;
         it++;
     }
     TPZNonlinearWell::fAssembleRHSOnly = false;
@@ -303,8 +333,8 @@ void TPZWannAnalysis::Assemble()
                               std::chrono::steady_clock::now() - start_time_ass)
                               .count() /
                           1000.;
-    std::cout << "---------Time to assemble: " << total_time_ass << " seconds"
-              << std::endl;
+    // std::cout << "---------Time to assemble: " << total_time_ass << " seconds"
+    //           << std::endl;
 }
 
 void TPZWannAnalysis::Solve()
