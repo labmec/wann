@@ -67,7 +67,7 @@ void TPZWannAnalysis::NewtonIteration()
         Assemble();
 
         // Check residual convergence
-        if (fKiteration > 0)
+        if (fKiteration >= 0)
         {
             TPZFMatrix<STATE> rhs = Rhs();
             res_norm = Norm(rhs);
@@ -87,7 +87,14 @@ void TPZWannAnalysis::NewtonIteration()
         }
         Solve();
         TPZFMatrix<STATE> dsol = Solution();
-        REAL eta = LineSearchStep(sol, dsol, ENONE);
+        REAL eta;
+        if (fKiteration == 0) {
+            eta = 1.0;
+        } else {
+            eta = LineSearchStep(sol, dsol, EGOLDEN);
+        }
+
+        std::cout << "---------Line search step eta: " << eta << std::endl;
         corr_norm = eta * Norm(dsol);
         sol += eta * dsol;
         cmesh->LoadSolution(sol);
@@ -188,7 +195,7 @@ REAL TPZWannAnalysis::BissectionMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STAT
 
 REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STATE> &dsol)
 {
-    TPZNonlinearWell::fAssembleRHSOnly = true;
+    TPZNonlinearWell::fAssembleRHSOnly = false;
     TPZFMatrix<STATE> ones = TPZFMatrix<STATE>(dsol.Rows(), dsol.Cols(), 1.0);
 
     REAL a = 0;
@@ -198,43 +205,58 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
     REAL m2 = a + (b - a) / ratio;
     REAL eta;
     REAL s_M1, s_M2;
+    int it = 0;
     
     TPZFMatrix<STATE> sol_n1 = sol_n; 
 
-    TPZFMatrix<STATE> &res_L = Rhs(); // lower point (a)
-    TPZFMatrix<STATE> aux(1, 1, 0.0);
-    ones.MultAdd(res_L, res_L, aux, 1.0, 0.0, 1);
-    REAL r_a = std::abs(aux(0, 0));
+    TPZFMatrix<STATE> &res = Rhs(); // lower point (a)
+    // TPZFMatrix<STATE> aux(1, 1, 0.0);
+    // ones.MultAdd(res_L, res_L, aux, 1.0, 0.0, 1);
+    // REAL r_a = std::abs(aux(0, 0));
+    REAL r_a = Norm(res);
 
     sol_n1 =  sol_n + b * dsol; // upper point
     Mesh()->LoadSolution(sol_n1);
     Mesh()->TransferMultiphysicsSolution();
     Assemble(); // Here, assemble only computes the RHS (residual)
-    TPZFMatrix<STATE> &res_U = Rhs();
-    ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
-    REAL r_b = std::abs(aux(0, 0));
+    res = Rhs();
+    // ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
+    // REAL r_b = std::abs(aux(0, 0));
+    REAL r_b = Norm(res);
 
     sol_n1 =  sol_n + m1 * dsol; // upper point
     Mesh()->LoadSolution(sol_n1);
     Mesh()->TransferMultiphysicsSolution();
     Assemble(); // Here, assemble only computes the RHS (residual)
-    res_U = Rhs();
-    ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
-    REAL r_m1 = std::abs(aux(0, 0));
+    res = Rhs();
+    // ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
+    // REAL r_m1 = std::abs(aux(0, 0));
+    REAL r_m1 = Norm(res);
 
     sol_n1 =  sol_n + m2 * dsol; // upper point
     Mesh()->LoadSolution(sol_n1);
     Mesh()->TransferMultiphysicsSolution();
     Assemble(); // Here, assemble only computes the RHS (residual)
-    res_U = Rhs();
-    ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
-    REAL r_m2 = std::abs(aux(0, 0));
+    res = Rhs();
+    // ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
+    // REAL r_m2 = std::abs(aux(0, 0));
+    REAL r_m2 = Norm(res);
 
-    while (std::abs(a-b) > 1e-3)
+    while (std::abs(a-b) > 1e-3 && it < 5)
     {
-        std::cout << "Golden Ratio step a: " << a << " b: " << b << " m1: " << m1 << " m2: " << m2 << std::endl;
+
+        std::cout << "Values: " << r_a << " " << r_m1 << " " << r_m2 << " " << r_b << std::endl;
+        std::cout << "Eta: " << eta << std::endl;
+
+        if (r_b < r_m1 && r_b < r_m2) {
+            std::cout << "Something went wrong, returning eta = b" << std::endl;
+            eta = b;
+            break;
+        }
+
         if (r_m1 < r_m2) {
             b = m2;
+            r_b = r_m2;
             m2 = m1;
             r_m2 = r_m1;
             m1 = b - (b - a) / ratio;
@@ -244,11 +266,13 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
             Mesh()->LoadSolution(sol_n1);
             Mesh()->TransferMultiphysicsSolution();
             Assemble();
-            res_U = Rhs();
-            ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
-            r_m1 = std::abs(aux(0, 0));
+            res = Rhs();
+            // ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
+            // r_m1 = std::abs(aux(0, 0));
+            r_m1 = Norm(res);
         } else {
             a = m1;
+            r_a = r_m1;
             m1 = m2;
             r_m1 = r_m2;
             m2 = a + (b - a) / ratio;
@@ -258,10 +282,12 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
             Mesh()->LoadSolution(sol_n1);
             Mesh()->TransferMultiphysicsSolution();
             Assemble();
-            res_U = Rhs();
-            ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
-            r_m2 = std::abs(aux(0, 0));
+            res = Rhs();
+            // ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
+            // r_m2 = std::abs(aux(0, 0));
+            r_m2 = Norm(res);
         }
+        it++;
     }
     TPZNonlinearWell::fAssembleRHSOnly = false;
     return eta;
