@@ -94,10 +94,17 @@ void TPZWannAnalysis::NewtonIteration()
         }
         else
         {
-            eta = LineSearchStep(sol, dsol, EGOLDEN);
+            eta = LineSearchStep(sol, dsol, ENONE);
         }
 
         std::cout << "---------Line search step eta: " << eta << std::endl;
+
+        // Perform Taylor test (for debugging purposes)
+        // Only works if no line search is performed
+        if (fSimData->m_PostProc.verbosityLevel && fKiteration > 0) {
+            TaylorTest(sol, 1e-4);
+        }
+
         corr_norm = eta * Norm(dsol);
         sol += eta * dsol;
         cmesh->LoadSolution(sol);
@@ -321,6 +328,61 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
     }
     TPZNonlinearWell::fAssembleRHSOnly = false;
     return eta;
+}
+
+void TPZWannAnalysis::TaylorTest(TPZFMatrix<STATE> &sol, REAL step) {
+
+    // Ensures that Jacobian is assembled
+    // Necessary if we perform a line search in the Newton iteration before calling this method
+    // Assemble();
+
+    // From now on we only need to re-assemble the RHS (residual)
+    TPZNonlinearWell::fAssembleRHSOnly = true;
+
+    REAL a1 = step;
+    REAL a2 = 2 * step;
+    REAL b1,b2;
+
+    TPZFMatrix<STATE> sol_n1 = sol;
+    TPZFMatrix<STATE> delta = TPZFMatrix<STATE>(sol.Rows(), sol.Cols(), 0.0);
+
+    // Fill delta with random values between -1 and 1
+    for (int i=0; i<delta.Rows(); i++) {
+        delta(i,0) = 2.0 * (REAL)rand()/RAND_MAX - 1.0;
+    }
+
+    TPZFMatrix<STATE> res_u = Rhs(); // Residual at initial point
+    TPZFMatrix<STATE> aux = Rhs(); // Auxiliary array 
+    aux.Zero();
+    TPZFMatrix<STATE> jac_u = *MatrixSolver<STATE>().Matrix(); // Jacobian at initial point
+
+    sol_n1 = sol + a1 * delta; // u + a1 * Delta u
+    Mesh()->LoadSolution(sol_n1);
+    Mesh()->TransferMultiphysicsSolution();
+    Assemble(); // Here, assemble only computes the RHS (residual)
+    TPZFMatrix<STATE> res_a1 = Rhs();
+
+    sol_n1 = sol + a2 * delta; // u + a2 * Delta u
+    Mesh()->LoadSolution(sol_n1);
+    Mesh()->TransferMultiphysicsSolution();
+    Assemble(); // Here, assemble only computes the RHS (residual)
+    TPZFMatrix<STATE> res_a2 = Rhs();
+
+    // Obs: our Jacobian matrix is multiply by -1. So we have to add the term a1*aux
+    jac_u.MultAdd(delta, delta, aux, 1, 0.0, 0); // aux = J * delta
+    res_a1 = res_a1 - res_u + a1*aux;
+    b1 = Norm(res_a1);
+
+    res_a2 = res_a2 - res_u + a2*aux;
+    b2 = Norm(res_a2);
+
+    std::cout << "\nPerforming Taylor test at iteration" << fKiteration << std::endl;
+    std::cout << "a1 = " << a1 << " , b1 = " << b1 << std::endl;
+    std::cout << "a2 = " << a2 << " , b2 = " << b2 << std::endl;
+    std::cout << "Approximated convergence order: " << log(b1/b2)/log(a1/a2) << std::endl;
+
+    // Restore normal assembly
+    TPZNonlinearWell::fAssembleRHSOnly = false;
 }
 
 void TPZWannAnalysis::Assemble()

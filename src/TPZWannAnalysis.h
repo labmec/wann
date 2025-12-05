@@ -64,6 +64,11 @@ public:
 
     REAL GoldenRatioMethod(TPZFMatrix<STATE> &sol, TPZFMatrix<STATE> &dsol);
 
+    /// Perform a Taylor test in the current Newton iteration
+    /// Used only for debugging purposes (check correctness of Jacobian implementation)
+    /// To get correct results, no line search must be performed
+    void TaylorTest(TPZFMatrix<STATE> &sol, REAL step = 1e-5);
+
     /// override assemble to have timers
     void Assemble() override;
 
