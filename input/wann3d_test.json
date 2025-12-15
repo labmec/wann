@@ -7,7 +7,6 @@
   },
   "WellboreData": {
     "name": "curve_wellbore",
-    "perm": 10.0,
     "pOrder": 2,
     "radius": 0.2,
     "length": 1.0,
@@ -64,5 +63,11 @@
     "training_resolution": 400, //number of subdivisions to generate training data
     "nthreads": 0,
     "verbosityLevel": 1
+  },
+  "NumericsData": {
+    "nthreads": 0,
+    "maxIterations" : 20,
+    "res_tol": 1e-6,
+    "corr_tol": 1e-6
   }
 }

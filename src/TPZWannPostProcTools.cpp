@@ -1,4 +1,5 @@
 #include "TPZWannPostProcTools.h"
+#include "TPZNonlinearWell.h"
 
 void TPZWannPostProcTools::GenerateTrainingData(TPZGeoMesh* gmesh, ProblemData* SimData) {
 
@@ -44,11 +45,12 @@ void TPZWannPostProcTools::GenerateTrainingData(TPZGeoMesh* gmesh, ProblemData* 
     // Now postprocess the pressure and div q of the cel reference by gel
     TPZCompEl* cel = gel->Reference();
     TPZMaterial* mat = cel->Material();
-    TPZMixedDarcyFlow* darcy = dynamic_cast<TPZMixedDarcyFlow*>(mat);
-    if(!darcy) DebugStop();
+    // TPZMixedDarcyFlow* wellmat = dynamic_cast<TPZMixedDarcyFlow*>(mat);
+    TPZNonlinearWell* wellmat = dynamic_cast<TPZNonlinearWell*>(mat);
+    if(!wellmat) DebugStop();
     
-    const int pind = darcy->VariableIndex("Pressure");
-    const int qind = darcy->VariableIndex("Divergence");
+    const int pind = wellmat->VariableIndex("Pressure");
+    const int qind = wellmat->VariableIndex("Divergence");
     TPZManVector<STATE, 3> output(1);
     cel->Solution(qsi,pind,output);
     const REAL pressure = output[0];

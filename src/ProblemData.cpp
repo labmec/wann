@@ -47,12 +47,6 @@ void ProblemData::ReadJson(std::string file)
     json wellbore = input["WellboreData"];
     if (wellbore.find("name") == wellbore.end())
         DebugStop();
-    m_Wellbore.name = wellbore["name"];
-    if (wellbore.find("perm") == wellbore.end())
-        DebugStop();
-    m_Wellbore.perm = wellbore["perm"];
-    if (wellbore.find("pOrder") == wellbore.end())
-        DebugStop();
     m_Wellbore.pOrder = wellbore["pOrder"];
     if (wellbore.find("radius") == wellbore.end())
         DebugStop();
@@ -168,25 +162,23 @@ void ProblemData::ReadJson(std::string file)
     else
         m_PostProc.verbosityLevel = 0;
 
-    if (input.find("NumericsData") != input.end())
+    // Default numerics data. Overwrite if present in json file
+    m_Numerics.nthreads = 0;
+    m_Numerics.maxIterations = 10;
+    m_Numerics.res_tol = 1e-6;
+    m_Numerics.corr_tol = 1e-6;
+
+    if (input.find("NumericsData") == input.end())
         DebugStop();
     json numerics = input["NumericsData"];
     if (numerics.find("nthreads") != numerics.end())
         m_Numerics.nthreads = numerics["nthreads"];
-    else
-        m_Numerics.nthreads = 0;
     if (numerics.find("maxIterations") != numerics.end())
         m_Numerics.maxIterations = numerics["maxIterations"];
-    else
-        m_Numerics.maxIterations = 10;
     if (numerics.find("res_tol") != numerics.end())
         m_Numerics.res_tol = numerics["res_tol"];
-    else
-        m_Numerics.res_tol = 1e-6;
     if (numerics.find("corr_tol") != numerics.end())
         m_Numerics.corr_tol = numerics["corr_tol"];
-    else
-        m_Numerics.corr_tol = 1e-6;
 }
 
 void ProblemData::Print(std::ostream &out)
@@ -202,7 +194,6 @@ void ProblemData::Print(std::ostream &out)
     out << "Wellbore Data:\n";
     out << "Name: " << m_Wellbore.name << std::endl;
     out << "Material ID: " << m_Wellbore.matid << std::endl;
-    out << "Permeability: " << m_Wellbore.perm << std::endl;
     out << "Polynomial order: " << m_Wellbore.pOrder << std::endl;
     out << "Radius: " << m_Wellbore.radius << std::endl;
     out << "Length: " << m_Wellbore.length << std::endl;

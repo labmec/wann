@@ -237,6 +237,8 @@ int TPZNonlinearWell::VariableIndex(const std::string &name) const
         return 2;
     if (!strcmp("DivFlux", name.c_str()))
         return 3;
+    if (!strcmp("Divergence", name.c_str()))
+        return 3;
     if (!strcmp("GradPressure", name.c_str()))
         return 4;
     DebugStop();

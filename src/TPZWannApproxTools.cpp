@@ -1,4 +1,6 @@
 #include "TPZWannApproxTools.h"
+#include "TPZNonlinearWell.h"
+#include "TPZWannMixedDarcyNL.h"
 
 TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TPZAnalyticSolution *exact)
 {
@@ -17,7 +19,9 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
   auto &ReservoirData = SimData->m_Reservoir;
   {
 
-    TPZMixedDarcyFlow *reservoirMat = new TPZMixedDarcyFlow(SimData->EDomain, dim);
+    // Add flag to indicate if we want to use nonlinear material?
+    // TPZMixedDarcyFlow *reservoirMat = new TPZMixedDarcyFlow(SimData->EDomain, dim);
+    TPZWannMixedDarcyNL *reservoirMat = new TPZWannMixedDarcyNL(SimData->EDomain, dim);
     if (hasAnalyticSol) {
       reservoirMat->SetExactSol(exact->ExactSolution(), 3);
       reservoirMat->SetForcingFunction(exact->ForceFunc(), 3);
@@ -37,21 +41,6 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
       if (hasAnalyticSol) BCond->SetForcingFunctionBC(exact->ExactSolution(), 3);
       hdivCreator.InsertMaterialObject(BCond);
     }
-
-    // TPZFMatrix<STATE> val1(1, 1, 0.);
-    // TPZManVector<STATE> val2(1, pff);
-    // TPZBndCondT<STATE> *BCond1 = matdarcy->CreateBC(matdarcy, EFarField, diri, val1, val2);
-    // hdivCreator.InsertMaterialObject(BCond1);
-
-    // val2[0] = 0.;
-    // // TPZBndCondT<STATE>* BCond2 = matdarcy->CreateBC(matdarcy, ESurfWellCyl, diri, val1, val2);
-    // // hdivCreator.InsertMaterialObject(BCond2);
-
-    // TPZBndCondT<STATE> *BCond3 = matdarcy->CreateBC(matdarcy, ESurfHeel, neu, val1, val2);
-    // hdivCreator.InsertMaterialObject(BCond3);
-
-    // TPZBndCondT<STATE> *BCond4 = matdarcy->CreateBC(matdarcy, ESurfToe, neu, val1, val2);
-    // hdivCreator.InsertMaterialObject(BCond4);
   }
 
   // Pressure skin material
@@ -62,16 +51,21 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
 
   // Wellbore material
   auto &WellboreData = SimData->m_Wellbore;
+  auto &FluidData = SimData->m_Fluid;
   {
     const int dimwell = 1;
-    TPZMixedDarcyFlow *wellboreMat = new TPZMixedDarcyFlow(SimData->ECurveWell, dimwell);
+    // Add flag to indicate if we want to use nonlinear material?
+    // TPZMixedDarcyFlow *wellboreMat = new TPZMixedDarcyFlow(SimData->ECurveWell, dimwell);
+    // TPZNonlinearWell *wellboreMat = new TPZNonlinearWell(SimData->ECurveWell, dimwell);
+    
+    TPZNonlinearWell *wellboreMat =
+        new TPZNonlinearWell(SimData->ECurveWell, 2 * WellboreData.radius,
+                             FluidData.viscosity, FluidData.density, 0.0, 0.0);
     if (hasAnalyticSol) {
       wellboreMat->SetExactSol(exact->ExactSolution(), 3);
       wellboreMat->SetForcingFunction(exact->ForceFunc(), 3);
-      wellboreMat->SetConstantPermeability(1.0);
-    } else {
-      wellboreMat->SetConstantPermeability(WellboreData.perm);
     }
+
     hdivCreator.InsertMaterialObject(wellboreMat); // This will only be used in the creation of the multiphysics mesh since the dimension is smaller than the dimension of the geometric mesh
 
     // Change boundary condition value as a workaround
