@@ -19,6 +19,7 @@
 #include "pzintel.h"
 #include "pzvec_extras.h"
 #include "TPZNonlinearWell.h"
+#include "TPZNonLinearWellH1.h"
 #include "TPZWannAnalysis.h"
 #include "tpzgeoelrefpattern.h"
 
@@ -43,6 +44,9 @@ TPZGeoMesh *Create1DMesh(int nel, REAL x0, REAL x1);
 
 // Creates a computational mesh for mixed approximation
 TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order = 1);
+
+// Creates a computational mesh for H1 approximation
+TPZCompMesh *createCompMeshH1(TPZGeoMesh *gmesh, int order = 1);
 
 void SolveNonLinear(int order, TPZGeoMesh *gmesh);
 
@@ -113,7 +117,7 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order)
     bcond = mat->CreateBC(mat, ERight, 0, val1, val2);
     cmeshFlux->InsertMaterialObject(bcond);
 
-    val2[0] = 0.;
+    val2[0] = 100.0;
     bcond = mat->CreateBC(mat, ELeft, 0, val1, val2);
     cmeshFlux->InsertMaterialObject(bcond);
 
@@ -185,7 +189,7 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order)
     bcond = matWell->CreateBC(matWell, ELeft, 0, val1, val2);
     cmesh->InsertMaterialObject(bcond);
 
-    val2[0] = 0.0;
+    val2[0] = 100.0;
     bcond = matWell->CreateBC(matWell, ERight, 0, val1, val2);
     cmesh->InsertMaterialObject(bcond);
 
@@ -203,6 +207,39 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order)
     }
 
     return cmesh;
+}
+
+TPZCompMesh *createCompMeshH1(TPZGeoMesh *gmesh, int order)
+{
+    TPZCompMesh *cmeshH1 = new TPZCompMesh(gmesh);
+    cmeshH1->SetDimModel(gmesh->Dimension());
+    cmeshH1->SetDefaultOrder(order);
+    cmeshH1->SetAllCreateFunctionsContinuous();
+
+    // Add materials (weak formulation)
+    REAL Dw = 0.1;     // Well diameter
+    REAL mu = 1.e-3;   // Fluid viscosity
+    REAL rho = 1000;   // Fluid density
+    REAL pres = 1.e5;  // Reservoir pressure
+    REAL Kvw = 1.e-12; // Pseudo resistivity
+    TPZNonLinearWellH1 *matWell = new TPZNonLinearWellH1(EMatId, Dw, mu, rho, pres, Kvw);
+    cmeshH1->InsertMaterialObject(matWell);
+
+    // Create boundary conditions
+    TPZManVector<REAL, 1> val2(1, 0.); // Part that goes to the RHS vector
+    TPZFMatrix<REAL> val1(1, 1, 0.);   // Part that goes to the Stiffnes matrix
+    TPZBndCondT<REAL> *bcond;
+
+    val2[0] = 100.0;
+    bcond = matWell->CreateBC(matWell, ERight, 0, val1, val2);
+    cmeshH1->InsertMaterialObject(bcond);
+
+    val2[0] = 2000.0;
+    bcond = matWell->CreateBC(matWell, ELeft, 0, val1, val2);
+    cmeshH1->InsertMaterialObject(bcond);
+
+    cmeshH1->AutoBuild();
+    return cmeshH1;
 }
 
 void SolveNonLinear(int order, TPZGeoMesh *gmesh)
@@ -273,32 +310,52 @@ void SolveNonLinear(int order, TPZGeoMesh *gmesh)
 void SolveNonLinearNew(int order, TPZGeoMesh *gmesh)
 {
     TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, order);
+    TPZCompMesh *cmeshH1 = createCompMeshH1(gmesh, order);
     TPZWannAnalysis anMixed(cmeshMixed, RenumType::EMetis);
+    TPZWannAnalysis anH1(cmeshH1, RenumType::EMetis);
     ProblemData simData;
-    simData.m_Numerics.maxIterations = 10;
+    simData.m_Numerics.maxIterations = 20;
     simData.m_Numerics.res_tol = 1.e-6;
     simData.m_Numerics.corr_tol = 1.e-6;
     simData.m_Numerics.nthreads = nthreads;
 
     simData.m_Wellbore.BCs["left"] = {ELeft, 0, 2000.0};
-    simData.m_Wellbore.BCs["right"] = {ERight, 0, 0.0};
+    simData.m_Wellbore.BCs["right"] = {ERight, 0, 100.0};
+
+    std::cout << "\nSolving non-linear well (Mixed H(div))" << std::endl;
+
     anMixed.SetProblemData(&simData);
     anMixed.Initialize();
     anMixed.NewtonIteration();
 
-    // ---- Plotting ---
+    std::cout << "\nSolving non-linear well (H1)" << std::endl;
+
+    // anH1.SetProblemData(&simData);
+    // anH1.Initialize();
+    // anH1.NewtonIteration();
+
+    // --- Plotting ---
 
     {
-        const std::string plotfile = "darcy_mixed";
+        const std::string plotfile = "testWell_mixed";
         constexpr int vtkRes{0};
         TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
         auto vtk = TPZVTKGenerator(cmeshMixed, fields, plotfile, vtkRes);
         vtk.Do();
     }
 
+    {
+        const std::string plotfile = "testWell_H1";
+        constexpr int vtkRes{0};
+        TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
+        auto vtk = TPZVTKGenerator(cmeshH1, fields, plotfile, vtkRes);
+        vtk.Do();
+    }
+
     // --- Clean up ---
 
     delete cmeshMixed;
+    delete cmeshH1;
 }
 
 TPZGeoMesh *Create1DMesh(int nel, REAL x0, REAL x1)

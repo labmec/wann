@@ -33,11 +33,13 @@ public:
 
     bool fIsFirstAssemble = true;
 
+    bool fIsMultiphysics = true;
+
     /// Default constructor
     TPZWannAnalysis();
 
     /// Constructor based on a cmesh and optimization band directive
-    TPZWannAnalysis(TPZMultiphysicsCompMesh *cmesh,
+    TPZWannAnalysis(TPZCompMesh *cmesh,
                     const RenumType &renumtype = RenumType::EDefault);
 
     /// Default destructor
@@ -75,17 +77,17 @@ public:
     /// override solve to have timers
     void Solve() override;
 
-    /// Fill the set of material ids related to Neumann BCs
-    /// This method is used to apply Neumann BCs without using BigNumbers
-    void FillNeumannBCMatids(std::set<int> &neumannMatids);
+    /// Fill the set of material ids related to BCs of given type
+    /// This method is used to apply BCs without using BigNumbers
+    void FillBCMatids(std::set<int> &bcMatids, int type);
 
     /// Set the initial solution based on the boundary conditions
-    /// This method is used to apply Neumann BCs without using BigNumbers
-    void SetInitialSolution(std::set<int> &neumannMatids);
+    /// This method is used to apply BCs without using BigNumbers
+    void SetInitialSolution(std::set<int> &bcMatids);
 
-    /// Remove equations related to Neumann BCs from the system
-    /// This method is used to apply Neumann BCs without using BigNumbers
-    void ApplyEquationFilter(std::set<int> &neumannMatids);
+    /// Remove equations related to specified BCs from the system
+    /// This method is used to apply BCs without using BigNumbers
+    void ApplyEquationFilter(std::set<int> &bcMatids);
 
     /// Render a vtk file with requested variables for a time step
     void PostProcessIteration(int dimToPost = -1, int it = -1);

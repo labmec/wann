@@ -9,9 +9,16 @@ using namespace std;
 
 TPZWannAnalysis::TPZWannAnalysis() : TPZLinearAnalysis() {}
 
-TPZWannAnalysis::TPZWannAnalysis(TPZMultiphysicsCompMesh *cmesh,
+TPZWannAnalysis::TPZWannAnalysis(TPZCompMesh *cmesh,
                                  const RenumType &renumtype)
-    : TPZLinearAnalysis(cmesh, renumtype) {}
+    : TPZLinearAnalysis(cmesh, renumtype) {
+    
+    // Check whether the computational mesh is multiphysics
+    fIsMultiphysics = true;
+    TPZMultiphysicsCompMesh *cmeshMP =
+        dynamic_cast<TPZMultiphysicsCompMesh *>(Mesh());
+    if (!cmeshMP) fIsMultiphysics = false;
+    }
 
 TPZWannAnalysis::~TPZWannAnalysis() {}
 
@@ -34,14 +41,27 @@ void TPZWannAnalysis::Initialize()
     int n_threads = fSimData->m_Numerics.nthreads;
     matrix.SetNumThreads(n_threads);
     SetStructuralMatrix(matrix);
-    std::set<int> neumannMatids;
-    FillNeumannBCMatids(neumannMatids);
-    SetInitialSolution(neumannMatids);
-    ApplyEquationFilter(neumannMatids);
+
+    // We want to filter bc equations that use big number.
+    // For mixed approximation (MultiPhysics mesh) we filter Neumann BCs (type 1)
+    // For H1 approximation we filter Dirichlet BCs (type 0)
+    int type = fIsMultiphysics ? 1 : 0;
+    std::set<int> bcMatids;
+    FillBCMatids(bcMatids, type);
+    SetInitialSolution(bcMatids);
+    ApplyEquationFilter(bcMatids);
     int nreducedeq = fStructMatrix->NReducedEquations();
+
+    DecomposeType solverType = fIsMultiphysics ? ELDLt : ECholesky;
     TPZStepSolver<STATE> step;
-    step.SetDirect(ELDLt);
+    step.SetDirect(solverType);
     SetSolver(step);
+
+    if (!fIsMultiphysics)
+    {
+        auto mat = MatrixSolver<STATE>().Matrix();
+        mat->SetDefPositive(true);
+    }
 
     std::cout << "Number of equations: " << fCompMesh->NEquations() << std::endl;
     std::cout << "Number of elements: " << fCompMesh->NElements() << std::endl;
@@ -49,10 +69,6 @@ void TPZWannAnalysis::Initialize()
 
 void TPZWannAnalysis::NewtonIteration()
 {
-    TPZMultiphysicsCompMesh *cmesh =
-        dynamic_cast<TPZMultiphysicsCompMesh *>(Mesh());
-    if (!cmesh)
-        DebugStop();
 
     int matIter = fSimData->m_Numerics.maxIterations;
     REAL res_norm = 1.0;
@@ -101,16 +117,17 @@ void TPZWannAnalysis::NewtonIteration()
 
         // Perform Taylor test (for debugging purposes)
         // Only works if no line search is performed
-        if (fSimData->m_PostProc.verbosityLevel && fKiteration > 0) {
-            TaylorTest(sol, 1e-4);
-        }
+        // Currently it does not work with equation filtering
+        // if (fSimData->m_PostProc.verbosityLevel && fKiteration > 0) {
+        //     TaylorTest(sol, 1e-4);
+        // }
 
         corr_norm = eta * Norm(dsol);
         sol += eta * dsol;
-        cmesh->LoadSolution(sol);
-        cmesh->TransferMultiphysicsSolution();
+        Mesh()->LoadSolution(sol);
+        if (fIsMultiphysics) Mesh()->TransferMultiphysicsSolution();
 
-        PostProcessIteration(cmesh->Dimension(), fKiteration);
+        PostProcessIteration(Mesh()->Dimension(), fKiteration);
     }
 
     if (!converged)
@@ -225,7 +242,7 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
             REAL x = ip / (REAL)(npoints - 1);
             TPZFMatrix<STATE> sol_sample = sol_n + x * dsol;
             Mesh()->LoadSolution(sol_sample);
-            Mesh()->TransferMultiphysicsSolution();
+            if (fIsMultiphysics) Mesh()->TransferMultiphysicsSolution();
             Assemble(); // compute RHS at this sample
             TPZFMatrix<STATE> &res_local = Rhs();
             REAL r = Norm(res_local);
@@ -243,7 +260,7 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
 
     sol_n1 = sol_n + b * dsol; // upper point
     Mesh()->LoadSolution(sol_n1);
-    Mesh()->TransferMultiphysicsSolution();
+    if (fIsMultiphysics) Mesh()->TransferMultiphysicsSolution();
     Assemble(); // Here, assemble only computes the RHS (residual)
     res = Rhs();
     // ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
@@ -252,7 +269,7 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
 
     sol_n1 = sol_n + m1 * dsol; // first mid point
     Mesh()->LoadSolution(sol_n1);
-    Mesh()->TransferMultiphysicsSolution();
+    if (fIsMultiphysics) Mesh()->TransferMultiphysicsSolution();
     Assemble(); // Here, assemble only computes the RHS (residual)
     res = Rhs();
     // ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
@@ -261,7 +278,7 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
 
     sol_n1 = sol_n + m2 * dsol; // second mid point
     Mesh()->LoadSolution(sol_n1);
-    Mesh()->TransferMultiphysicsSolution();
+    if (fIsMultiphysics) Mesh()->TransferMultiphysicsSolution();
     Assemble(); // Here, assemble only computes the RHS (residual)
     res = Rhs();
     // ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
@@ -295,7 +312,7 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
 
             sol_n1 = sol_n + m1 * dsol; // first mid point
             Mesh()->LoadSolution(sol_n1);
-            Mesh()->TransferMultiphysicsSolution();
+            if (fIsMultiphysics) Mesh()->TransferMultiphysicsSolution();
             Assemble();
             res = Rhs();
             // ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
@@ -313,7 +330,7 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
 
             sol_n1 = sol_n + m2 * dsol; // second mid point
             Mesh()->LoadSolution(sol_n1);
-            Mesh()->TransferMultiphysicsSolution();
+            if (fIsMultiphysics) Mesh()->TransferMultiphysicsSolution();
             Assemble();
             res = Rhs();
             // ones.MultAdd(res_U, res_U, aux, 1.0, 0.0, 1);
@@ -331,10 +348,6 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
 }
 
 void TPZWannAnalysis::TaylorTest(TPZFMatrix<STATE> &sol, REAL step) {
-
-    // Ensures that Jacobian is assembled
-    // Necessary if we perform a line search in the Newton iteration before calling this method
-    // Assemble();
 
     // From now on we only need to re-assemble the RHS (residual)
     TPZNonlinearWell::fAssembleRHSOnly = true;
@@ -358,13 +371,13 @@ void TPZWannAnalysis::TaylorTest(TPZFMatrix<STATE> &sol, REAL step) {
 
     sol_n1 = sol + a1 * delta; // u + a1 * Delta u
     Mesh()->LoadSolution(sol_n1);
-    Mesh()->TransferMultiphysicsSolution();
+    if (fIsMultiphysics) Mesh()->TransferMultiphysicsSolution();
     Assemble(); // Here, assemble only computes the RHS (residual)
     TPZFMatrix<STATE> res_a1 = Rhs();
 
     sol_n1 = sol + a2 * delta; // u + a2 * Delta u
     Mesh()->LoadSolution(sol_n1);
-    Mesh()->TransferMultiphysicsSolution();
+    if (fIsMultiphysics) Mesh()->TransferMultiphysicsSolution();
     Assemble(); // Here, assemble only computes the RHS (residual)
     TPZFMatrix<STATE> res_a2 = Rhs();
 
@@ -414,25 +427,25 @@ void TPZWannAnalysis::Solve()
               << std::endl;
 }
 
-void TPZWannAnalysis::FillNeumannBCMatids(std::set<int> &neumannMatids)
+void TPZWannAnalysis::FillBCMatids(std::set<int> &bcMatids, int type)
 {
     for (auto it = fSimData->m_Reservoir.BCs.begin(); it != fSimData->m_Reservoir.BCs.end(); ++it)
     {
         int matid = it->second.matid;
         int bc_type = it->second.type;
-        if (bc_type == 1)
-            neumannMatids.insert(matid);
+        if (bc_type == type)
+            bcMatids.insert(matid);
     }
     for (auto it = fSimData->m_Wellbore.BCs.begin(); it != fSimData->m_Wellbore.BCs.end(); ++it)
     {
         int matid = it->second.matid;
         int bc_type = it->second.type;
-        if (bc_type == 1)
-            neumannMatids.insert(matid);
+        if (bc_type == type)
+            bcMatids.insert(matid);
     }
 }
 
-void TPZWannAnalysis::SetInitialSolution(std::set<int> &neumannMatids)
+void TPZWannAnalysis::SetInitialSolution(std::set<int> &bcMatids)
 {
     fCompMesh->LoadReferences();
     TPZGeoMesh *gmesh = fCompMesh->Reference();
@@ -442,7 +455,7 @@ void TPZWannAnalysis::SetInitialSolution(std::set<int> &neumannMatids)
     {
         int elMatID = el->MaterialId();
 
-        if (neumannMatids.find(elMatID) == neumannMatids.end())
+        if (bcMatids.find(elMatID) == bcMatids.end())
             continue;
 
         TPZCompEl *compEl = el->Reference();
@@ -496,7 +509,7 @@ void TPZWannAnalysis::SetInitialSolution(std::set<int> &neumannMatids)
         }
     }
 
-    fCompMesh->TransferMultiphysicsSolution();
+    if (fIsMultiphysics) fCompMesh->TransferMultiphysicsSolution();
 
     // When the internal dofs are condensed, the analysis solution size is
     // different from the cmesh solution size Analysis only holds the independent
@@ -511,7 +524,7 @@ void TPZWannAnalysis::SetInitialSolution(std::set<int> &neumannMatids)
     }
 }
 
-void TPZWannAnalysis::ApplyEquationFilter(std::set<int> &neumannMatids)
+void TPZWannAnalysis::ApplyEquationFilter(std::set<int> &bcMatids)
 {
     fCompMesh->LoadReferences();
     std::set<int64_t> removeEquations;
@@ -521,7 +534,7 @@ void TPZWannAnalysis::ApplyEquationFilter(std::set<int> &neumannMatids)
     {
         int elMatID = el->MaterialId();
 
-        if (neumannMatids.find(elMatID) == neumannMatids.end())
+        if (bcMatids.find(elMatID) == bcMatids.end())
             continue;
 
         TPZCompEl *compEl = el->Reference();
