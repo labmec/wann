@@ -4,6 +4,7 @@
 
 #include "TPZWannAnalysis.h"
 #include "TPZNonlinearWell.h"
+#include "TPZNonLinearWellH1.h"
 
 using namespace std;
 
@@ -57,11 +58,11 @@ void TPZWannAnalysis::Initialize()
     step.SetDirect(solverType);
     SetSolver(step);
 
-    if (!fIsMultiphysics)
-    {
-        auto mat = MatrixSolver<STATE>().Matrix();
-        mat->SetDefPositive(true);
-    }
+    // if (!fIsMultiphysics)
+    // {
+    //     auto mat = MatrixSolver<STATE>().Matrix();
+    //     mat->SetDefPositive(true);
+    // }
 
     std::cout << "Number of equations: " << fCompMesh->NEquations() << std::endl;
     std::cout << "Number of elements: " << fCompMesh->NElements() << std::endl;
@@ -76,6 +77,8 @@ void TPZWannAnalysis::NewtonIteration()
     REAL res_tol = fSimData->m_Numerics.res_tol;
     REAL corr_tol = fSimData->m_Numerics.corr_tol;
     bool converged = false;
+    TPZNonLinearWellH1::fIsFirstIteration = true;
+    TPZNonlinearWell::fIsFirstIteration = true;
 
     TPZFMatrix<STATE> sol = Solution();
     for (fKiteration = 0; fKiteration < matIter; fKiteration++)
@@ -83,14 +86,14 @@ void TPZWannAnalysis::NewtonIteration()
         Assemble();
 
         // Check residual convergence
-        if (fKiteration > 0)
+        if (fKiteration >= 0)
         {
             TPZFMatrix<STATE> rhs = Rhs();
             res_norm = Norm(rhs);
             std::cout << "------Newton iteration: " << fKiteration << std::endl;
             std::cout << "---------Residual norm: " << res_norm << std::endl;
             std::cout << "---------Correction norm: " << corr_norm << std::endl;
-            if (res_norm < res_tol || corr_norm < corr_tol)
+            if (res_norm < res_tol && corr_norm < corr_tol)
             {
                 std::cout << "------Iterative method converged with res_norm: "
                           << res_norm << std::endl;
@@ -127,7 +130,9 @@ void TPZWannAnalysis::NewtonIteration()
         Mesh()->LoadSolution(sol);
         if (fIsMultiphysics) Mesh()->TransferMultiphysicsSolution();
 
-        PostProcessIteration(Mesh()->Dimension(), fKiteration);
+        //PostProcessIteration(Mesh()->Dimension(), fKiteration);
+        TPZNonLinearWellH1::fIsFirstIteration = false;
+        TPZNonlinearWell::fAssembleRHSOnly = false;
     }
 
     if (!converged)

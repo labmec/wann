@@ -61,7 +61,6 @@ int main(int argc, char *argv[]) {
 
   // Non-linear H1 analysis
   // TODO
-  // Equation filter must be applied in the Dirichelet BCs
 
   std::cout << "\n--------- Simulation finished ---------" << std::endl;
   std::cout << "\n--------- Starting post-processing ---------" << std::endl;
@@ -81,6 +80,14 @@ int main(int argc, char *argv[]) {
   std::cout << std::endl;
 
   std::cout << "\n--------- Post-processing finished ---------" << std::endl;
+
+  // --- Clean up ---
+
+  // Remove dependencies before deleting H1 mesh
+  int ncon = cmeshH1->NConnects();
+  for (int i = 0; i < ncon; ++i) {
+    cmeshH1->ConnectVec()[i].RemoveDepend();
+  }
 
   delete cmeshMixed;
   delete cmeshH1;

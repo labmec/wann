@@ -6,6 +6,7 @@
 #include "pzaxestools.h"
 
 bool TPZNonLinearWellH1::fAssembleRHSOnly = false;
+bool TPZNonLinearWellH1::fIsFirstIteration = true;
 
 TPZNonLinearWellH1::TPZNonLinearWellH1() : TPZRegisterClassId(&TPZNonLinearWellH1::ClassId),
                                TBase(), fDim(-1) {}
@@ -52,11 +53,17 @@ void TPZNonLinearWellH1::Contribute(const TPZMaterialDataT<STATE> &data, STATE w
 
     REAL psol = data.sol[0][0];
     REAL dpsol = data.dsol[0][0];
-    REAL Qsol = - dpsol * fCLin; // Check this
+    REAL Qsol = - fC * std::pow(std::abs(dpsol), 4./7.); // Non-linear case
+    // REAL Qsol = - dpsol * fCLin; // Linear case
+    bool turbulent = false;
+    REAL reynolds = 0.0;
 
-    REAL velocity = 4. * Qsol / (M_PI * fDw * fDw);
-    REAL reynolds = (fRho * std::abs(velocity) * fDw) / fMu;
-    bool turbulent = reynolds > 1187.38;
+    if (!fIsFirstIteration) { // If it's the first iteration, turbulence = false
+      REAL velocity = 4. * Qsol / (M_PI * fDw * fDw);
+      reynolds = (fRho * std::abs(velocity) * fDw) / fMu;
+      turbulent = reynolds > 1187.38;
+    }
+    // turbulent = false; // Temporarily disable turbulence
     
     REAL signal = (dpsol >= 0.) ? 1. : -1.;
     REAL factor = fCLin * weight;

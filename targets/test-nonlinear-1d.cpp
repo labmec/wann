@@ -34,7 +34,7 @@ enum EnumMatIds
     ELeft = 5
 };
 
-int nthreads = 0;
+int nthreads = 10;
 
 // ===================
 // Function prototypes
@@ -81,7 +81,7 @@ int main(int argc, char *const argv[])
     }
     else
     {
-        std::cout << "Solving linear Darcy problem..." << std::endl;
+        std::cout << "Solving non-linear Darcy problem..." << std::endl;
         SolveNonLinearNew(order, gmesh);
     }
 }
@@ -330,9 +330,9 @@ void SolveNonLinearNew(int order, TPZGeoMesh *gmesh)
 
     std::cout << "\nSolving non-linear well (H1)" << std::endl;
 
-    // anH1.SetProblemData(&simData);
-    // anH1.Initialize();
-    // anH1.NewtonIteration();
+    anH1.SetProblemData(&simData);
+    anH1.Initialize();
+    anH1.NewtonIteration();
 
     // --- Plotting ---
 

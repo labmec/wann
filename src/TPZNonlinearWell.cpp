@@ -14,6 +14,7 @@ static TPZLogger logger("pz.material.darcy");
 #define USEBLAS
 
 bool TPZNonlinearWell::fAssembleRHSOnly = false;
+bool TPZNonlinearWell::fIsFirstIteration = true;
 
 TPZNonlinearWell::TPZNonlinearWell() : TPZRegisterClassId(&TPZNonlinearWell::ClassId),
                                        TBase(), fDim(-1) {}
@@ -76,9 +77,13 @@ void TPZNonlinearWell::Contribute(const TPZVec<TPZMaterialDataT<STATE>> &datavec
     REAL psol = datavec[1].sol[0][0];
     REAL divQsol = datavec[0].divsol[0][0];
 
-    REAL velocity = 4. * Qsol / (M_PI * fDw * fDw);
-    REAL reynolds = (fRho * std::abs(velocity) * fDw) / fMu;
-    bool turbulent = reynolds > 1187.38;
+    bool turbulent = false;
+    if (!fIsFirstIteration) {
+      REAL velocity = 4. * Qsol / (M_PI * fDw * fDw);
+      REAL reynolds = (fRho * std::abs(velocity) * fDw) / fMu;
+      turbulent = reynolds > 1187.38;
+    }
+    
     // Tangent matrix
     REAL factor = turbulent ? fC * weight * (pow(std::abs(Qsol), 3. / 4.) + 3. / 4. * pow(std::abs(Qsol), 3. / 4.)) : fCLin * weight;
     ek.AddContribution(0, 0, phiQ, 0, phiQ, 1, factor);      // A

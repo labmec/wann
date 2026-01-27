@@ -155,6 +155,8 @@ public:
 
     static bool fAssembleRHSOnly;
 
+    static bool fIsFirstIteration;
+
 protected:
     /**
      * @brief Problem dimension
