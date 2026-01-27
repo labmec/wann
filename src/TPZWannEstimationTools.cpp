@@ -9,6 +9,7 @@
 #include "DarcyFlow/TPZMixedDarcyFlow.h"
 #include "TPZMultiphysicsCompMesh.h"
 #include "pzmultiphysicselement.h"
+#include "pzcondensedcompel.h"
 #include "pzlog.h"
 #include "pzintel.h"
 #include "TPZVTKGeoMesh.h"
@@ -27,16 +28,16 @@ void TPZWannEstimationTools::EstimateAndRefine(TPZMultiphysicsCompMesh* cmeshHdi
   std::cout << "Estimated error: " << estimatedError << std::endl;
   
   // Mark elements for refinement
-  MarkElementsForRefinement(elementErrors, refinementIndicator, estimator_tol, relative_estimator_tol);
+  MarkElementsForRefinement(elementErrors, refinementIndicator, relative_estimator_tol);
   REAL sumRef = std::accumulate(refinementIndicator.begin(), refinementIndicator.end(), 0);
   std::cout << "Initial number of to-refine elements: " << sumRef << std::endl;
 
   // Smooth the refinement map
-  meshSmoothing(cmeshHdiv->Reference(), refinementIndicator);
+  MeshSmoothing(cmeshHdiv->Reference(), refinementIndicator);
   sumRef = std::accumulate(refinementIndicator.begin(), refinementIndicator.end(), 0);
   std::cout << "Number of to-refine elements after mesh smoothing: " << sumRef << std::endl;
 
-  hRefinement(cmeshHdiv->Reference(), refinementIndicator, SimData);
+  hRefinement(cmeshHdiv->Reference(), refinementIndicator);
   sumRef = std::accumulate(refinementIndicator.begin(), refinementIndicator.end(), 0);
   std::cout << "Final number of to-refine elements: " << sumRef << std::endl;
 
@@ -190,20 +191,247 @@ REAL TPZWannEstimationTools::ErrorEstimation(TPZMultiphysicsCompMesh* cmeshMixed
   return totalError;
 }
 
-void TPZWannEstimationTools::MarkElementsForRefinement(const TPZVec<REAL>& elementErrors, TPZVec<int>& refinementIndicator, REAL tol, REAL relative_tol) {
+REAL TPZWannEstimationTools::PragerSynge(TPZMultiphysicsCompMesh* cmeshMixed, TPZCompMesh* cmeshH1, ProblemData* SimData, TPZVec<REAL>& elementErrors, int nthreads) {
+  // If nthreads = 0, we use 1 thread
+  if (nthreads < 0) {
+    nthreads = 1;
+  }
+
+  // Ensure references point to H1 cmesh
+  cmeshH1->Reference()->ResetReference();
+  cmeshH1->LoadReferences();
+
+  REAL dim = cmeshMixed->Dimension();
+  int64_t ncel = cmeshMixed->NElements();
+  int64_t ngel = cmeshMixed->Reference()->NElements();
+  TPZAdmChunkVector<TPZCompEl *> &elementvec_m = cmeshMixed->ElementVec();
+  elementErrors.Resize(ngel); // Ensure proper size
+  elementErrors.Fill(0.0); 
+
+  // Auxiliary vector for plotting
+  TPZVec<REAL> elementErrorsAux(ncel, 0.0);
+
+  // Parallelization setup
+  std::vector<std::thread> threads(nthreads);
+  TPZManVector<REAL> threadErrors(nthreads, 0.0);
+
+  auto worker = [&](int tid, int64_t start, int64_t end) {
+    REAL totalError = 0.0;
+    for (int64_t icel = start; icel < end; ++icel) {
+      TPZCompEl *celMixed = elementvec_m[icel];
+
+      // Check if mixed element is condensed
+      TPZCondensedCompEl *condEl = dynamic_cast<TPZCondensedCompEl *>(celMixed);
+      if (condEl) {
+        // If compel is condensed, load solution on the unconsensed compel
+        condEl->LoadSolution();
+        celMixed = condEl->ReferenceCompEl();
+      }
+
+      int matid = celMixed->Material()->Id();
+      if (matid != SimData->EDomain) continue;
+
+      TPZGeoEl *gel = celMixed->Reference();
+      TPZCompEl *celH1 = gel->Reference();
+
+      // Check if H1 element is condensed
+      condEl = dynamic_cast<TPZCondensedCompEl *>(celH1);
+      if (condEl) {
+        // If compel is condensed, load solution on the unconsensed compel
+        condEl->LoadSolution();
+        celH1 = condEl->ReferenceCompEl();
+      }
+
+      if (!celMixed || !celH1) continue;
+      if (gel->HasSubElement()) continue;
+      if (celH1->Material()->Id() != matid) DebugStop();
+
+      REAL hk = ElementDiameter(gel);
+      REAL perm = SimData->m_Reservoir.perm;
+      REAL sqrtPerm = sqrt(perm);
+
+      REAL fluxError = 0.0;
+      REAL balanceError = 0.0;
+
+      // Set integration rule
+      const TPZIntPoints* intrule = nullptr;
+      const TPZIntPoints &intruleMixed = celMixed->GetIntegrationRule();
+      const TPZIntPoints &intruleH1 = celH1->GetIntegrationRule();
+      if (intruleMixed.NPoints() < intruleH1.NPoints()) {
+        intrule = &intruleH1;
+      } else {
+        intrule = &intruleMixed;
+      }
+
+      for (int ip = 0; ip < intrule->NPoints(); ++ip) {
+        TPZManVector<REAL,3> ptInElement(gel->Dimension());
+        REAL weight, detjac;
+        intrule->Point(ip, ptInElement, weight);
+        TPZFNMatrix<9, REAL> jacobian, axes, jacinv;
+        gel->Jacobian(ptInElement, jacobian, axes, detjac, jacinv);
+        weight *= fabs(detjac);
+
+        TPZManVector<REAL,3> force(1, 0.0);
+        // TODO: Change for analytical force if available
+
+        // Compute H1 term K^(1/2) grad(u)
+        TPZManVector<REAL,3> termH1(dim, 0.0);
+        celH1->Solution(ptInElement, 2, termH1);
+        for (int d = 0; d < dim; ++d) {
+          termH1[d] = sqrtPerm * termH1[d];
+        }
+
+        // Compute Hdiv term -K^(-1/2) sig and div(sig)
+        TPZManVector<REAL,3> termHdiv(dim, 0.0);
+        TPZManVector<REAL,1> divFluxMixed(1, 0.0);
+        celMixed->Solution(ptInElement, 1, termHdiv);
+        celMixed->Solution(ptInElement, 5, divFluxMixed);
+        for (int d = 0; d < dim; ++d) {
+          termHdiv[d] = (-1./sqrtPerm) * termHdiv[d];
+        }
+
+        // Flux contribution
+        REAL diffFlux = 0.0;
+        for (int d = 0; d < dim; ++d) {
+          REAL diff = termH1[d] - termHdiv[d];
+          diffFlux += diff * diff;
+        }
+
+        // Balance contribution
+        REAL diffBalance = (divFluxMixed[0] - force[0]) * (divFluxMixed[0] - force[0]);
+
+        fluxError += diffFlux * weight;
+        balanceError += diffBalance * weight;
+      }
+
+      int64_t igeo = cmeshMixed->Element(icel)->Reference()->Index();
+      elementErrors[igeo] = sqrt(fluxError) + (hk/(M_PI*sqrt(perm)))*sqrt(balanceError);
+      elementErrorsAux[icel] = elementErrors[igeo];
+
+      totalError += elementErrors[igeo] * elementErrors[igeo];
+    }
+    threadErrors[tid] = totalError;
+  };
+
+  int64_t chunk = ncel/nthreads;
+  for (int t = 0; t < nthreads; ++t) {
+    int64_t start = t * chunk;
+    int64_t end = (t == nthreads - 1) ? ncel : (t + 1) * chunk;
+    threads[t] = std::thread(worker, t, start, end);
+  }
+  for (auto& th : threads) th.join();
+
+  REAL finalErrorSquared = 0.0;
+  for (auto val : threadErrors) finalErrorSquared += val;
+
+  // VTK output
+  if (SimData->m_PostProc.verbosityLevel) {
+    std::ofstream out_estimator("PragerSyngeEst.vtk");
+    TPZVTKGeoMesh::PrintCMeshVTK(cmeshMixed, out_estimator, elementErrorsAux, "EstimatedError");
+  }
+
+  return std::sqrt(finalErrorSquared);
+}
+
+void TPZWannEstimationTools::MarkElementsForRefinement(const TPZVec<REAL>& elementErrors, TPZVec<int>& refinementIndicator, REAL tol) {
   int64_t ngeo = elementErrors.size();
   refinementIndicator.Resize(ngeo); // Ensure proper size
   refinementIndicator.Fill(0);
 
-  // Simplest marking strategy: all elements with error > tol are marked
+  // Get biggest error
+  REAL maxError = 0.0;
   for (int64_t igeo = 0; igeo < ngeo; ++igeo) {
-    if (elementErrors[igeo] > estimator_tol) {
+    if (elementErrors[igeo] > maxError) {
+      maxError = elementErrors[igeo];
+    }
+  }
+
+  // Refine the elements with error > tol * maxError
+  REAL threshold = tol * maxError;
+  for (int64_t igeo = 0; igeo < ngeo; ++igeo) {
+    if (elementErrors[igeo] > threshold) {
       refinementIndicator[igeo] = 1;
     }
   }
 }
 
-void TPZWannEstimationTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& refinementIndicator, ProblemData* SimData) {
+void TPZWannEstimationTools::MeshSmoothing(TPZGeoMesh* gmesh, TPZVec<int>& RefinementIndicator) {
+  // If an element has most of its neighbors refined, then refine it too
+  for (int64_t iel = 0; iel < RefinementIndicator.size(); ++iel) {
+    if (RefinementIndicator[iel] != 1) continue;
+    TPZGeoEl* gel = gmesh->Element(iel);
+    if (!gel) DebugStop();
+    int firstside = gel->FirstSide(gel->Dimension()-1);
+    int lastside = gel->FirstSide(gel->Dimension());
+    for (int side = firstside; side < lastside; ++side) {
+      TPZGeoElSide gelSide(gel, side);
+      TPZGeoElSide neigh = gelSide.Neighbour();
+      TPZGeoEl* neighGel = neigh.Element();
+      if (!neighGel) DebugStop();
+      int threshold = neighGel->Dimension() == 1 ? 2 : 5;
+      int neighIndex = neighGel->Index();
+      if (RefinementIndicator[neighIndex] == 1) continue;
+      int firstsideNeigh = neighGel->FirstSide(neighGel->Dimension()-1);
+      int lastsideNeigh = neighGel->FirstSide(neighGel->Dimension());
+      int countRefNeigh = 0;
+      for (int sideNeigh = firstsideNeigh; sideNeigh < lastsideNeigh; ++sideNeigh) {
+        TPZGeoElSide neighSide(neighGel, sideNeigh);
+        TPZGeoElSide neigh2 = neighSide.Neighbour();
+        if (!neigh2) DebugStop();
+        int64_t neigh2Index = neigh2.Element()->Index();
+        if (RefinementIndicator[neigh2Index] == 1) countRefNeigh++;
+      }
+      if (countRefNeigh >= threshold) {
+        RefinementIndicator[neighGel->Index()] = 1;
+      }
+    }  
+  }
+
+  // If an element is refined twice, ensure its neighbors are refined at least once
+  for (int64_t iel = 0; iel < RefinementIndicator.size(); ++iel) {
+    if (RefinementIndicator[iel] != 1) continue;
+    TPZGeoEl* gel = gmesh->Element(iel);
+
+    // Get corner indexes of gel
+    TPZManVector<int64_t> cornerIndexes(gel->NCornerNodes());
+    for (int i = 0; i < gel->NCornerNodes(); ++i) {
+      cornerIndexes[i] = gel->NodeIndex(i);
+    }
+    TPZGeoEl* fatherGel = gel->Father();
+    if (!fatherGel) continue;
+    int firstside = fatherGel->FirstSide(fatherGel->Dimension()-1);
+    int lastside = fatherGel->FirstSide(fatherGel->Dimension());
+    for (int side = firstside; side < lastside; ++side) {
+      TPZGeoElSide gelSide(fatherGel, side);
+      TPZGeoElSide neigh = gelSide.Neighbour();
+      TPZGeoEl* neighGel = neigh.Element();
+      if (!neighGel) DebugStop();
+      if (neighGel->Dimension() != gel->Dimension()) continue;
+      if (neighGel->HasSubElement()) continue;
+
+      // Get corner idexes of neighGel
+      TPZManVector<int64_t> neighCornerIndexes(neighGel->NCornerNodes());
+      for (int i = 0; i < neighGel->NCornerNodes(); ++i) {
+        neighCornerIndexes[i] = neighGel->NodeIndex(i);
+      }
+
+      // Verify if there are common corners
+      int commonCorners = 0;
+      for (int i = 0; i < gel->NCornerNodes(); ++i) {
+        for (int j = 0; j < neighGel->NCornerNodes(); ++j) {
+          if (cornerIndexes[i] == neighCornerIndexes[j]) {
+            commonCorners++;
+            break;
+          }
+        }
+      }
+      
+      if (commonCorners > 0) RefinementIndicator[neighGel->Index()] = 1;
+    }
+  }
+}
+
+void TPZWannEstimationTools::MeshWellCompatibility(TPZGeoMesh* gmesh, TPZVec<int>& refinementIndicator, ProblemData* SimData) {
   REAL dim = gmesh->Dimension();
   REAL tol = 1e-6;
   std::set<REAL> xcoords2D;
@@ -217,7 +445,7 @@ void TPZWannEstimationTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& refinem
   // From the initial list of "to-refine" elements, get the the centroids
   // of the faces that intersect the wellbore surface (fill xcoords2D)
   for (int64_t i = 0; i < refinementIndicator.size(); ++i) {
-    if (refinementIndicator[i] == 0) continue;
+    if (refinementIndicator[i] != 1) continue;
     TPZGeoEl* gel = gmesh->Element(i);
     if (!gel) DebugStop();
     if (gel->Dimension() == 1) {
@@ -297,8 +525,9 @@ void TPZWannEstimationTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& refinem
       }
     }
   }
+}
 
-  // Perform h-refinement on the specified elements
+void TPZWannEstimationTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& refinementIndicator) {
   for (int64_t i = 0; i < refinementIndicator.size(); ++i) {
     if (refinementIndicator[i] == 0) continue;
     TPZVec<TPZGeoEl *> pv;
@@ -309,98 +538,32 @@ void TPZWannEstimationTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& refinem
   }
 }
 
-void TPZWannEstimationTools::meshSmoothing(TPZGeoMesh* gmesh, TPZVec<int>& RefinementIndicator) {
-  // If an element has most of its neighbors refined, then refine it too
-  for (int64_t iel = 0; iel < RefinementIndicator.size(); ++iel) {
-    if (RefinementIndicator[iel] != 1) continue;
-    TPZGeoEl* gel = gmesh->Element(iel);
-    if (!gel) DebugStop();
-    int firstside = gel->FirstSide(gel->Dimension()-1);
-    int lastside = gel->FirstSide(gel->Dimension());
-    for (int side = firstside; side < lastside; ++side) {
-      TPZGeoElSide gelSide(gel, side);
-      TPZGeoElSide neigh = gelSide.Neighbour();
-      TPZGeoEl* neighGel = neigh.Element();
-      if (!neighGel) DebugStop();
-      int threshold = neighGel->Dimension() == 1 ? 2 : 5;
-      int neighIndex = neighGel->Index();
-      if (RefinementIndicator[neighIndex] == 1) continue;
-      int firstsideNeigh = neighGel->FirstSide(neighGel->Dimension()-1);
-      int lastsideNeigh = neighGel->FirstSide(neighGel->Dimension());
-      int countRefNeigh = 0;
-      for (int sideNeigh = firstsideNeigh; sideNeigh < lastsideNeigh; ++sideNeigh) {
-        TPZGeoElSide neighSide(neighGel, sideNeigh);
-        TPZGeoElSide neigh2 = neighSide.Neighbour();
-        if (!neigh2) DebugStop();
-        int64_t neigh2Index = neigh2.Element()->Index();
-        if (RefinementIndicator[neigh2Index] == 1) countRefNeigh++;
-      }
-      if (countRefNeigh >= threshold) {
-        RefinementIndicator[neighGel->Index()] = 1;
-      }
-    }  
+void TPZWannEstimationTools::RefineFromFile(TPZGeoMesh* og_gmesh, const std::string& filename) {
+  // Open the file
+  std::ifstream infile(filename);
+  if (!infile) {
+    std::cerr << "Error: Could not open file '" << filename << "' for reading." << std::endl;
+    DebugStop();
   }
 
-  // If an element is refined twice, ensure its neighbors are refined at least once
-  for (int64_t iel = 0; iel < RefinementIndicator.size(); ++iel) {
-    if (RefinementIndicator[iel] != 1) continue;
-    TPZGeoEl* gel = gmesh->Element(iel);
-
-    // Get corner indexes of gel
-    TPZManVector<int64_t> cornerIndexes(gel->NCornerNodes());
-    for (int i = 0; i < gel->NCornerNodes(); ++i) {
-      cornerIndexes[i] = gel->NodeIndex(i);
+  std::string line;
+  while (std::getline(infile, line)) {
+    std::istringstream iss(line);
+    int vecSize;
+    if (!(iss >> vecSize)) {
+      std::cerr << "Error: Could not read vector size from line: '" << line << "'\n";
+      DebugStop();
     }
-    TPZGeoEl* fatherGel = gel->Father();
-    if (!fatherGel) continue;
-    int firstside = fatherGel->FirstSide(fatherGel->Dimension()-1);
-    int lastside = fatherGel->FirstSide(fatherGel->Dimension());
-    for (int side = firstside; side < lastside; ++side) {
-      TPZGeoElSide gelSide(fatherGel, side);
-      TPZGeoElSide neigh = gelSide.Neighbour();
-      TPZGeoEl* neighGel = neigh.Element();
-      if (!neighGel) DebugStop();
-      if (neighGel->Dimension() != gel->Dimension()) continue;
-      if (neighGel->HasSubElement()) continue;
-
-      // Get corner idexes of neighGel
-      TPZManVector<int64_t> neighCornerIndexes(neighGel->NCornerNodes());
-      for (int i = 0; i < neighGel->NCornerNodes(); ++i) {
-        neighCornerIndexes[i] = neighGel->NodeIndex(i);
+    TPZVec<int> indicatorVec(vecSize, 0);
+    for (int i = 0; i < vecSize; ++i) {
+      if (!(iss >> indicatorVec[i])) {
+        std::cerr << "Error: Not enough entries for vector of size " << vecSize << " in line: '" << line << "'\n";
+        DebugStop();
       }
-
-      // Verify if there are common corners
-      int commonCorners = 0;
-      for (int i = 0; i < gel->NCornerNodes(); ++i) {
-        for (int j = 0; j < neighGel->NCornerNodes(); ++j) {
-          if (cornerIndexes[i] == neighCornerIndexes[j]) {
-            commonCorners++;
-            break;
-          }
-        }
-      }
-      
-      if (commonCorners > 0) RefinementIndicator[neighGel->Index()] = 1;
     }
+
+    hRefinement(og_gmesh, indicatorVec);
   }
-
-  // Old (wrong) version
-  // for (int64_t iel = 0; iel < RefinementIndicator.size(); ++iel) {
-  //   if (RefinementIndicator[iel] != 1) continue;
-  //   TPZGeoEl* gel = gmesh->Element(iel);
-  //   if (!gel) DebugStop();
-  //   int matid = gel->MaterialId();
-  //   int firstside = gel->FirstSide(gel->Dimension()-1);
-  //   int lastside = gel->FirstSide(gel->Dimension());
-  //   for (int side = firstside; side < lastside; ++side) {
-  //     TPZGeoElSide gelSide(gel, side);
-  //     TPZGeoElSide lowerSide = gelSide.HasLowerLevelNeighbour(matid);
-  //     if (lowerSide) {
-  //       TPZGeoEl* neighGel = lowerSide.Element();
-  //       if (!neighGel->HasSubElement()) RefinementIndicator[neighGel->Index()] = 1;
-  //     }
-  //   }
-  // }
 }
 
 REAL TPZWannEstimationTools::ForcingFunctionWellbore(TPZCompEl* celMixed, const TPZManVector<REAL,3>& pt) {
