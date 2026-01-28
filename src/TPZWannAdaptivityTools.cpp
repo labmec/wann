@@ -15,10 +15,10 @@
 #include "TPZVTKGeoMesh.h"
 
 // Wann imports
-#include "TPZWannEstimationTools.h"
+#include "TPZWannAdaptivityTools.h"
 #include "TPZWannGeometryTools.h"
 
-void TPZWannEstimationTools::EstimateAndRefine(TPZMultiphysicsCompMesh* cmeshHdiv, TPZCompMesh* cmeshH1, ProblemData* SimData, int nthreads) {
+void TPZWannAdaptivityTools::EstimateAndRefine(TPZMultiphysicsCompMesh* cmeshHdiv, TPZCompMesh* cmeshH1, ProblemData* SimData, int nthreads) {
   int64_t ngel = cmeshHdiv->Reference()->NElements();
   TPZVec<REAL> elementErrors(ngel, 0.0);
   TPZVec<int> refinementIndicator(ngel, 0);
@@ -37,7 +37,7 @@ void TPZWannEstimationTools::EstimateAndRefine(TPZMultiphysicsCompMesh* cmeshHdi
   sumRef = std::accumulate(refinementIndicator.begin(), refinementIndicator.end(), 0);
   std::cout << "Number of to-refine elements after mesh smoothing: " << sumRef << std::endl;
 
-  hRefinement(cmeshHdiv->Reference(), refinementIndicator);
+  TPZWannGeometryTools::hRefinement(cmeshHdiv->Reference(), refinementIndicator);
   sumRef = std::accumulate(refinementIndicator.begin(), refinementIndicator.end(), 0);
   std::cout << "Final number of to-refine elements: " << sumRef << std::endl;
 
@@ -45,7 +45,7 @@ void TPZWannEstimationTools::EstimateAndRefine(TPZMultiphysicsCompMesh* cmeshHdi
   TPZWannGeometryTools::OrderIds(cmeshHdiv->Reference(), SimData);
 }
 
-REAL TPZWannEstimationTools::ErrorEstimation(TPZMultiphysicsCompMesh* cmeshMixed, TPZCompMesh* cmesh, ProblemData* SimData, TPZVec<REAL>& elementErrors, int nthreads) {
+REAL TPZWannAdaptivityTools::ErrorEstimation(TPZMultiphysicsCompMesh* cmeshMixed, TPZCompMesh* cmesh, ProblemData* SimData, TPZVec<REAL>& elementErrors, int nthreads) {
 
   {
     std::ofstream clearlog("error_estimation.txt", std::ios_base::trunc);
@@ -191,7 +191,7 @@ REAL TPZWannEstimationTools::ErrorEstimation(TPZMultiphysicsCompMesh* cmeshMixed
   return totalError;
 }
 
-REAL TPZWannEstimationTools::PragerSynge(TPZMultiphysicsCompMesh* cmeshMixed, TPZCompMesh* cmeshH1, ProblemData* SimData, TPZVec<REAL>& elementErrors, int nthreads) {
+REAL TPZWannAdaptivityTools::PragerSynge(TPZMultiphysicsCompMesh* cmeshMixed, TPZCompMesh* cmeshH1, ProblemData* SimData, TPZVec<REAL>& elementErrors, int nthreads) {
   // If nthreads = 0, we use 1 thread
   if (nthreads < 0) {
     nthreads = 1;
@@ -333,7 +333,7 @@ REAL TPZWannEstimationTools::PragerSynge(TPZMultiphysicsCompMesh* cmeshMixed, TP
   return std::sqrt(finalErrorSquared);
 }
 
-void TPZWannEstimationTools::MarkElementsForRefinement(const TPZVec<REAL>& elementErrors, TPZVec<int>& refinementIndicator, REAL tol) {
+void TPZWannAdaptivityTools::MarkElementsForRefinement(const TPZVec<REAL>& elementErrors, TPZVec<int>& refinementIndicator, REAL tol) {
   int64_t ngeo = elementErrors.size();
   refinementIndicator.Resize(ngeo); // Ensure proper size
   refinementIndicator.Fill(0);
@@ -355,7 +355,7 @@ void TPZWannEstimationTools::MarkElementsForRefinement(const TPZVec<REAL>& eleme
   }
 }
 
-void TPZWannEstimationTools::MeshSmoothing(TPZGeoMesh* gmesh, TPZVec<int>& RefinementIndicator) {
+void TPZWannAdaptivityTools::MeshSmoothing(TPZGeoMesh* gmesh, TPZVec<int>& RefinementIndicator) {
   // If an element has most of its neighbors refined, then refine it too
   for (int64_t iel = 0; iel < RefinementIndicator.size(); ++iel) {
     if (RefinementIndicator[iel] != 1) continue;
@@ -431,7 +431,7 @@ void TPZWannEstimationTools::MeshSmoothing(TPZGeoMesh* gmesh, TPZVec<int>& Refin
   }
 }
 
-void TPZWannEstimationTools::MeshWellCompatibility(TPZGeoMesh* gmesh, TPZVec<int>& refinementIndicator, ProblemData* SimData) {
+void TPZWannAdaptivityTools::MeshWellCompatibility(TPZGeoMesh* gmesh, TPZVec<int>& refinementIndicator, ProblemData* SimData) {
   REAL dim = gmesh->Dimension();
   REAL tol = 1e-6;
   std::set<REAL> xcoords2D;
@@ -527,52 +527,13 @@ void TPZWannEstimationTools::MeshWellCompatibility(TPZGeoMesh* gmesh, TPZVec<int
   }
 }
 
-void TPZWannEstimationTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& refinementIndicator) {
-  for (int64_t i = 0; i < refinementIndicator.size(); ++i) {
-    if (refinementIndicator[i] == 0) continue;
-    TPZVec<TPZGeoEl *> pv;
-    TPZGeoEl* gel = gmesh->Element(i);
-    if (!gel) DebugStop();
-    if (gel->HasSubElement()) continue; // We have to do this because of duplicated entries
-    gel->Divide(pv);
-  }
-}
-
-void TPZWannEstimationTools::RefineFromFile(TPZGeoMesh* og_gmesh, const std::string& filename) {
-  // Open the file
-  std::ifstream infile(filename);
-  if (!infile) {
-    std::cerr << "Error: Could not open file '" << filename << "' for reading." << std::endl;
-    DebugStop();
-  }
-
-  std::string line;
-  while (std::getline(infile, line)) {
-    std::istringstream iss(line);
-    int vecSize;
-    if (!(iss >> vecSize)) {
-      std::cerr << "Error: Could not read vector size from line: '" << line << "'\n";
-      DebugStop();
-    }
-    TPZVec<int> indicatorVec(vecSize, 0);
-    for (int i = 0; i < vecSize; ++i) {
-      if (!(iss >> indicatorVec[i])) {
-        std::cerr << "Error: Not enough entries for vector of size " << vecSize << " in line: '" << line << "'\n";
-        DebugStop();
-      }
-    }
-
-    hRefinement(og_gmesh, indicatorVec);
-  }
-}
-
-REAL TPZWannEstimationTools::ForcingFunctionWellbore(TPZCompEl* celMixed, const TPZManVector<REAL,3>& pt) {
+REAL TPZWannAdaptivityTools::ForcingFunctionWellbore(TPZCompEl* celMixed, const TPZManVector<REAL,3>& pt) {
   // This function should compute the forcing function value at the given point
   // For now, we return a constant value as a placeholder
   return 0.0;
 }
 
-REAL TPZWannEstimationTools::ElementDiameter(TPZGeoEl* gel) {
+REAL TPZWannAdaptivityTools::ElementDiameter(TPZGeoEl* gel) {
   REAL maxdist = 0.;
   int nnodes = gel->NNodes();
   for (int i = 0; i < nnodes; ++i) {
@@ -595,7 +556,7 @@ REAL TPZWannEstimationTools::ElementDiameter(TPZGeoEl* gel) {
 // Old or experimental stuff
 // ==============================
 
-TPZVec<int> TPZWannEstimationTools::ErrorEstimationOld(TPZMultiphysicsCompMesh* cmeshMixed, TPZCompMesh* cmesh, ProblemData* SimData, int nthreads) {
+TPZVec<int> TPZWannAdaptivityTools::ErrorEstimationOld(TPZMultiphysicsCompMesh* cmeshMixed, TPZCompMesh* cmesh, ProblemData* SimData, int nthreads) {
   {
     std::ofstream clearlog("error_estimation.txt", std::ios_base::trunc);
   }
@@ -766,7 +727,7 @@ TPZVec<int> TPZWannEstimationTools::ErrorEstimationOld(TPZMultiphysicsCompMesh* 
   return RefinementIndicator;
 }
 
-void TPZWannEstimationTools::FakeRefine(TPZGeoMesh* gmesh, ProblemData* SimData) {
+void TPZWannAdaptivityTools::FakeRefine(TPZGeoMesh* gmesh, ProblemData* SimData) {
   REAL dim = gmesh->Dimension();
   REAL tol = 1e-6;
   int n_refined = 0;
@@ -805,7 +766,7 @@ void TPZWannEstimationTools::FakeRefine(TPZGeoMesh* gmesh, ProblemData* SimData)
   std::cout << n_refined << " elements were refined in the fake refinement." << std::endl;
 }
 
-// void TPZWannEstimationTools::CheckRef(TPZCompMesh* cmesh) {
+// void TPZWannAdaptivityTools::CheckRef(TPZCompMesh* cmesh) {
 //   std::map<int, int> matid_to_count;
 //   for (int64_t i = 0; i < cmesh->NElements(); ++i) {
 //     TPZCompEl* cel = cmesh->Element(i);

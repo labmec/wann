@@ -17,14 +17,14 @@
 #include <TPZFileStream.h>
 
 #include "TPZWannGeometryTools.h"
-#include "TPZWannEstimationTools.h"
+#include "TPZWannAdaptivityTools.h"
 #include "ProblemData.h"
 
 // ================
 // Global variables
 // ================
 
-const int globalNthread = 10;
+const int globalNthreads = 8;
 const bool shouldPlot = true;
 
 // Refinement parameters
@@ -76,15 +76,23 @@ int main(int argc, char *argv[]) {
   SimData.ReadJson(jsonfile);
 
   // Initial geometric mesh
-  TPZGeoMesh* gmesh = TPZWannGeometryTools::CreateGeoMesh(&SimData);
+  TPZGeoMesh* gmesh = TPZWannGeometryTools::ReadMeshFromGmsh(&SimData);
+
+  // Convert to cylindrical coordinates if needed
+  if (SimData.m_Mesh.ToCylindrical) {
+    TPZWannGeometryTools::ModifyGeometricMeshToCylWell(gmesh, &SimData);
+  }
 
   // --- Adaptive refinement loop ---
 
   int refIt = 0;
   REAL estimatedError = errorTolerance + 1.0;
 
-  // Open file to log refinement data
-  std::ofstream refinementLog("refinement_log.txt");
+  // Open file to store refinement process
+  std::string file = SimData.m_Mesh.file;
+  std::string baseName = file.substr(0, file.find_last_of('.'));
+  std::string path = std::string(INPUTDIR) + "/" + baseName + "_refProcess.txt";
+  std::ofstream refinementLog(path);
   if (!refinementLog) {
     std::cerr << "Error: Could not open refinement_log.txt for writing." << std::endl;
     return 1;
@@ -107,7 +115,7 @@ int main(int argc, char *argv[]) {
 #else
     TPZSkylStrMatrix matMixed(cmeshMixed);
 #endif
-    matMixed.SetNumThreads(globalNthread);
+    matMixed.SetNumThreads(globalNthreads);
     anMixed.SetStructuralMatrix(matMixed);
     TPZStepSolver<STATE> stepMixed;
     stepMixed.SetDirect(ELDLt);
@@ -121,7 +129,7 @@ int main(int argc, char *argv[]) {
 #else
     TPZSkylStrMatrix matH1(cmeshH1);
 #endif
-    matH1.SetNumThreads(globalNthread);
+    matH1.SetNumThreads(globalNthreads);
     anH1.SetStructuralMatrix(matH1);
 
     TPZStepSolver<STATE> stepH1;
@@ -163,28 +171,30 @@ int main(int argc, char *argv[]) {
     TPZVec<REAL> elementErrors(ngel, 0.0);
     TPZVec<int> refinementIndicator(ngel, 0);
 
-    REAL estimatedError = TPZWannEstimationTools::PragerSynge(cmeshMixed, cmeshH1, &SimData, elementErrors, globalNthread);
+    REAL estimatedError = TPZWannAdaptivityTools::PragerSynge(cmeshMixed, cmeshH1, &SimData, elementErrors, globalNthreads);
     std::cout << "Estimated error: " << estimatedError << std::endl;
 
     // Mark elements for refinement
-    TPZWannEstimationTools::MarkElementsForRefinement(elementErrors, refinementIndicator, relativeRefTol);
+    TPZWannAdaptivityTools::MarkElementsForRefinement(elementErrors, refinementIndicator, relativeRefTol);
     REAL sumRef = std::accumulate(refinementIndicator.begin(), refinementIndicator.end(), 0);
     std::cout << "Initial number of to-refine elements: " << sumRef << std::endl;
 
     // Smooth the refinement map
-    TPZWannEstimationTools::MeshSmoothing(cmeshMixed->Reference(), refinementIndicator);
+    TPZWannAdaptivityTools::MeshSmoothing(cmeshMixed->Reference(), refinementIndicator);
     sumRef = std::accumulate(refinementIndicator.begin(), refinementIndicator.end(), 0);
     std::cout << "Number of to-refine elements after mesh smoothing: " << sumRef << std::endl;
 
     // Compatibilize refinement to well geometry
-    TPZWannEstimationTools::MeshWellCompatibility(cmeshMixed->Reference(), refinementIndicator, &SimData);
+    TPZWannAdaptivityTools::MeshWellCompatibility(cmeshMixed->Reference(), refinementIndicator, &SimData);
+    sumRef = std::accumulate(refinementIndicator.begin(), refinementIndicator.end(), 0);
     std::cout << "Final number of to-refine elements: " << sumRef << std::endl;
 
     // Finally perform the refinement
-    TPZWannEstimationTools::hRefinement(cmeshMixed->Reference(), refinementIndicator);
+    TPZWannGeometryTools::hRefinement(cmeshMixed->Reference(), refinementIndicator);
 
-    // Export refinementIndicators vector to file
-    // This will be used to perform the same refinements on a different target
+    // Export refinementIndicators vector to file "inputs/mesh_name_refProcess.txt"
+    // Each line corresponds to one refinement iteration
+    // On each line: <number of elements> <refinementIndicator[0]> ... <refinementIndicator[n-1]>
     refinementLog << refinementIndicator.size() << " ";
     for (size_t i = 0; i < refinementIndicator.size(); ++i) {
       refinementLog << refinementIndicator[i];
@@ -206,22 +216,6 @@ int main(int argc, char *argv[]) {
   }
 
   refinementLog.close();
-
-  // Test import from refinement_log file
-  {
-    std::cout << "\n=== Testing refinement from file ===" << std::endl;
-    TPZGeoMesh* gmesh2 = TPZWannGeometryTools::CreateGeoMesh(&SimData);
-    std::string refFile = "refinement_log.txt";
-    TPZWannEstimationTools::RefineFromFile(gmesh2, refFile);
-
-    // Plot final refined mesh
-    if (shouldPlot) {
-      std::ofstream plotfile("geomesh_from_file.vtk");
-      TPZVTKGeoMesh::PrintGMeshVTK(gmesh2, plotfile);
-    }
-
-    delete gmesh2;
-  }
 }
 
 // ========================

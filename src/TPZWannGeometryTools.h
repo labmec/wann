@@ -18,13 +18,15 @@ class TPZWannGeometryTools {
 
 public:
   static TPZGeoMesh* CreateGeoMesh(ProblemData* simData);
+  static TPZGeoMesh* ReadMeshFromGmsh(ProblemData* simData);
+  static void ModifyGeometricMeshToCylWell(TPZGeoMesh *gmesh, ProblemData *SimData);
+  static void hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& RefinementIndicator);
+  static void RefineFromFile(TPZGeoMesh* og_gmesh, const std::string& filename);
   static void InsertXCoorInSet(const REAL x, std::set<REAL>& nodeCoordsX, const REAL tol);
   static REAL FindClosestX(const REAL x, const std::set<REAL>& nodeCoordsX, const REAL tol);
   static bool CheckXInSet(const REAL x, const std::set<REAL>& nodeCoordsX, const REAL tol);
   static void OrderIds(TPZGeoMesh *gmesh, ProblemData *SimData);
 
 private:
-  static TPZGeoMesh* ReadMeshFromGmsh(ProblemData* simData);
-  static void ModifyGeometricMeshToCylWell(TPZGeoMesh *gmesh, ProblemData *SimData);
   static void CreatePressure2DEls(TPZGeoMesh *gmesh, ProblemData *SimData);
 };

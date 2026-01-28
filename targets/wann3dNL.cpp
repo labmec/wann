@@ -6,7 +6,7 @@
 #include "TPZWannGeometryTools.h"
 #include "TPZWannApproxTools.h"
 #include "TPZWannPostProcTools.h"
-#include "TPZWannEstimationTools.h"
+#include "TPZWannAdaptivityTools.h"
 #include <TPZLinearAnalysis.h>
 #include <TPZSSpStructMatrix.h>  //symmetric sparse matrix storage>
 #include <pzskylstrmatrix.h>
@@ -16,7 +16,7 @@
 
 using namespace std;
 
-const int global_nthread = 10;
+const int global_nthread = 0;
 
 int main(int argc, char *argv[]) {
   
@@ -48,8 +48,11 @@ int main(int argc, char *argv[]) {
   ProblemData SimData;  
   SimData.ReadJson(jsonfile);
 
-  // Create computational meshes (H(div) mixed and H1)
+  // Read original geometric mesh and perform the refinement process 
+  // described in refinementProcess.txt file
   TPZGeoMesh* gmesh = TPZWannGeometryTools::CreateGeoMesh(&SimData);
+
+  // Create computational meshes (H(div) mixed and H1)
   TPZMultiphysicsCompMesh* cmeshMixed = TPZWannApproxTools::CreateMultiphysicsCompMesh(gmesh, &SimData, &exact);
   TPZCompMesh* cmeshH1 = TPZWannApproxTools::CreateH1CompMesh(gmesh, &SimData);
 

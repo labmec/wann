@@ -6,7 +6,7 @@
 #include "TPZWannGeometryTools.h"
 #include "TPZWannApproxTools.h"
 #include "TPZWannPostProcTools.h"
-#include "TPZWannEstimationTools.h"
+#include "TPZWannAdaptivityTools.h"
 #include <TPZLinearAnalysis.h>
 #include <TPZSSpStructMatrix.h>  //symmetric sparse matrix storage>
 #include <pzskylstrmatrix.h>
@@ -187,7 +187,7 @@ int main(int argc, char *argv[]) {
     std::cout << "\n--------- Post-processing finished ---------" << std::endl;
     std::cout << "\n--------- Starting estimate and refine ---------" << std::endl;
 
-    TPZWannEstimationTools::EstimateAndRefine(cmesh, cmeshH1, &SimData, global_nthread);
+    TPZWannAdaptivityTools::EstimateAndRefine(cmesh, cmeshH1, &SimData, global_nthread);
 
     std::cout << "\n--------- Estimate and refine finished ---------" << std::endl;
 

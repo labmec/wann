@@ -1,4 +1,5 @@
 #include "TPZWannGeometryTools.h"
+#include "TPZWannAdaptivityTools.h"
 
 TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
 
@@ -20,24 +21,38 @@ TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
   //   simData->m_Wellbore.BCs["point_heel"].value *= -1;
   // }
 
-  if (simData->m_Mesh.NumUniformRef) {
-    TPZCheckGeom checkgeom(gmesh);
-    checkgeom.UniformRefine(simData->m_Mesh.NumUniformRef);
-
+  if (simData->m_Mesh.customRefinement != 0) {
+    std::string file = simData->m_Mesh.file;
+    std::string baseName = file.substr(0, file.find_last_of('.'));
+    std::string refProcessFile = baseName + "_refProcess.txt";
+    std::string path(std::string(INPUTDIR) + "/" + refProcessFile);
+    TPZWannGeometryTools::RefineFromFile(gmesh, path);
     if (simData->m_PostProc.verbosityLevel) {
-      std::ofstream out("gmeshnonlin.vtk");
+      std::ofstream out("gmesh_customref.vtk");
       TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
     }
-  }
+  
+  // Only perform uniform and directional refinements if no custom refinement is specified
+  } else {
+    if (simData->m_Mesh.NumUniformRef) {
+      TPZCheckGeom checkgeom(gmesh);
+      checkgeom.UniformRefine(simData->m_Mesh.NumUniformRef);
 
-  if (simData->m_Mesh.NumDirRef) {
-    gRefDBase.InitializeRefPatterns(gmesh->Dimension());
-    for (int i = 0; i < simData->m_Mesh.NumDirRef; i++) {
-      TPZRefPatternTools::RefineDirectional(gmesh, {simData->ECurveHeel, simData->ECurveToe});
+      if (simData->m_PostProc.verbosityLevel) {
+        std::ofstream out("gmeshnonlin.vtk");
+        TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
+      }
     }
-    if (simData->m_PostProc.verbosityLevel) {
-      std::ofstream out("gmeshnonlin_ref.vtk");
-      TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
+
+    if (simData->m_Mesh.NumDirRef) {
+      gRefDBase.InitializeRefPatterns(gmesh->Dimension());
+      for (int i = 0; i < simData->m_Mesh.NumDirRef; i++) {
+        TPZRefPatternTools::RefineDirectional(gmesh, {simData->ECurveHeel, simData->ECurveToe});
+      }
+      if (simData->m_PostProc.verbosityLevel) {
+        std::ofstream out("gmeshnonlin_ref.vtk");
+        TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
+      }
     }
   }
 
@@ -302,4 +317,49 @@ bool TPZWannGeometryTools::CheckXInSet(const REAL x, const std::set<REAL>& nodeC
     }
   }
   return false;
+}
+
+void TPZWannGeometryTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& refinementIndicator) {
+  if (gmesh->NElements() != refinementIndicator.size()) {
+    std::cout << "Refinement vector size " << refinementIndicator.size() 
+              << " is different from number of elements in the mesh " << gmesh->NElements() << std::endl;
+    DebugStop();
+  }
+
+  for (int64_t i = 0; i < refinementIndicator.size(); ++i) {
+    if (refinementIndicator[i] == 0) continue;
+    TPZVec<TPZGeoEl *> pv;
+    TPZGeoEl* gel = gmesh->Element(i);
+    if (!gel) DebugStop();
+    if (gel->HasSubElement()) continue;
+    gel->Divide(pv);
+  }
+}
+
+void TPZWannGeometryTools::RefineFromFile(TPZGeoMesh* og_gmesh, const std::string& filename) {
+  // Open the file
+  std::ifstream infile(filename);
+  if (!infile) {
+    std::cerr << "Error: Could not open file '" << filename << "' for reading." << std::endl;
+    DebugStop();
+  }
+
+  std::string line;
+  while (std::getline(infile, line)) {
+    std::istringstream iss(line);
+    int vecSize;
+    if (!(iss >> vecSize)) {
+      std::cerr << "Error: Could not read vector size from line: '" << line << "'\n";
+      DebugStop();
+    }
+    TPZVec<int> indicatorVec(vecSize, 0);
+    for (int i = 0; i < vecSize; ++i) {
+      if (!(iss >> indicatorVec[i])) {
+        std::cerr << "Error: Not enough entries for vector of size " << vecSize << " in line: '" << line << "'\n";
+        DebugStop();
+      }
+    }
+
+    hRefinement(og_gmesh, indicatorVec);
+  }
 }
