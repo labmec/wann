@@ -458,12 +458,17 @@ void TPZWannAnalysis::SetInitialSolution(std::set<int> &bcMatids)
     TPZFMatrix<STATE> &cmesh_sol = fCompMesh->Solution();
     for (auto el : gmesh->ElementVec())
     {
+        if (el->HasSubElement())
+            continue;
+
         int elMatID = el->MaterialId();
 
         if (bcMatids.find(elMatID) == bcMatids.end())
             continue;
 
         TPZCompEl *compEl = el->Reference();
+        if (!compEl)
+            DebugStop();
 
         int64_t nConnects = compEl->NConnects();
 
@@ -537,6 +542,9 @@ void TPZWannAnalysis::ApplyEquationFilter(std::set<int> &bcMatids)
     TPZFMatrix<STATE> sol = fCompMesh->Solution();
     for (auto el : gmesh->ElementVec())
     {
+        if (el->HasSubElement())
+            continue;
+
         int elMatID = el->MaterialId();
 
         if (bcMatids.find(elMatID) == bcMatids.end())
