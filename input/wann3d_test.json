@@ -1,6 +1,7 @@
 {
   "MeshData": {
     "file": "mesh3D_rev08_test.msh",
+    "customRefinement": 1,
     "NumUniformRef": 0,
     "NumDirRef": 0,
     "ToCylindrical": 0

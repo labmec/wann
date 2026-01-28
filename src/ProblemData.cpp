@@ -32,6 +32,9 @@ void ProblemData::ReadJson(std::string file)
     if (meshdata.find("file") == meshdata.end())
         DebugStop();
     m_Mesh.file = meshdata["file"];
+    if (meshdata.find("customRefinement") == meshdata.end())
+        DebugStop();
+    m_Mesh.customRefinement = meshdata["customRefinement"];
     if (meshdata.find("NumUniformRef") == meshdata.end())
         DebugStop();
     m_Mesh.NumUniformRef = meshdata["NumUniformRef"];

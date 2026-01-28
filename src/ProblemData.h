@@ -55,6 +55,7 @@ class ProblemData
   struct MeshData
   {
     std::string file;
+    int customRefinement;
     int NumUniformRef;
     int NumDirRef;
     int ToCylindrical;
