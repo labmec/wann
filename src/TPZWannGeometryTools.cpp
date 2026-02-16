@@ -83,7 +83,8 @@ TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
     simData->m_Reservoir.BCs["surface_wellbore_toe"].matid = simData->ESurfToe;
     stringtoint[2]["surface_farfield"] = simData->EFarField;
     simData->m_Reservoir.BCs["surface_farfield"].matid = simData->EFarField;
-    stringtoint[2]["surface_cap_rock"] = simData->EFarField;
+    stringtoint[2]["surface_cap_rock"] = simData->ECapRock;
+    simData->m_Reservoir.BCs["surface_cap_rock"].matid = simData->ECapRock;
     
     stringtoint[1]["curve_wellbore"] = simData->ECurveWell;
     simData->m_Wellbore.matid = simData->ECurveWell;
