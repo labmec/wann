@@ -78,7 +78,7 @@ int main(int argc, char *argv[]) {
   // Initial geometric mesh
   TPZGeoMesh* gmesh = TPZWannGeometryTools::ReadMeshFromGmsh(&SimData);
 
-  // Convert to cylindrical coordinates if needed
+  // Convert to cylindrical coordinates if set in json
   if (SimData.m_Mesh.ToCylindrical) {
     TPZWannGeometryTools::ModifyGeometricMeshToCylWell(gmesh, &SimData);
   }
@@ -95,13 +95,12 @@ int main(int argc, char *argv[]) {
   std::ofstream refinementLog(path);
   if (!refinementLog) {
     std::cerr << "Error: Could not open refinement_log.txt for writing." << std::endl;
-    return 1;
+    DebugStop();
   }
 
   std::cout << "\n=== Starting adaptive refinement loop ===" << std::endl;
 
   while (refIt < maxIterations && estimatedError > errorTolerance) {
-    // --- Computing Hdiv and H1 approximations ---
     std::cout << "\n--- Computing Hdiv and H1 approximations at iteration " << refIt << " ---" << std::endl;
 
     // Create computational meshes
@@ -137,7 +136,7 @@ int main(int argc, char *argv[]) {
     anH1.SetSolver(stepH1);
     anH1.Run();
 
-    // Plot solutions (for internal checking only)
+    // Plot solutions (for internal control only)
     if (shouldPlot) {
       // GeoMesh
       {
@@ -164,12 +163,13 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    // --- Error estimation and adaptive refinement ---
     std::cout << "\n--- Error estimation and adaptive refinement at iteration " << refIt << " ---" << std::endl;
 
     int64_t ngel = cmeshMixed->Reference()->NElements();
     TPZVec<REAL> elementErrors(ngel, 0.0);
     TPZVec<int> refinementIndicator(ngel, 0);
+
+    // Maybe the following functions could be put in a wrapper function?
 
     REAL estimatedError = TPZWannAdaptivityTools::PragerSynge(cmeshMixed, cmeshH1, &SimData, elementErrors, globalNthreads);
     std::cout << "Estimated error: " << estimatedError << std::endl;
