@@ -63,8 +63,7 @@ void TPZNonLinearWellH1::Contribute(const TPZMaterialDataT<STATE> &data, STATE w
       reynolds = (fRho * std::abs(velocity) * fDw) / fMu;
       turbulent = reynolds > 1187.38;
     }
-    // turbulent = false; // Temporarily disable turbulence
-    
+       
     REAL signal = (dpsol >= 0.) ? 1. : -1.;
     REAL factor = fCLin * weight;
     if (turbulent) {

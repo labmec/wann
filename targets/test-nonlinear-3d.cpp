@@ -18,7 +18,10 @@
 #include "pzlog.h"
 #include "pzintel.h"
 #include "pzvec_extras.h"
+
+// Wann includes
 #include "TPZWannMixedDarcyNL.h"
+#include "TPZWannDarcyNL.h"
 #include "TPZWannAnalysis.h"
 
 // ================
@@ -66,11 +69,13 @@ TPZGeoMesh *createGeoMesh2D(
 // Creates a computational mesh for mixed approximation
 TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order = 1, bool isNL = false);
 
+// Creates a computational mesh for H1 approximation
+TPZCompMesh *createCompMeshH1(TPZGeoMesh *gmesh, int order = 1, bool isNL = false);
+
+// Linear and non-linear solvers
 void SolveLinear(int order, TPZGeoMesh *gmesh);
-
 void SolveNonLinear(int order, TPZGeoMesh *gmesh);
-
-void SolveNonLinearNew(int order, TPZGeoMesh *gmesh);
+void SolveNonLinearOld(int order, TPZGeoMesh *gmesh);
 
 // =============
 // Main function
@@ -94,22 +99,10 @@ int main(int argc, char *const argv[])
     // --- Solve darcy problem ---
 
     int order = 1; // Polynomial order
-
-    // Initial geometric mesh
-    bool newAnalysis = true; // Non-linear flag
     TPZGeoMesh *gmesh = createGeoMesh3D({1, 1, 1}, {0., 0., 0.}, {1., 1., 1.});
     // TPZGeoMesh* gmesh = createGeoMesh2D({3, 3}, {0., 0.}, {1., 1.});
-
-    if (!newAnalysis)
-    {
-        std::cout << "Solving non-linear Darcy problem..." << std::endl;
-        SolveNonLinear(order, gmesh);
-    }
-    else
-    {
-        std::cout << "Solving linear Darcy problem..." << std::endl;
-        SolveNonLinearNew(order, gmesh);
-    }
+    SolveNonLinear(order, gmesh);
+    // SolveLinear(order, gmesh);
 }
 
 // =========
@@ -228,11 +221,6 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order, bool 
         newnod.SetLagrangeMultiplier(lagLevel);
     }
 
-    {
-        std::ofstream out("cmeshPressure.txt");
-        cmeshPressure->Print(out);
-    }
-
     // --- Multiphysics mesh ---
 
     TPZMultiphysicsCompMesh *cmesh = new TPZMultiphysicsCompMesh(gmesh);
@@ -245,13 +233,14 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order, bool 
     if (isNL)
     {
         TPZWannMixedDarcyNL *temp_mat = new TPZWannMixedDarcyNL(EMatId, gmesh->Dimension());
-        temp_mat->SetConstantPermeability(1.0);
         matDarcy = temp_mat;
     }
     else
     {
-        matDarcy->SetConstantPermeability(1.0);
+        TPZMixedDarcyFlow *temp_mat = new TPZMixedDarcyFlow(EMatId, gmesh->Dimension());
+        matDarcy = temp_mat;
     }
+    matDarcy->SetConstantPermeability(1.0);
     cmesh->InsertMaterialObject(matDarcy);
 
     // Create, set and add boundary conditions
@@ -302,7 +291,195 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order, bool 
     return cmesh;
 }
 
+TPZCompMesh *createCompMeshH1(TPZGeoMesh *gmesh, int order, bool isNL) 
+{
+    
+    TPZCompMesh *cmesh = new TPZCompMesh(gmesh);
+    cmesh->SetDimModel(gmesh->Dimension());
+    cmesh->SetDefaultOrder(order);
+    cmesh->SetAllCreateFunctionsContinuous();
+
+    // Add materials (weak formulation)
+    TPZDarcyFlow *matDarcy = nullptr;
+    if (isNL)
+    {
+        TPZWannDarcyNL *temp_mat = new TPZWannDarcyNL(EMatId, gmesh->Dimension());
+        matDarcy = temp_mat;
+    }
+    else
+    {
+        TPZDarcyFlow *temp_mat = new TPZDarcyFlow(EMatId, gmesh->Dimension());
+        matDarcy = temp_mat;
+    }
+    matDarcy->SetConstantPermeability(1.0);
+    cmesh->InsertMaterialObject(matDarcy);
+
+    // Create, set and add boundary conditions
+    TPZManVector<REAL, 1> val2(1, 0.); // Part that goes to the RHS vector
+    TPZFMatrix<REAL> val1(1, 1, 0.);   // Part that goes to the Stiffnes matrix
+    TPZBndCondT<REAL> *bcond;
+
+    val2[0] = 0.;
+    bcond = matDarcy->CreateBC(matDarcy, ERight, 1, val1, val2);
+    cmesh->InsertMaterialObject(bcond);
+
+    val2[0] = 0.;
+    bcond = matDarcy->CreateBC(matDarcy, ELeft, 1, val1, val2);
+    cmesh->InsertMaterialObject(bcond);
+
+    val2[0] = 0.;
+    bcond = matDarcy->CreateBC(matDarcy, EFront, 0, val1, val2);
+    cmesh->InsertMaterialObject(bcond);
+
+    val2[0] = 1.0;
+    bcond = matDarcy->CreateBC(matDarcy, EBack, 1, val1, val2);
+    cmesh->InsertMaterialObject(bcond);
+
+    if (gmesh->Dimension() == 3)
+    {
+        val2[0] = 0.;
+        bcond = matDarcy->CreateBC(matDarcy, EBottom, 1, val1, val2);
+        cmesh->InsertMaterialObject(bcond);
+
+        bcond = matDarcy->CreateBC(matDarcy, ETop, 1, val1, val2);
+        cmesh->InsertMaterialObject(bcond);
+    }
+
+    cmesh->AutoBuild();
+    return cmesh;
+}
+
+void SolveLinear(int order, TPZGeoMesh *gmesh)
+{
+    TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, order, false);
+    TPZCompMesh *cmeshH1 = createCompMeshH1(gmesh, order, false);
+
+    // Mixed solver
+    TPZLinearAnalysis anMixed(cmeshMixed, RenumType::EMetis);
+#ifdef PZ_USING_MKL
+    TPZSSpStructMatrix<STATE> matMixed(cmeshMixed);
+#else
+    TPZFStructMatrix<STATE> matMixed(cmeshMixed);
+#endif
+    matMixed.SetNumThreads(nthreads);
+    anMixed.SetStructuralMatrix(matMixed);
+    TPZStepSolver<STATE> stepMixed;
+    stepMixed.SetDirect(ELDLt);
+    anMixed.SetSolver(stepMixed);
+    anMixed.Run();
+
+    // H1 solver
+    TPZLinearAnalysis anH1(cmeshH1, RenumType::EMetis);
+#ifdef PZ_USING_MKL
+    TPZSSpStructMatrix<STATE> matH1(cmeshH1);
+#else
+    TPZFStructMatrix<STATE> matH1(cmeshH1);
+#endif
+    matH1.SetNumThreads(nthreads);
+    anH1.SetStructuralMatrix(matH1);
+    TPZStepSolver<STATE> stepH1;
+    stepH1.SetDirect(ECholesky);
+    anH1.SetSolver(stepH1);
+    anH1.Run();
+
+    // ---- Plotting ---
+
+    {
+        const std::string plotfile = "Darcy_Mixed";
+        constexpr int vtkRes{0};
+        TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
+        auto vtk = TPZVTKGenerator(cmeshMixed, fields, plotfile, vtkRes);
+        vtk.Do();
+    }
+
+    {
+        const std::string plotfile = "Darcy_H1";
+        constexpr int vtkRes{0};
+        TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
+        auto vtk = TPZVTKGenerator(cmeshH1, fields, plotfile, vtkRes);
+        vtk.Do();
+    }
+
+    // --- Clean up ---
+
+    delete cmeshMixed;
+    delete cmeshH1;
+}
+
 void SolveNonLinear(int order, TPZGeoMesh *gmesh)
+{
+    TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, order, true);
+    TPZCompMesh *cmeshH1 = createCompMeshH1(gmesh, order, true);
+
+    {
+        std::ofstream out("cmeshH1.txt");
+        cmeshH1->Print(out);
+    }
+
+    ProblemData simData;
+    simData.m_Numerics.maxIterations = 10;
+    simData.m_Numerics.res_tol = 1.e-6;
+    simData.m_Numerics.corr_tol = 1.e-6;
+    simData.m_Numerics.nthreads = 0;
+
+    simData.m_Reservoir.BCs["right"] = {ERight, 1, 0.0};
+    simData.m_Reservoir.BCs["left"] = {ELeft, 1, 0.0};
+    simData.m_Reservoir.BCs["front"] = {EFront, 0, 0.0};
+    simData.m_Reservoir.BCs["back"] = {EBack, 1, -1.0};
+
+    if (gmesh->Dimension() == 3)
+    {
+        simData.m_Reservoir.BCs["bottom"] = {EBottom, 1, 0.0};
+        simData.m_Reservoir.BCs["top"] = {ETop, 1, 0.0};
+    }
+
+    // Mixed solver
+    TPZWannAnalysis anMixed(cmeshMixed, RenumType::EMetis);
+    anMixed.SetProblemData(&simData);
+    anMixed.Initialize();
+    anMixed.NewtonIteration();
+
+    // H1 solver
+    TPZWannAnalysis anH1(cmeshH1, RenumType::EMetis);
+    anH1.SetProblemData(&simData);
+    anH1.Initialize();
+
+    {
+        std::ofstream out("cmeshH1.txt");
+        cmeshH1->Print(out);
+    }
+
+    anH1.NewtonIteration();
+
+    // ---- Plotting ---
+
+    {
+        const std::string plotfile = "DarcyNL_Mixed";
+        constexpr int vtkRes{0};
+        TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
+        auto vtk = TPZVTKGenerator(cmeshMixed, fields, plotfile, vtkRes);
+        vtk.Do();
+    }
+
+    {
+        const std::string plotfile = "DarcyNL_H1";
+        constexpr int vtkRes{0};
+        TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
+        auto vtk = TPZVTKGenerator(cmeshH1, fields, plotfile, vtkRes);
+        vtk.Do();
+    }
+
+    // --- Clean up ---
+
+    delete cmeshMixed;
+    delete cmeshH1;
+}
+
+// =========
+// Old stuff
+// =========
+
+void SolveNonLinearOld(int order, TPZGeoMesh *gmesh)
 {
 
     TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, order, true);
@@ -351,77 +528,6 @@ void SolveNonLinear(int order, TPZGeoMesh *gmesh)
         cmeshMixed->LoadSolution(Sol);
         cmeshMixed->TransferMultiphysicsSolution();
     }
-
-    // ---- Plotting ---
-
-    {
-        const std::string plotfile = "darcy_mixed";
-        constexpr int vtkRes{0};
-        TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
-        auto vtk = TPZVTKGenerator(cmeshMixed, fields, plotfile, vtkRes);
-        vtk.Do();
-    }
-
-    // --- Clean up ---
-
-    delete cmeshMixed;
-}
-
-void SolveLinear(int order, TPZGeoMesh *gmesh)
-{
-    TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, order, false);
-
-    // Mixed solver
-    TPZLinearAnalysis anMixed(cmeshMixed, RenumType::EMetis);
-#ifdef PZ_USING_MKL
-    TPZSSpStructMatrix<STATE> matMixed(cmeshMixed);
-#else
-    TPZFStructMatrix<STATE> matMixed(cmeshMixed);
-#endif
-    matMixed.SetNumThreads(nthreads);
-    anMixed.SetStructuralMatrix(matMixed);
-    TPZStepSolver<STATE> stepMixed;
-    stepMixed.SetDirect(ELDLt);
-    anMixed.SetSolver(stepMixed);
-    anMixed.Run();
-
-    // ---- Plotting ---
-
-    {
-        const std::string plotfile = "darcy_mixed";
-        constexpr int vtkRes{0};
-        TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
-        auto vtk = TPZVTKGenerator(cmeshMixed, fields, plotfile, vtkRes);
-        vtk.Do();
-    }
-
-    // --- Clean up ---
-
-    delete cmeshMixed;
-}
-
-void SolveNonLinearNew(int order, TPZGeoMesh *gmesh)
-{
-    TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, order, true);
-    TPZWannAnalysis anMixed(cmeshMixed, RenumType::EMetis);
-    ProblemData simData;
-    simData.m_Numerics.maxIterations = 10;
-    simData.m_Numerics.res_tol = 1.e-6;
-    simData.m_Numerics.corr_tol = 1.e-6;
-    simData.m_Numerics.nthreads = 0;
-
-    simData.m_Reservoir.BCs["right"] = {ERight, 1, 0.0};
-    simData.m_Reservoir.BCs["left"] = {ELeft, 1, 0.0};
-    simData.m_Reservoir.BCs["front"] = {EFront, 0, 0.0};
-    simData.m_Reservoir.BCs["back"] = {EBack, 1, -1.0};
-    if (gmesh->Dimension() == 3)
-    {
-        simData.m_Reservoir.BCs["bottom"] = {EBottom, 1, 0.0};
-        simData.m_Reservoir.BCs["top"] = {ETop, 1, 0.0};
-    }
-    anMixed.SetProblemData(&simData);
-    anMixed.Initialize();
-    anMixed.NewtonIteration();
 
     // ---- Plotting ---
 

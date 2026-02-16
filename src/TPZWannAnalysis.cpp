@@ -58,12 +58,6 @@ void TPZWannAnalysis::Initialize()
     step.SetDirect(solverType);
     SetSolver(step);
 
-    // if (!fIsMultiphysics)
-    // {
-    //     auto mat = MatrixSolver<STATE>().Matrix();
-    //     mat->SetDefPositive(true);
-    // }
-
     std::cout << "Number of equations: " << fCompMesh->NEquations() << std::endl;
     std::cout << "Number of elements: " << fCompMesh->NElements() << std::endl;
 }
@@ -472,50 +466,53 @@ void TPZWannAnalysis::SetInitialSolution(std::set<int> &bcMatids)
 
         int64_t nConnects = compEl->NConnects();
 
-        if (nConnects != 1)
+        if (fIsMultiphysics && nConnects != 1)
             DebugStop();
 
-        int64_t seq = compEl->Connect(0).SequenceNumber();
         int ncorner = el->NCornerNodes();
         REAL volume = el->Dimension() == 0 ? 1.0 : el->Volume();
 
-        auto firstEq = fCompMesh->Block().Position(seq);
+        for (int64_t iconn = 0; iconn < nConnects; iconn++) {
+          int64_t seq = compEl->Connect(iconn).SequenceNumber();
 
-        int64_t blockSize = fCompMesh->Block().Size(seq);
+          auto firstEq = fCompMesh->Block().Position(seq);
 
-        std::string bc_name;
-        REAL val;
-        bool found = false;
-        for (auto it = fSimData->m_Reservoir.BCs.begin(); it != fSimData->m_Reservoir.BCs.end(); ++it)
-        {
-            if (it->second.matid == elMatID)
-            {
+          int64_t blockSize = fCompMesh->Block().Size(seq);
+
+          std::string bc_name;
+          REAL val;
+          bool found = false;
+          for (auto it = fSimData->m_Reservoir.BCs.begin();
+               it != fSimData->m_Reservoir.BCs.end(); ++it) {
+            if (it->second.matid == elMatID) {
+              bc_name = it->first;
+              val = fSimData->m_Reservoir.BCs[bc_name].value;
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            for (auto it = fSimData->m_Wellbore.BCs.begin();
+                 it != fSimData->m_Wellbore.BCs.end(); ++it) {
+              if (it->second.matid == elMatID) {
                 bc_name = it->first;
-                val = fSimData->m_Reservoir.BCs[bc_name].value;
+                val = fSimData->m_Wellbore.BCs[bc_name].value;
                 found = true;
                 break;
+              }
             }
-        }
-        if (!found)
-        {
-            for (auto it = fSimData->m_Wellbore.BCs.begin(); it != fSimData->m_Wellbore.BCs.end(); ++it)
-            {
-                if (it->second.matid == elMatID)
-                {
-                    bc_name = it->first;
-                    val = fSimData->m_Wellbore.BCs[bc_name].value;
-                    found = true;
-                    break;
-                }
-            }
-        }
-        if (!found)
+          }
+          if (!found)
             DebugStop();
-        val *= volume / ncorner;
-        for (int64_t eq = firstEq; eq < firstEq + blockSize; eq++)
-        {
+
+          if (fIsMultiphysics) {
+            val *= volume / ncorner;
+          }
+
+          for (int64_t eq = firstEq; eq < firstEq + blockSize; eq++) {
             if (eq - firstEq < ncorner)
-                cmesh_sol.PutVal(eq, 0, val);
+              cmesh_sol.PutVal(eq, 0, val);
+          }
         }
     }
 
@@ -554,19 +551,19 @@ void TPZWannAnalysis::ApplyEquationFilter(std::set<int> &bcMatids)
 
         int64_t nConnects = compEl->NConnects();
 
-        if (nConnects != 1)
+        if (fIsMultiphysics && nConnects != 1)
             DebugStop();
 
-        int64_t seq = compEl->Connect(0).SequenceNumber();
-        int ncorner = el->NCornerNodes();
-
-        auto firstEq = fCompMesh->Block().Position(seq);
-
-        int64_t blockSize = fCompMesh->Block().Size(seq);
-
-        for (int64_t eq = firstEq; eq < firstEq + blockSize; eq++)
+        for (int64_t iconn = 0; iconn < nConnects; iconn++)
         {
-            removeEquations.insert(eq);
+            int64_t seq = compEl->Connect(iconn).SequenceNumber();
+            auto firstEq = fCompMesh->Block().Position(seq);
+            int64_t blockSize = fCompMesh->Block().Size(seq);
+
+            for (int64_t eq = firstEq; eq < firstEq + blockSize; eq++)
+            {
+                removeEquations.insert(eq);
+            }
         }
     }
 
