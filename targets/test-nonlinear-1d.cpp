@@ -30,27 +30,28 @@
 enum EnumMatIds
 {
     EMatId = 1,
-    ERight = 3,
-    ELeft = 5
+    ERight = 2,
+    ELeft = 3,
+    ENone = -1
 };
 
-int nthreads = 10;
+int nthreads = 0;
 
 // ===================
 // Function prototypes
 // ===================
 
+// Creates a 1D geometric mesh
 TPZGeoMesh *Create1DMesh(int nel, REAL x0, REAL x1);
 
 // Creates a computational mesh for mixed approximation
-TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order = 1);
+TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, ProblemData *simData);
 
 // Creates a computational mesh for H1 approximation
-TPZCompMesh *createCompMeshH1(TPZGeoMesh *gmesh, int order = 1);
+TPZCompMesh *createCompMeshH1(TPZGeoMesh *gmesh, ProblemData *simData);
 
-void SolveNonLinear(int order, TPZGeoMesh *gmesh);
-
-void SolveNonLinearNew(int order, TPZGeoMesh *gmesh);
+// Nonlinear solver for the well problem
+void SolveNonLinear(TPZGeoMesh *gmesh, ProblemData *simData);
 
 // =============
 // Main function
@@ -59,42 +60,45 @@ void SolveNonLinearNew(int order, TPZGeoMesh *gmesh);
 int main(int argc, char *const argv[])
 {
 
-// --- Set up ---
-
 // Initialize logger
 #ifdef PZ_LOG
     TPZLogger::InitializePZLOG();
 #endif
 
-    // --- Solve darcy problem ---
+    // Set up the problem data
+    ProblemData simData;
+    simData.m_Numerics.maxIterations = 10;
+    simData.m_Numerics.res_tol = 1.e-6;
+    simData.m_Numerics.corr_tol = 1.e-6;
+    simData.m_Numerics.nthreads = nthreads;
 
-    int order = 1; // Polynomial order
+    simData.m_Wellbore.radius = 0.05;
+    simData.m_Wellbore.length = 400.;
+    simData.m_Wellbore.BCs["left"] = {ELeft, 1, 0.05};
+    simData.m_Wellbore.BCs["right"] = {ERight, 1, 0.0};
+    simData.m_Wellbore.pOrder = 2;
 
-    // Initial geometric mesh
-    bool newAnalysis = true; // Non-linear flag
-    TPZGeoMesh *gmesh = Create1DMesh(10, 0., 400.);
+    simData.m_Fluid.viscosity = 0.001;
+    simData.m_Fluid.density = 800;
 
-    if (!newAnalysis)
-    {
-        std::cout << "Solving non-linear Darcy problem..." << std::endl;
-        SolveNonLinear(order, gmesh);
-    }
-    else
-    {
-        std::cout << "Solving non-linear Darcy problem..." << std::endl;
-        SolveNonLinearNew(order, gmesh);
-    }
+    simData.m_Reservoir.BCs["pres"] = {ENone, 0, 2.2e7};
+    simData.m_Reservoir.perm = 1.e-11; // Pseudo resistivity
+
+    // Non-linear solver
+    TPZGeoMesh *gmesh = Create1DMesh(20, 0., simData.m_Wellbore.length);
+    SolveNonLinear(gmesh, &simData);
 }
 
 // =========
 // Functions
 // =========
 
-TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order)
+TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, ProblemData *simData)
 {
 
-    // --- Flux atomic cmesh ----
+    int order = simData->m_Wellbore.pOrder;
 
+    // --- Flux atomic cmesh ----
     TPZCompMesh *cmeshFlux = new TPZCompMesh(gmesh);
     cmeshFlux->SetDimModel(gmesh->Dimension());
     cmeshFlux->SetDefaultOrder(order);
@@ -113,12 +117,10 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order)
     TPZFMatrix<REAL> val1(1, 1, 0.);   // Part that goes to the Stiffnes matrix
     TPZBndCondT<REAL> *bcond;
 
-    val2[0] = 2000.0;
-    bcond = mat->CreateBC(mat, ERight, 0, val1, val2);
+    bcond = mat->CreateBC(mat, ERight, simData->m_Wellbore.BCs["right"].type, val1, val2);
     cmeshFlux->InsertMaterialObject(bcond);
 
-    val2[0] = 100.0;
-    bcond = mat->CreateBC(mat, ELeft, 0, val1, val2);
+    bcond = mat->CreateBC(mat, ELeft, simData->m_Wellbore.BCs["left"].type, val1, val2);
     cmeshFlux->InsertMaterialObject(bcond);
 
     cmeshFlux->AutoBuild();
@@ -166,31 +168,26 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order)
 
     TPZMultiphysicsCompMesh *cmesh = new TPZMultiphysicsCompMesh(gmesh);
     cmesh->SetDimModel(gmesh->Dimension());
-    cmesh->SetDefaultOrder(1);
+    cmesh->SetDefaultOrder(order);
     cmesh->ApproxSpace().Style() = TPZCreateApproximationSpace::EMultiphysics;
 
-    // Add materials (weak formulation)
-    // REAL Dw = 0.1;                     // Well diameter
-    // REAL mu = 5.e-3;                   // Fluid viscosity
-    // REAL rho = 800;                    // Fluid density
-    // REAL pres = 2.206e7;               // Reservoir pressure
-    // REAL Kvw = 1.2688833653495249e-11; // Pseudo resistivity
+    // Problem parameters
+    REAL Dw = simData->m_Wellbore.radius * 2;
+    REAL mu = simData->m_Fluid.viscosity;
+    REAL rho = simData->m_Fluid.density;
+    REAL pres = simData->m_Reservoir.BCs["pres"].value;
+    REAL Kvw = simData->m_Reservoir.perm;
 
-    REAL Dw = 0.1;     // Well diameter
-    REAL mu = 1.e-3;   // Fluid viscosity
-    REAL rho = 1000;   // Fluid density
-    REAL pres = 1.e5;  // Reservoir pressure
-    REAL Kvw = 1.e-12; // Pseudo resistivity
     TPZNonlinearWell *matWell = new TPZNonlinearWell(EMatId, Dw, mu, rho, pres, Kvw);
     cmesh->InsertMaterialObject(matWell);
 
     // Create, set and add boundary conditions
-    val2[0] = 2000.0;
-    bcond = matWell->CreateBC(matWell, ELeft, 0, val1, val2);
+    val2[0] = -simData->m_Wellbore.BCs["left"].value;
+    bcond = matWell->CreateBC(matWell, ELeft, simData->m_Wellbore.BCs["left"].type, val1, val2);
     cmesh->InsertMaterialObject(bcond);
 
-    val2[0] = 100.0;
-    bcond = matWell->CreateBC(matWell, ERight, 0, val1, val2);
+    val2[0] = simData->m_Wellbore.BCs["right"].value;
+    bcond = matWell->CreateBC(matWell, ERight, simData->m_Wellbore.BCs["right"].type, val1, val2);
     cmesh->InsertMaterialObject(bcond);
 
     // Incorporate the atomic meshes into the multiphysics mesh
@@ -209,19 +206,22 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order)
     return cmesh;
 }
 
-TPZCompMesh *createCompMeshH1(TPZGeoMesh *gmesh, int order)
+TPZCompMesh *createCompMeshH1(TPZGeoMesh *gmesh, ProblemData *simData)
 {
+    int order = simData->m_Wellbore.pOrder;
+
     TPZCompMesh *cmeshH1 = new TPZCompMesh(gmesh);
     cmeshH1->SetDimModel(gmesh->Dimension());
     cmeshH1->SetDefaultOrder(order);
     cmeshH1->SetAllCreateFunctionsContinuous();
 
-    // Add materials (weak formulation)
-    REAL Dw = 0.1;     // Well diameter
-    REAL mu = 1.e-3;   // Fluid viscosity
-    REAL rho = 1000;   // Fluid density
-    REAL pres = 1.e5;  // Reservoir pressure
-    REAL Kvw = 1.e-12; // Pseudo resistivity
+    // Problem parameters
+    REAL Dw = simData->m_Wellbore.radius * 2;
+    REAL mu = simData->m_Fluid.viscosity;
+    REAL rho = simData->m_Fluid.density;
+    REAL pres = simData->m_Reservoir.BCs["pres"].value;
+    REAL Kvw = simData->m_Reservoir.perm;
+
     TPZNonLinearWellH1 *matWell = new TPZNonLinearWellH1(EMatId, Dw, mu, rho, pres, Kvw);
     cmeshH1->InsertMaterialObject(matWell);
 
@@ -230,107 +230,35 @@ TPZCompMesh *createCompMeshH1(TPZGeoMesh *gmesh, int order)
     TPZFMatrix<REAL> val1(1, 1, 0.);   // Part that goes to the Stiffnes matrix
     TPZBndCondT<REAL> *bcond;
 
-    val2[0] = 100.0;
-    bcond = matWell->CreateBC(matWell, ERight, 0, val1, val2);
+    // For some reason its necessary to change the sign. TODO: look this up.
+    val2[0] = -simData->m_Wellbore.BCs["left"].value;
+    bcond = matWell->CreateBC(matWell, ELeft, simData->m_Wellbore.BCs["left"].type, val1, val2);
     cmeshH1->InsertMaterialObject(bcond);
 
-    val2[0] = 2000.0;
-    bcond = matWell->CreateBC(matWell, ELeft, 0, val1, val2);
+    val2[0] = simData->m_Wellbore.BCs["right"].value;
+    bcond = matWell->CreateBC(matWell, ERight, simData->m_Wellbore.BCs["right"].type, val1, val2);
     cmeshH1->InsertMaterialObject(bcond);
 
     cmeshH1->AutoBuild();
     return cmeshH1;
 }
 
-void SolveNonLinear(int order, TPZGeoMesh *gmesh)
+void SolveNonLinear(TPZGeoMesh *gmesh, ProblemData *simData)
 {
-
-    TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, order);
-
-    // Mixed solver
-    TPZLinearAnalysis anMixed(cmeshMixed, RenumType::EMetis);
-#ifdef PZ_USING_MKL
-    TPZSSpStructMatrix<STATE> matMixed(cmeshMixed);
-#else
-    TPZFStructMatrix<STATE> matMixed(cmeshMixed);
-#endif
-    matMixed.SetNumThreads(nthreads);
-    anMixed.SetStructuralMatrix(matMixed);
-    TPZStepSolver<STATE> stepMixed;
-    stepMixed.SetDirect(ELDLt);
-    anMixed.SetSolver(stepMixed);
-
-    const int maxIter = 10;
-    const REAL tol = 1.e-6;
-    TPZFMatrix<STATE> Sol(cmeshMixed->NEquations(), 1, 0.);
-    for (int iteration = 0; iteration < maxIter; iteration++)
-    {
-        std::cout << "Non-linear iteration " << iteration << std::endl;
-        anMixed.Assemble();
-        // check convergence
-        if (iteration > 0)
-        {
-            TPZMatrix<STATE> &rhs = anMixed.Rhs();
-            REAL norm = 0.;
-            for (int i = 0; i < rhs.Rows(); i++)
-            {
-                norm += rhs.GetVal(i, 0) * rhs.GetVal(i, 0);
-            }
-            norm = sqrt(norm);
-            std::cout << "norm = " << norm << std::endl;
-            if (norm < tol)
-            {
-                std::cout << "Converged!" << std::endl;
-                break;
-            }
-        }
-        anMixed.Solve();
-        TPZMatrix<STATE> &dsol = anMixed.Solution();
-        Sol += dsol;
-        // anMixed.LoadSolution(Sol);
-        cmeshMixed->LoadSolution(Sol);
-        cmeshMixed->TransferMultiphysicsSolution();
-    }
-
-    // ---- Plotting ---
-
-    {
-        const std::string plotfile = "darcy_mixed";
-        constexpr int vtkRes{0};
-        TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
-        auto vtk = TPZVTKGenerator(cmeshMixed, fields, plotfile, vtkRes);
-        vtk.Do();
-    }
-
-    // --- Clean up ---
-
-    delete cmeshMixed;
-}
-
-void SolveNonLinearNew(int order, TPZGeoMesh *gmesh)
-{
-    TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, order);
-    TPZCompMesh *cmeshH1 = createCompMeshH1(gmesh, order);
+    TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, simData);
+    TPZCompMesh *cmeshH1 = createCompMeshH1(gmesh, simData);
     TPZWannAnalysis anMixed(cmeshMixed, RenumType::EMetis);
     TPZWannAnalysis anH1(cmeshH1, RenumType::EMetis);
-    ProblemData simData;
-    simData.m_Numerics.maxIterations = 20;
-    simData.m_Numerics.res_tol = 1.e-6;
-    simData.m_Numerics.corr_tol = 1.e-6;
-    simData.m_Numerics.nthreads = nthreads;
-
-    simData.m_Wellbore.BCs["left"] = {ELeft, 0, 2000.0};
-    simData.m_Wellbore.BCs["right"] = {ERight, 0, 100.0};
 
     std::cout << "\nSolving non-linear well (Mixed H(div))" << std::endl;
 
-    anMixed.SetProblemData(&simData);
+    anMixed.SetProblemData(simData);
     anMixed.Initialize();
     anMixed.NewtonIteration();
 
     std::cout << "\nSolving non-linear well (H1)" << std::endl;
 
-    anH1.SetProblemData(&simData);
+    anH1.SetProblemData(simData);
     anH1.Initialize();
     anH1.NewtonIteration();
 
@@ -339,7 +267,7 @@ void SolveNonLinearNew(int order, TPZGeoMesh *gmesh)
     {
         const std::string plotfile = "testWell_mixed";
         constexpr int vtkRes{0};
-        TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
+        TPZManVector<std::string, 2> fields = {"Flux", "Pressure", "Divergence"};
         auto vtk = TPZVTKGenerator(cmeshMixed, fields, plotfile, vtkRes);
         vtk.Do();
     }
@@ -401,3 +329,72 @@ TPZGeoMesh *Create1DMesh(int nel, REAL x0, REAL x1)
     gmesh->BuildConnectivity();
     return gmesh;
 }
+
+// =========================================
+// Old versions of solver, keep just in case
+// =========================================
+
+// void SolveNonLinearOld(int order, TPZGeoMesh *gmesh)
+// {
+
+//     TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, simData, order);
+
+//     // Mixed solver
+//     TPZLinearAnalysis anMixed(cmeshMixed, RenumType::EMetis);
+// #ifdef PZ_USING_MKL
+//     TPZSSpStructMatrix<STATE> matMixed(cmeshMixed);
+// #else
+//     TPZFStructMatrix<STATE> matMixed(cmeshMixed);
+// #endif
+//     matMixed.SetNumThreads(nthreads);
+//     anMixed.SetStructuralMatrix(matMixed);
+//     TPZStepSolver<STATE> stepMixed;
+//     stepMixed.SetDirect(ELDLt);
+//     anMixed.SetSolver(stepMixed);
+
+//     const int maxIter = 10;
+//     const REAL tol = 1.e-6;
+//     TPZFMatrix<STATE> Sol(cmeshMixed->NEquations(), 1, 0.);
+//     for (int iteration = 0; iteration < maxIter; iteration++)
+//     {
+//         std::cout << "Non-linear iteration " << iteration << std::endl;
+//         anMixed.Assemble();
+//         // check convergence
+//         if (iteration > 0)
+//         {
+//             TPZMatrix<STATE> &rhs = anMixed.Rhs();
+//             REAL norm = 0.;
+//             for (int i = 0; i < rhs.Rows(); i++)
+//             {
+//                 norm += rhs.GetVal(i, 0) * rhs.GetVal(i, 0);
+//             }
+//             norm = sqrt(norm);
+//             std::cout << "norm = " << norm << std::endl;
+//             if (norm < tol)
+//             {
+//                 std::cout << "Converged!" << std::endl;
+//                 break;
+//             }
+//         }
+//         anMixed.Solve();
+//         TPZMatrix<STATE> &dsol = anMixed.Solution();
+//         Sol += dsol;
+//         // anMixed.LoadSolution(Sol);
+//         cmeshMixed->LoadSolution(Sol);
+//         cmeshMixed->TransferMultiphysicsSolution();
+//     }
+
+//     // ---- Plotting ---
+
+//     {
+//         const std::string plotfile = "darcy_mixed";
+//         constexpr int vtkRes{0};
+//         TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
+//         auto vtk = TPZVTKGenerator(cmeshMixed, fields, plotfile, vtkRes);
+//         vtk.Do();
+//     }
+
+//     // --- Clean up ---
+
+//     delete cmeshMixed;
+// }

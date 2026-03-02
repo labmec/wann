@@ -25,5 +25,8 @@ target_link_libraries(test-sideOrient-1d PRIVATE WANN_lib)
 add_executable(test-nonlinear-3d test-nonlinear-3d.cpp)
 target_link_libraries(test-nonlinear-3d PRIVATE WANN_lib)
 
+add_executable(testDarcyNL testDarcyNL.cpp)
+target_link_libraries(testDarcyNL PRIVATE WANN_lib)
+
 add_executable(test-nonlinear-1d test-nonlinear-1d.cpp)
 target_link_libraries(test-nonlinear-1d PRIVATE WANN_lib)

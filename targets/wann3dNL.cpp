@@ -24,7 +24,7 @@ int main(int argc, char *argv[]) {
   exact.fDimension = 3;
   exact.fExact = TLaplaceExample1::ENone;
 
-  std::string jsonfile = "wann3D_Cyl2.json";
+  std::string jsonfile = "wann3d_reservoirTest.json";
 
   if (argc > 2) {
     std::cout << argv[0] << " being called with too many arguments." << std::endl;
@@ -52,23 +52,37 @@ int main(int argc, char *argv[]) {
   // described in refinementProcess.txt file
   TPZGeoMesh* gmesh = TPZWannGeometryTools::CreateGeoMesh(&SimData);
 
-  // Create computational meshes (H(div) mixed and H1)
-  TPZMultiphysicsCompMesh* cmeshMixed = TPZWannApproxTools::CreateMultiphysicsCompMesh(gmesh, &SimData, &exact);
-  TPZCompMesh* cmeshH1 = TPZWannApproxTools::CreateH1CompMesh(gmesh, &SimData);
+  // H(div) Simulation
 
-  // Non-linear H(div) analysis
+  // For some reason we have to change the sign of boundary condition 
+  // when using cylindrical map. TODO: fix it
+  if (SimData.m_Mesh.ToCylindrical) {
+    SimData.m_Wellbore.BCs["point_heel"].value *= -1;
+  }
+
+  TPZMultiphysicsCompMesh* cmeshMixed = TPZWannApproxTools::CreateMultiphysicsCompMesh(gmesh, &SimData, &exact);
   TPZWannAnalysis anMixed(cmeshMixed, RenumType::EMetis);
   anMixed.SetProblemData(&SimData);
   anMixed.Initialize();
   anMixed.NewtonIteration();
 
-  // Non-linear H1 analysis
-  // TODO
+  // Reverse sign changes
+  if (SimData.m_Mesh.ToCylindrical) {
+    SimData.m_Wellbore.BCs["point_heel"].value *= -1;
+  }
+
+  // H1 Simulation
+  TPZCompMesh* cmeshH1 = TPZWannApproxTools::CreateH1CompMesh(gmesh, &SimData, &exact);
+  TPZWannAnalysis anH1(cmeshH1, RenumType::EMetis);
+  anH1.SetProblemData(&SimData);
+  anH1.Initialize();
+  anH1.NewtonIteration();
 
   std::cout << "\n--------- Simulation finished ---------" << std::endl;
   std::cout << "\n--------- Starting post-processing ---------" << std::endl;
 
-  TPZWannPostProcTools::PostProcessAllData(cmeshMixed, gmesh, &SimData);
+  TPZWannPostProcTools::WriteVTKs(cmeshMixed, &SimData);
+  TPZWannPostProcTools::WriteVTKs(cmeshH1, &SimData);
 
   // Integrated flux along segments of the well
   TPZVec<REAL> segmentPoints = {0.0, SimData.m_Wellbore.length / 2.0,
