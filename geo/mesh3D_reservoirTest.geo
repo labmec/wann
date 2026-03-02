@@ -24,9 +24,9 @@ ecc = 0; // Eccentricity of the wellbore (0 <= ecc <= 0.5)
 max_vert_disp = Hr/2-Rw; //[m]  
 
 // Meshing parameters
-h_div = 8;    // Horizontal division of the wellbore
-r_div = 4;    // Radial division (of each circle quarter)
-l_div = 50;   // Axial division of the near-well region
+h_div = 12;    // Horizontal division of the wellbore
+r_div = 5;    // Radial division (of each circle quarter)
+l_div = 60;   // Axial division of the near-well region
 p_res = 1.6;  // Progression coefficient of the near-well region mesh
 p_well = 0.3; // Progression coefficient of the wellbore mesh
 

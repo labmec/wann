@@ -1,6 +1,8 @@
 #include "TPZWannApproxTools.h"
 #include "TPZNonlinearWell.h"
+#include "TPZNonLinearWellH1.h"
 #include "TPZWannMixedDarcyNL.h"
+#include "TPZWannDarcyNL.h"
 
 TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TPZAnalyticSolution *exact)
 {
@@ -17,6 +19,7 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
 
   // Reservoir material
   auto &ReservoirData = SimData->m_Reservoir;
+  auto &FluidData = SimData->m_Fluid;
   {
 
     // Add flag to indicate if we want to use nonlinear material?
@@ -27,7 +30,7 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
       reservoirMat->SetForcingFunction(exact->ForceFunc(), 3);
       reservoirMat->SetConstantPermeability(1.0);
     } else {
-      reservoirMat->SetConstantPermeability(ReservoirData.perm);
+      reservoirMat->SetConstantPermeability(ReservoirData.perm/FluidData.viscosity);
     }
     hdivCreator.InsertMaterialObject(reservoirMat);
 
@@ -51,7 +54,6 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
 
   // Wellbore material
   auto &WellboreData = SimData->m_Wellbore;
-  auto &FluidData = SimData->m_Fluid;
   {
     const int dimwell = 1;
     // Add flag to indicate if we want to use nonlinear material?
@@ -68,12 +70,6 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
 
     hdivCreator.InsertMaterialObject(wellboreMat); // This will only be used in the creation of the multiphysics mesh since the dimension is smaller than the dimension of the geometric mesh
 
-    // Change boundary condition value as a workaround
-    //Any ideia how to do this in a more elegant way? it seems that the cylindrical map changes normal vector orientation of some elements
-    // if (!SimData->m_Mesh.ToCylindrical) {
-    //   SimData->m_Wellbore.BCs["point_heel"].value *= -1;
-    // }
-
     for (auto &bcpair : WellboreData.BCs)
     {
       auto &bc = bcpair.second;
@@ -84,12 +80,6 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
       if (hasAnalyticSol) BCond->SetForcingFunctionBC(exact->ExactSolution(), 3);
       hdivCreator.InsertMaterialObject(BCond);
     }
-
-    //Reverse boundary condition change
-    // if (!SimData->m_Mesh.ToCylindrical) {
-    //   SimData->m_Wellbore.BCs["point_heel"].value *= -1;
-    // }
-
   }
 
   // Material for hdivbound elements in multiphysics mesh
@@ -121,16 +111,21 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
   return cmesh;
 }
 
-TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData *SimData) {
+TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TPZAnalyticSolution *exact) 
+{
   const int dim = gmesh->Dimension();
   auto &ReservoirData = SimData->m_Reservoir;
   auto &WellboreData = SimData->m_Wellbore;
+  auto &FluidData = SimData->m_Fluid;
   std::set<int> reservoirMatIdSet;
   std::set<int> wellboreMatIdSet;
 
+  TLaplaceExample1* exactsol = dynamic_cast<TLaplaceExample1 *>(exact);
+  bool hasAnalyticSol = (exactsol != nullptr && exactsol->fExact != TLaplaceExample1::ENone);
+
   TPZCompMesh *cmesh = new TPZCompMesh(gmesh);
   cmesh->SetDimModel(dim);
-  cmesh->SetDefaultOrder(ReservoirData.pOrder); // First create everything with reservoir order
+  cmesh->SetDefaultOrder(ReservoirData.pOrder+1); // First create everything with reservoir order
   cmesh->SetAllCreateFunctionsContinuous();
 
   // Pressure skin material (as null material)
@@ -141,8 +136,8 @@ TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData
 
   // Reservoir material and 3D boundary conditions
   {
-    TPZDarcyFlow *reservoirMat = new TPZDarcyFlow(SimData->EDomain, dim);
-    reservoirMat->SetConstantPermeability(ReservoirData.perm);
+    TPZDarcyFlow *reservoirMat = new TPZWannDarcyNL(SimData->EDomain, dim);
+    reservoirMat->SetConstantPermeability(ReservoirData.perm/FluidData.viscosity);
     cmesh->InsertMaterialObject(reservoirMat);
 
     for (auto &bcpair : ReservoirData.BCs)
@@ -159,8 +154,13 @@ TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData
 
   // Wellbore material and 1D boundary conditions
   {
-    TPZDarcyFlow *wellboreMat = new TPZDarcyFlow(SimData->ECurveWell, 1);
-    wellboreMat->SetConstantPermeability(WellboreData.perm);
+    TPZNonLinearWellH1 *wellboreMat = new TPZNonLinearWellH1(SimData->ECurveWell, 2 * WellboreData.radius,
+                             FluidData.viscosity, FluidData.density, 0.0, 0.0);
+    if (hasAnalyticSol) {
+      wellboreMat->SetExactSol(exact->ExactSolution(), 3);
+      wellboreMat->SetForcingFunction(exact->ForceFunc(), 3);
+    }
+
     cmesh->InsertMaterialObject(wellboreMat);
 
     for (auto &bcpair : WellboreData.BCs)
@@ -183,10 +183,10 @@ TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData
     TPZCompEl *cel = cmesh->Element(iel);
     if (!cel) continue;
     if (cel->Material()->Id() != SimData->ECurveWell) continue;
-    if (cel->NConnects() > 3) DebugStop(); // Wellbore H1 elements should have only 2 connects
+    if (cel->NConnects() > 3) DebugStop(); // Wellbore H1 elements should have only 3 connects
     TPZConnect &c = cel->Connect(2);
-    c.SetOrder(WellboreData.pOrder);
-    c.SetNShape(WellboreData.pOrder - 1);
+    c.SetOrder(WellboreData.pOrder+1);
+    c.SetNShape(WellboreData.pOrder);
   }
 
   if (SimData->m_PostProc.verbosityLevel)

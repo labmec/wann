@@ -71,12 +71,20 @@ void TPZWannPostProcTools::GenerateTrainingData(TPZGeoMesh* gmesh, ProblemData* 
 void TPZWannPostProcTools::WriteWellboreVTK(TPZCompMesh* cmesh, ProblemData* SimData) {
 
   auto& PostProcData = SimData->m_PostProc;
-  std::string filename = PostProcData.wellbore_vtk;
+
+  // Check whether the simulation is H1 or Hdiv
+  bool isMultiphysics = true;
+  TPZMultiphysicsCompMesh *cmeshMP = dynamic_cast<TPZMultiphysicsCompMesh *>(cmesh);
+  if (!cmeshMP) isMultiphysics = false;
+
+  std::string simType = isMultiphysics ? "Hdiv" : "H1";
+  std::string filename = PostProcData.wellbore_vtk + "_" + simType;
 
   TPZStack<std::string> fieldnames; 
   fieldnames.Push("Pressure");
   fieldnames.Push("Flux");
   fieldnames.Push("Divergence");
+  fieldnames.Push("GradPressure");
 
   TPZVTKGenerator vtk(cmesh, fieldnames, filename, PostProcData.vtk_resolution, 1);
   vtk.SetNThreads(PostProcData.nthreads);
@@ -86,7 +94,14 @@ void TPZWannPostProcTools::WriteWellboreVTK(TPZCompMesh* cmesh, ProblemData* Sim
 void TPZWannPostProcTools::WriteReservoirVTK(TPZCompMesh* cmesh, ProblemData* SimData) {
 
   auto& PostProcData = SimData->m_PostProc;
-  std::string filename = PostProcData.reservoir_vtk;
+
+  // Check whether the simulation is H1 or Hdiv
+  bool isMultiphysics = true;
+  TPZMultiphysicsCompMesh *cmeshMP = dynamic_cast<TPZMultiphysicsCompMesh *>(cmesh);
+  if (!cmeshMP) isMultiphysics = false;
+
+  std::string simType = isMultiphysics ? "Hdiv" : "H1";
+  std::string filename = PostProcData.reservoir_vtk + "_" + simType;
 
   TPZStack<std::string> fieldnames; 
   fieldnames.Push("Pressure");

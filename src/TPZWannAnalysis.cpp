@@ -84,7 +84,7 @@ void TPZWannAnalysis::NewtonIteration()
         {
             TPZFMatrix<STATE> rhs = Rhs();
             res_norm = Norm(rhs);
-            std::cout << "------Newton iteration: " << fKiteration << std::endl;
+            std::cout << "\n------Newton iteration: " << fKiteration << std::endl;
             std::cout << "---------Residual norm: " << res_norm << std::endl;
             std::cout << "---------Correction norm: " << corr_norm << std::endl;
             if (res_norm < res_tol && corr_norm < corr_tol)
@@ -126,7 +126,7 @@ void TPZWannAnalysis::NewtonIteration()
 
         //PostProcessIteration(Mesh()->Dimension(), fKiteration);
         TPZNonLinearWellH1::fIsFirstIteration = false;
-        TPZNonlinearWell::fAssembleRHSOnly = false;
+        TPZNonlinearWell::fIsFirstIteration = false;
     }
 
     if (!converged)
@@ -471,6 +471,13 @@ void TPZWannAnalysis::SetInitialSolution(std::set<int> &bcMatids)
 
         int ncorner = el->NCornerNodes();
         REAL volume = el->Dimension() == 0 ? 1.0 : el->Volume();
+
+        // IMPORTANT: For H1 elements we set the pressure value only at the corner connects.
+        // This is enough for linear pressure conditions.
+
+        if (!fIsMultiphysics) {
+            nConnects = ncorner;
+        }
 
         for (int64_t iconn = 0; iconn < nConnects; iconn++) {
           int64_t seq = compEl->Connect(iconn).SequenceNumber();

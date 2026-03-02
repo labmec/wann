@@ -53,34 +53,35 @@ void TPZNonLinearWellH1::Contribute(const TPZMaterialDataT<STATE> &data, STATE w
 
     REAL psol = data.sol[0][0];
     REAL dpsol = data.dsol[0][0];
-    REAL Qsol = - fC * std::pow(std::abs(dpsol), 4./7.); // Non-linear case
-    // REAL Qsol = - dpsol * fCLin; // Linear case
-    bool turbulent = false;
-    REAL reynolds = 0.0;
 
-    if (!fIsFirstIteration) { // If it's the first iteration, turbulence = false
-      REAL velocity = 4. * Qsol / (M_PI * fDw * fDw);
-      reynolds = (fRho * std::abs(velocity) * fDw) / fMu;
-      turbulent = reynolds > 1187.38;
+    // Compute the Q and dp/dx in which the flow changes from laminar to turbulent
+    REAL Qcrit = (1187.38 * fMu * M_PI * fDw) / (4 * fRho);
+    REAL DeltaPcrit = Qcrit/fCLin;
+
+    bool turbulent = false;
+    if (!fIsFirstIteration && std::abs(dpsol) > DeltaPcrit) { 
+      turbulent = true;
     }
-       
+
+    // turbulent = false;
+
     REAL signal = (dpsol >= 0.) ? 1. : -1.;
     REAL factor = fCLin * weight;
     if (turbulent) {
         factor = fC * (4./7.) * signal * (1.0/ std::pow(std::abs(dpsol), 3./7.)) * weight;
     }
+
     ek.AddContribution(0, 0, dphix, 1, dphix, 0, factor);
-    // Add the resistivity term to stiffness matrix.
+    ek.AddContribution(0, 0, phi, 0, phi, 1, fKvw * weight); // Pseudo-resistivity
     
     factor = -fCLin * weight * dpsol;
     if (turbulent) {
         factor = -fC * weight * std::pow(std::abs(dpsol), 4./7.);
     }
-    ef.AddContribution(0, 0, dphix, 1, Aux, 0, factor);
-    // Add the resistivity term to the RHS.
-}
 
-// TODO: Change the perm in Solution
+    ef.AddContribution(0, 0, dphix, 1, Aux, 0, factor);
+    ef.AddContribution(0, 0, phi, 0, Aux, 0, fKvw * weight * (fPres - psol)); // Pseudo-resistivity
+}
 
 void TPZNonLinearWellH1::ContributeBC(const TPZMaterialDataT<STATE> &data, STATE weight, TPZFMatrix<STATE> &ek,
                                 TPZFMatrix<STATE> &ef, TPZBndCondT<STATE> &bc) {
@@ -93,13 +94,7 @@ void TPZNonLinearWellH1::ContributeBC(const TPZMaterialDataT<STATE> &data, STATE
     STATE v2 = bc.Val2()[0];
 
     switch (bc.Type()) {
-        case 0 : // Dirichlet condition
-            // for (in = 0; in < phr; in++) {
-            //     ef(in, 0) += (STATE) (TPZMaterial::fBigNumber * phi(in, 0) * weight) * v2;
-            //     for (jn = 0; jn < phr; jn++) {
-            //         ek(in, jn) += TPZMaterial::fBigNumber * phi(in, 0) * phi(jn, 0) * weight;
-            //     }
-            // }
+        case 0 : // Dirichlet condition already imposed in the initial solution
             break;
         case 1 : // Neumann condition
             for (in = 0; in < phi.Rows(); in++) {
@@ -132,19 +127,40 @@ void TPZNonLinearWellH1::ContributeResidual(const TPZMaterialDataT<STATE> &data,
 
     REAL psol = data.sol[0][0];
     REAL dpsol = data.dsol[0][0];
-    REAL Qsol = - dpsol * fCLin; // Not sure about this...
 
-    REAL velocity = 4. * Qsol / (M_PI * fDw * fDw);
-    REAL reynolds = (fRho * std::abs(velocity) * fDw) / fMu;
-    bool turbulent = reynolds > 1187.38;
-    
-    REAL factor = -fCLin * weight;
-    if (turbulent) {
-        factor = -fC * (7./4.) * std::pow(std::abs(dpsol), 0.75) * weight;
+    // At this point, how should we compute flow rate? Linear or turbulent?
+    // REAL Qsol = - fC * std::pow(std::abs(dpsol), 4./7.); // Non-linear case
+    REAL Qsol = - dpsol * fCLin; // Linear case
+
+    bool turbulent = false;
+    REAL reynolds = 0.0;
+
+    if (!fIsFirstIteration) { // If it's the first iteration, turbulence = false
+      REAL velocity = 4. * Qsol / (M_PI * fDw * fDw);
+      reynolds = (fRho * std::abs(velocity) * fDw) / fMu;
+      turbulent = reynolds > 1187.38;
     }
 
-    ef.AddContribution(0, 0, dphix, 0, Aux, 0, factor);
-    // Add the resistivity term to the RHS.
+    // Check if we are definitely in the turbulent regime
+    if (turbulent) {
+      Qsol = -fC * std::pow(std::abs(dpsol), 4. / 7.);
+      REAL velocity = 4. * Qsol / (M_PI * fDw * fDw);
+      reynolds = (fRho * std::abs(velocity) * fDw) / fMu;
+      if (reynolds < 1187.38) {
+        std::cout << "Warning: Reynolds number oscillating around the critical "
+                     "value. Current value: "
+                  << reynolds << std::endl;
+        DebugStop();
+      }
+    }
+    
+    REAL factor = -fCLin * weight * dpsol;
+    if (turbulent) {
+        factor = -fC * weight * std::pow(std::abs(dpsol), 4./7.);
+    }
+
+    ef.AddContribution(0, 0, dphix, 1, Aux, 0, factor);
+    ef.AddContribution(0, 0, phi, 0, Aux, 0, fKvw * weight * (fPres - psol)); // Pseudo-resistivity
 }
 
 int TPZNonLinearWellH1::VariableIndex(const std::string &name) const {
@@ -152,7 +168,7 @@ int TPZNonLinearWellH1::VariableIndex(const std::string &name) const {
     if (!strcmp("Solution", name.c_str())) return 1;
     if (!strcmp("Pressure", name.c_str())) return 1;
     if (!strcmp("Derivative", name.c_str())) return 2;
-    if (!strcmp("GradU", name.c_str())) return 2;
+    if (!strcmp("GradPressure", name.c_str())) return 2;
     if (!strcmp("KDuDx", name.c_str())) return 3;
     if (!strcmp("KDuDy", name.c_str())) return 4;
     if (!strcmp("KDuDz", name.c_str())) return 5;
@@ -184,7 +200,7 @@ int TPZNonLinearWellH1::NSolutionVariables(int var) const {
     if (var == 4) return 1;      // KDuDy;
     if (var == 5) return 1;      // KDuDz;
     if (var == 6) return 1;      // NormKDu;
-    if (var == 7) return 3;   // MinusKGradU/Flux;
+    if (var == 7) return fDim;   // MinusKGradU/Flux;
     if (var == 8) return 1;      // POrder
     if (var == 9) return 1;      // ExactPressure/ExactSolution
     if (var == 10) return fDim;  // ExactFlux
@@ -263,11 +279,24 @@ void TPZNonLinearWellH1::Solution(const TPZMaterialDataT<STATE> &data, int var, 
             // Flux 
             TPZFNMatrix<9, STATE> dsoldx;
             TPZAxesTools<STATE>::Axes2XYZ(data.dsol[0], dsoldx, data.axes);
-            const STATE perm = 1.0;
-            // How check the reynolds number here?
-            for (int id = 0; id < 3; id++) {
-                solOut[id] = - fCLin * dsoldx(id, 0);
+
+            REAL signal = (dsoldx(0,0) >= 0.) ? 1. : -1.;
+
+            // Compute the Q and dp/dx in which the flow changes from laminar to turbulent
+            REAL Qcrit = (1187.38 * fMu * M_PI * fDw) / (4 * fRho);
+            REAL DeltaPcrit = Qcrit/fCLin;
+
+            bool turbulent = false;
+            if (!fIsFirstIteration && std::abs(dsoldx(0, 0)) > DeltaPcrit) {
+              turbulent = true;
             }
+
+            if (turbulent) {
+                solOut[0] = - signal * fC * std::pow(std::abs(dsoldx(0, 0)), 4./7.);
+            } else {
+                solOut[0] = - fCLin * dsoldx(0, 0);
+            }
+
             return;
         }
         case 8: {

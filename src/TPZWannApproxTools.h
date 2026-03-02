@@ -16,7 +16,7 @@ class TPZWannApproxTools {
 
 public:
   static TPZMultiphysicsCompMesh* CreateMultiphysicsCompMesh(TPZGeoMesh* gmesh, ProblemData* SimData, TPZAnalyticSolution* exactsol);
-  static TPZCompMesh* CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData *SimData) ;
+  static TPZCompMesh* CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TPZAnalyticSolution *exact);
 
 private:
   static void AddPressureSkinElements(TPZCompMesh* cmesh, ProblemData* SimData, const int laglevel);

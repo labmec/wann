@@ -1,5 +1,5 @@
 //
-// Created by Gustavo Batistela on 5/13/21.
+// Created by Gi Taraschi 23/02/2026.
 //
 
 #include "TPZWannDarcyNL.h"
@@ -61,7 +61,7 @@ void TPZWannDarcyNL::Contribute(const TPZMaterialDataT<STATE> &data, REAL weight
     ek.AddContribution(0, 0, dphi, 1, dphi, 0, factor);
 
     // Residual vector
-    ef.AddContribution(0, 0, dphi, 1, dpsol, 0, factor);
+    ef.AddContribution(0, 0, dphi, 1, dpsol, 0, -factor);
     ef.AddContribution(0, 0, phi, 0, Aux, 0, -source_term * weight);
 }
 
@@ -135,7 +135,7 @@ void TPZWannDarcyNL::FillBoundaryConditionDataRequirements(int type, TPZMaterial
 {
     // default is no specific data requirements
     data.SetAllRequirements(false);
-    data.fNeedsSol = true;
+    data.fNeedsSol = false;
     data.fNeedsNormal = true;
 }
 

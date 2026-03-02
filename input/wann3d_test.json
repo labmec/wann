@@ -1,8 +1,8 @@
 {
   "MeshData": {
     "file": "mesh3D_rev08_test.msh",
-    "customRefinement": 1,
-    "NumUniformRef": 0,
+    "customRefinement": 0,
+    "NumUniformRef": 1,
     "NumDirRef": 0,
     "ToCylindrical": 0
   },
@@ -15,8 +15,8 @@
     "BCs": [
       {
         "name": "point_heel",
-        "type": 0, //dirichlet:0    neumann:1
-        "value": 2.0
+        "type": 1, //dirichlet:0    neumann:1
+        "value": -0.2
       },
       {
         "name": "point_toe",
@@ -40,6 +40,11 @@
         "value": 1.0
       },
       {
+        "name": "surface_cap_rock",
+        "type": 0,
+        "value": 1.0
+      },
+      {
         "name": "surface_wellbore_heel",
         "type": 1,
         "value": 0.0
@@ -57,8 +62,8 @@
     "density": 800.0 // kg/m^3
   },
   "PostProcData": {
-    "wellbore_vtk": "postproc_wellbore",
-    "reservoir_vtk": "postproc_reservoir",
+    "wellbore_vtk": "WannWell",
+    "reservoir_vtk": "WannReservoir",
     "training_data": "training_data.txt",
     "vtk_resolution": 0,
     "training_resolution": 400, //number of subdivisions to generate training data
@@ -67,7 +72,7 @@
   },
   "NumericsData": {
     "nthreads": 0,
-    "maxIterations" : 20,
+    "maxIterations" : 40,
     "res_tol": 1e-6,
     "corr_tol": 1e-6
   }

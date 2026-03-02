@@ -16,7 +16,7 @@
       {
         "name": "point_heel",
         "type": 1, //dirichlet:0    neumann:1
-        "value": 0.06
+        "value": -0.06
       },
       {
         "name": "point_toe",
@@ -27,7 +27,7 @@
   },
   "ReservoirData": {
     "name": "volume_reservoir",
-    "perm": 3.0e-9, // k/mu 
+    "perm": 3.0e-12,
     "porosity": 1.0,
     "pOrder": 1,
     "height": 1,
@@ -54,11 +54,11 @@
   "FluidData": {
     "name": "oil",
     "viscosity": 1.0e-3, // Pa.s
-    "density": 785.0 // kg/m^3
+    "density": 800.0 // kg/m^3
   },
   "PostProcData": {
-    "wellbore_vtk": "postproc_wellbore",
-    "reservoir_vtk": "postproc_reservoir",
+    "wellbore_vtk": "WannWell",
+    "reservoir_vtk": "WannReservoir",
     "training_data": "training_data.txt",
     "vtk_resolution": 0,
     "training_resolution": 10, //number of subdivisions to generate training data
@@ -68,7 +68,7 @@
   "NumericsData": {
     "nthreads": 0,
     "maxIterations" : 10,
-    "res_tol": 1e-8,
-    "corr_tol": 1e-8
+    "res_tol": 1e-6,
+    "corr_tol": 1e-6
   }
 }
