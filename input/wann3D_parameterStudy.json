@@ -1,0 +1,74 @@
+{
+  "MeshData": {
+    "file": "wellPlusReservoir.msh",
+    "customRefinement": 0,
+    "NumUniformRef": 0,
+    "NumDirRef": 0,
+    "ToCylindrical": 0
+  },
+  "WellboreData": {
+    "name": "curve_wellbore",
+    "pOrder": 2,
+    "radius": 0.1,
+    "length": 300.0,
+    "eccentricity": [0.0, 0.0, 0.0],
+    "BCs": [
+      {
+        "name": "point_heel",
+        "type": 1, //dirichlet:0    neumann:1
+        "value": -0.06
+      },
+      {
+        "name": "point_toe",
+        "type": 1,
+        "value": 0.0 //32999999.0
+      }
+    ]
+  },
+  "ReservoirData": {
+    "name": "volume_reservoir",
+    "perm": 3.0e-12,
+    "porosity": 1.0,
+    "pOrder": 1,
+    "height": 100,
+    "width": 300,
+    "length": 400,
+    "BCs": [
+      {
+        "name": "surface_farfield",
+        "type": 0,
+        "value": 0.0
+      },
+      {
+        "name": "surface_wellbore_heel",
+        "type": 1,
+        "value": 0.0
+      },
+      {
+        "name": "surface_wellbore_toe",
+        "type": 1,
+        "value": 0.0
+      }
+    ]
+  },
+  "FluidData": {
+    "name": "oil",
+    "viscosity": 1.0e-3, // Pa.s
+    "density": 800.0 // kg/m^3
+  },
+  "PostProcData": {
+    "wellbore_vtk": "WannWell",
+    "reservoir_vtk": "WannReservoir",
+    "training_data": "training_data.txt",
+    "vtk_resolution": 0,
+    "training_resolution": 10, //number of subdivisions to generate training data
+    "nthreads": 0,
+    "verbosityLevel": 1
+  },
+  "NumericsData": {
+    "nthreads": 0,
+    "maxIterations" : 10,
+    "res_tol": 1e-6,
+    "corr_tol": 1e-6
+  }
+}

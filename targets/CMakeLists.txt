@@ -7,6 +7,9 @@ target_link_libraries(wann3dRef PRIVATE WANN_lib)
 add_executable(wann3dNL wann3dNL.cpp)
 target_link_libraries(wann3dNL PRIVATE WANN_lib)
 
+add_executable(wannPS wannParameterStudy.cpp)
+target_link_libraries(wannPS PRIVATE WANN_lib)
+
 add_executable(adptRef adaptiveRefinement.cpp)
 target_link_libraries(adptRef PRIVATE WANN_lib)
 

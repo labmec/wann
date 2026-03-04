@@ -63,8 +63,6 @@ void TPZNonLinearWellH1::Contribute(const TPZMaterialDataT<STATE> &data, STATE w
       turbulent = true;
     }
 
-    // turbulent = false;
-
     REAL signal = (dpsol >= 0.) ? 1. : -1.;
     REAL factor = fCLin * weight;
     if (turbulent) {
@@ -140,6 +138,8 @@ void TPZNonLinearWellH1::ContributeResidual(const TPZMaterialDataT<STATE> &data,
       reynolds = (fRho * std::abs(velocity) * fDw) / fMu;
       turbulent = reynolds > 1187.38;
     }
+
+
 
     // Check if we are definitely in the turbulent regime
     if (turbulent) {
