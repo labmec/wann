@@ -63,6 +63,7 @@ int main(int argc, char *argv[]) {
   TPZMultiphysicsCompMesh* cmeshMixed = TPZWannApproxTools::CreateMultiphysicsCompMesh(gmesh, &SimData, &exact);
   TPZWannAnalysis anMixed(cmeshMixed, RenumType::EMetis);
   anMixed.SetProblemData(&SimData);
+  anMixed.SetRescaling(false); // Enable matrix rescaling to improve conditioning
   anMixed.Initialize();
   anMixed.NewtonIteration();
 
@@ -75,6 +76,7 @@ int main(int argc, char *argv[]) {
   TPZCompMesh* cmeshH1 = TPZWannApproxTools::CreateH1CompMesh(gmesh, &SimData, &exact);
   TPZWannAnalysis anH1(cmeshH1, RenumType::EMetis);
   anH1.SetProblemData(&SimData);
+  anH1.SetRescaling(false); // Enable matrix rescaling to improve conditioning
   anH1.Initialize();
   anH1.NewtonIteration();
 
@@ -87,14 +89,29 @@ int main(int argc, char *argv[]) {
   // Integrated flux along segments of the well
   TPZVec<REAL> segmentPoints = {0.0, SimData.m_Wellbore.length / 2.0,
                                 SimData.m_Wellbore.length};
+
   TPZVec<REAL> fluxes = TPZWannPostProcTools::ComputeWellFluxes(
       cmeshMixed, &SimData, segmentPoints);
+  TPZVec<REAL> fluxesH1 = TPZWannPostProcTools::ComputeWellFluxes(
+      cmeshH1, &SimData, segmentPoints);
 
   std::cout << "Integrated well fluxes H(div): ";
+  REAL inflow = 0.0;
   for (int iseg = 0; iseg < fluxes.size(); iseg++) {
     std::cout << fluxes[iseg] << " ";
+    inflow += fluxes[iseg];
   }
   std::cout << std::endl;
+  std::cout << "Fluid loss H(div): " << std::abs(inflow) - std::abs(SimData.m_Wellbore.BCs["point_heel"].value) << std::endl;
+
+  std::cout << "Integrated well fluxes H1: ";
+  REAL inflowH1 = 0.0;
+  for (int iseg = 0; iseg < fluxesH1.size(); iseg++) {
+    std::cout << fluxesH1[iseg] << " ";
+    inflowH1 += fluxesH1[iseg];
+  }
+  std::cout << std::endl;
+  std::cout << "Fluid loss H1: " << std::abs(inflowH1) - std::abs(SimData.m_Wellbore.BCs["point_heel"].value) << std::endl;
 
   std::cout << "\n--------- Post-processing finished ---------" << std::endl;
 

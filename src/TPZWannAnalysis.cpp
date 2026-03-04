@@ -74,13 +74,22 @@ void TPZWannAnalysis::NewtonIteration()
     TPZNonLinearWellH1::fIsFirstIteration = true;
     TPZNonlinearWell::fIsFirstIteration = true;
 
-    TPZFMatrix<STATE> sol = Solution();
+    TPZVec<REAL> scaleFactors;
+
+    TPZFMatrix<STATE> sol = Solution(); // Initial solution
     for (fKiteration = 0; fKiteration < matIter; fKiteration++)
     {
         Assemble();
 
+        if (fRescaling) {
+            if (fKiteration >= 0) {
+                FillScalingFactors(scaleFactors);
+            }
+            RescaleSystem(scaleFactors);
+        }
+
         // Check residual convergence
-        if (fKiteration >= 0)
+        if (fKiteration > 0)
         {
             TPZFMatrix<STATE> rhs = Rhs();
             res_norm = Norm(rhs);
@@ -98,8 +107,22 @@ void TPZWannAnalysis::NewtonIteration()
                 break;
             }
         }
+
+        // Compute increment
         Solve();
         TPZFMatrix<STATE> dsol = Solution();
+
+        if (fRescaling) { 
+            TPZFMatrix<STATE> scaledDsol(scaleFactors.size(), 1, 0.0);
+
+            // Rescale the solution increment
+            fStructMatrix->EquationFilter().Gather(dsol, scaledDsol);
+            for (int i = 0; i < scaledDsol.Rows(); i++) {
+                scaledDsol(i, 0) *= scaleFactors[i];
+            }
+            fStructMatrix->EquationFilter().Scatter(scaledDsol, dsol);
+        }
+
         REAL eta;
         if (fKiteration == 0)
         {
@@ -606,4 +629,94 @@ void TPZWannAnalysis::PostProcessIteration(int dimToPost, int it)
 
     auto total_time_pp = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time_pp).count() / 1000.;
     cout << "Total time post process = " << total_time_pp << " seconds" << endl;
+}
+
+void TPZWannAnalysis::RescaleMatrix(TPZVec<REAL> &scaleFactors)
+{
+  auto mat = this->MatrixSolver<STATE>().Matrix();
+  scaleFactors.Resize(mat->Rows());
+
+  // Fill scaleFactors with the inverse of the diagonal entries of the matrix
+  for (int i = 0; i < mat->Rows(); i++) {
+    REAL diag = mat->GetVal(i, i);
+    if (std::abs(diag) > 1e-12) {
+      scaleFactors[i] = 1.0 / std::sqrt(std::abs(diag));
+    } else {
+      scaleFactors[i] = 1.0; // If diagonal entry is zero, do not scale
+    }
+  }
+
+  // Scale the RHS vector
+  TPZFMatrix<STATE> scaledRHS(mat->Rows(), 1, 0.0);
+  fStructMatrix->EquationFilter().Gather(fRhs, scaledRHS);
+  for (int i = 0; i < scaledRHS.Rows(); i++) {
+    scaledRHS(i, 0) *= scaleFactors[i];
+  }
+  fStructMatrix->EquationFilter().Scatter(scaledRHS, fRhs);
+
+  // Scale the matrix entries
+  auto *smp = dynamic_cast<TPZSYsmpMatrix<STATE>*>(&mat.operator*());
+  if(!smp){
+    std::cerr << "Matrix is not a TPZSYsmpMatrix" << std::endl;
+    DebugStop();
+  }
+  // use 'smp' from here
+  TPZVec<int64_t> &IA = smp->IA();
+  TPZVec<int64_t> &JA = smp->JA();
+  TPZVec<STATE> &A = smp->A();
+  int64_t n_nnz = A.NElements();
+
+  for (int64_t i = 0; i < IA.NElements() - 1; i++) {
+    for (int64_t j = IA[i]; j < IA[i + 1]; j++) {
+      A[j] *= scaleFactors[i] * scaleFactors[JA[j]];
+    }
+  }
+}
+
+void TPZWannAnalysis::FillScalingFactors(TPZVec<REAL> &scaleFactors)
+{
+  auto mat = this->MatrixSolver<STATE>().Matrix();
+  int64_t Neq = mat->Rows();
+  scaleFactors.Resize(Neq);
+
+  // Fill scaleFactors with the inverse of the diagonal entries of the matrix
+  for (int i = 0; i < Neq; i++) {
+    REAL diag = mat->GetVal(i, i);
+    if (std::abs(diag) > 1e-12) {
+      scaleFactors[i] = 1.0 / std::sqrt(std::abs(diag));
+    } else {
+      scaleFactors[i] = 1.0; // If diagonal entry is zero, do not scale
+    }
+  }
+}
+
+void TPZWannAnalysis::RescaleSystem(TPZVec<REAL> &scaleFactors)
+{
+  auto mat = this->MatrixSolver<STATE>().Matrix();
+
+  // Scale the RHS vector
+  TPZFMatrix<STATE> scaledRHS(mat->Rows(), 1, 0.0);
+  fStructMatrix->EquationFilter().Gather(fRhs, scaledRHS);
+  for (int i = 0; i < scaledRHS.Rows(); i++) {
+    scaledRHS(i, 0) *= scaleFactors[i];
+  }
+  fStructMatrix->EquationFilter().Scatter(scaledRHS, fRhs);
+
+  // Scale the matrix entries
+  auto *smp = dynamic_cast<TPZSYsmpMatrix<STATE>*>(&mat.operator*());
+  if(!smp){
+    std::cerr << "Matrix is not a TPZSYsmpMatrix" << std::endl;
+    DebugStop();
+  }
+  // use 'smp' from here
+  TPZVec<int64_t> &IA = smp->IA();
+  TPZVec<int64_t> &JA = smp->JA();
+  TPZVec<STATE> &A = smp->A();
+  int64_t n_nnz = A.NElements();
+
+  for (int64_t i = 0; i < IA.NElements() - 1; i++) {
+    for (int64_t j = IA[i]; j < IA[i + 1]; j++) {
+      A[j] *= scaleFactors[i] * scaleFactors[JA[j]];
+    }
+  }
 }

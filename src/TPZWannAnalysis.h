@@ -12,6 +12,7 @@
 #include "pzstepsolver.h"
 #include <stdio.h>
 #include "TPZVTKGenerator.h"
+#include "TPZSYSMPMatrix.h"
 
 class TPZWannAnalysis : public TPZLinearAnalysis
 {
@@ -91,4 +92,20 @@ public:
 
     /// Render a vtk file with requested variables for a time step
     void PostProcessIteration(int dimToPost = -1, int it = -1);
+
+    ///
+    void SetRescaling(bool rescaling) { fRescaling = rescaling; }
+
+protected:
+    /// Flag to indicate whether to perform matrix rescaling during newton iterations
+    bool fRescaling = false;
+
+    // Rescale the linear system to improve the conditioning of the matrix 
+    void RescaleMatrix(TPZVec<REAL> &scaleFactors);
+
+    // Fill vector to rescale the system
+    void FillScalingFactors(TPZVec<REAL> &scaleFactors);
+
+    // Rescale the stiff matrix and the Rhs vector based on the provided scaling factors
+    void RescaleSystem(TPZVec<REAL> &scaleFactors);
 };
