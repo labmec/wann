@@ -1,5 +1,6 @@
 #include "TPZWannPostProcTools.h"
 #include "TPZNonlinearWell.h"
+#include "TPZNonLinearWellH1.h"
 
 void TPZWannPostProcTools::GenerateTrainingData(TPZGeoMesh* gmesh, ProblemData* SimData) {
 
@@ -251,4 +252,65 @@ TPZVec<REAL> TPZWannPostProcTools::ComputeWellFluxes(TPZCompMesh *cmesh, Problem
     }
   }
   return fluxes;
+}
+
+REAL TPZWannPostProcTools::ProductivityIndex(TPZCompMesh *cmesh, ProblemData *SimData) {
+  REAL pff = SimData->m_Wellbore.BCs["surface_farfield"].value;
+
+  cmesh->Reference()->ResetReference();
+  cmesh->LoadReferences();
+
+  // Check whether the simulation is H1 or Hdiv
+  bool isMultiphysics = true;
+  TPZMultiphysicsCompMesh *cmeshMP = dynamic_cast<TPZMultiphysicsCompMesh *>(cmesh);
+  if (!cmeshMP) isMultiphysics = false;
+
+  TPZGeoMesh* gmesh = cmesh->Reference();
+  REAL totalFlux = 0.;
+  REAL pheel = 0.;
+
+  for (TPZGeoEl* gel : gmesh->ElementVec()) {
+    if (!gel) continue;
+    if (gel->MaterialId() != SimData->EPointHeel) continue;
+    TPZGeoElSide gelside(gel, 0);
+    TPZGeoElSide neighside = gelside.HasNeighbour(SimData->ECurveWell);
+    TPZGeoEl *gelWell = neighside.Element();
+    if (!gelWell) DebugStop();
+
+    TPZManVector<REAL, 3> qsi(gelWell->Dimension(), 0.);
+    TPZGeoElSide gelsideWell(gelWell, 0);
+    if (gelsideWell.HasNeighbour(SimData->EPointHeel)) {
+      qsi[0] = -1.0;
+    } else {
+      qsi[0] = 1.0;
+    }
+    
+    TPZCompEl* celWell = gelWell->Reference();
+    TPZMaterial* mat = celWell->Material();
+    int pind;
+    int qind;
+    if (isMultiphysics) {
+      TPZNonlinearWell* wellmat = dynamic_cast<TPZNonlinearWell*>(mat);
+      if (!wellmat) DebugStop();
+      pind = wellmat->VariableIndex("Pressure");
+      qind = wellmat->VariableIndex("Flux");
+    } else {
+      TPZNonLinearWellH1* wellmat = dynamic_cast<TPZNonLinearWellH1*>(mat);
+      if (!wellmat) DebugStop();
+      pind = wellmat->VariableIndex("Pressure");
+      qind = wellmat->VariableIndex("Flux");
+    }
+
+    TPZManVector<STATE, 3> output(1);
+    celWell->Solution(qsi,pind,output);
+    pheel = output[0];
+    celWell->Solution(qsi, qind, output);
+    totalFlux = output[0];
+  }
+
+  REAL PI = totalFlux / (pheel - pff);
+
+  // Convert from m^3/s/Pa to STB/day/psi
+  PI = PI * 6.28981 * 86400 * 6894.76;
+  return PI;
 }
