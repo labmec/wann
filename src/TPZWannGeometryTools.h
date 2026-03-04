@@ -26,6 +26,7 @@ public:
   static REAL FindClosestX(const REAL x, const std::set<REAL>& nodeCoordsX, const REAL tol);
   static bool CheckXInSet(const REAL x, const std::set<REAL>& nodeCoordsX, const REAL tol);
   static void OrderIds(TPZGeoMesh *gmesh, ProblemData *SimData);
+  static void DividePyramids(TPZGeoMesh *gmesh);
 
 private:
   static void CreatePressure2DEls(TPZGeoMesh *gmesh, ProblemData *SimData);

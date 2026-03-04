@@ -1,9 +1,13 @@
 #include "TPZWannGeometryTools.h"
 #include "TPZWannAdaptivityTools.h"
+#include "TPZRefPatternTools.h"
 
 TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
 
   TPZGeoMesh* gmesh = ReadMeshFromGmsh(simData);
+  
+  // Divide pyramids if present in the OG mesh
+  DividePyramids(gmesh);
 
   if (1) {
     std::ofstream out("gmeshorig.vtk");
@@ -12,14 +16,7 @@ TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
 
   if (simData->m_Mesh.ToCylindrical) {
     ModifyGeometricMeshToCylWell(gmesh, simData);
-
-    
-    // simData->m_Wellbore.BCs["point_heel"].value *= -1;
   }
-  // else {
-  //   //Any ideia how to do this in a more elegant way? it seems that the cylindrical map changes normal vector orientation of some elements
-  //   simData->m_Wellbore.BCs["point_heel"].value *= -1;
-  // }
 
   if (simData->m_Mesh.customRefinement != 0) {
     std::string file = simData->m_Mesh.file;
@@ -362,5 +359,26 @@ void TPZWannGeometryTools::RefineFromFile(TPZGeoMesh* og_gmesh, const std::strin
     }
 
     hRefinement(og_gmesh, indicatorVec);
+  }
+}
+
+void TPZWannGeometryTools::DividePyramids(TPZGeoMesh *gmesh) {
+  gRefDBase.InitializeRefPatterns(EPiramide);
+  auto refpatter = gRefDBase.FindRefPattern("PyrTwoTets");
+
+  if (!refpatter) {
+    std::cout << "Refinement pattern for pyramids not found!" << std::endl;
+    DebugStop();
+  }
+  int64_t nelements = gmesh->NElements();
+  for (int64_t el = 0; el < nelements; el++) {
+    TPZGeoEl *geoel = gmesh->Element(el);
+    if (!geoel)
+      continue;
+    if (geoel->Type() == EPiramide) {
+      geoel->SetRefPattern(refpatter);
+      TPZManVector<TPZGeoEl *> el(0);
+      geoel->Divide(el);
+    }
   }
 }
