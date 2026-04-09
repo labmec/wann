@@ -40,6 +40,11 @@
         "value": 0.0
       },
       {
+        "name": "surface_cap_rock",
+        "type": 0,
+        "value": 0.0
+      },
+      {
         "name": "surface_wellbore_heel",
         "type": 1,
         "value": 0.0

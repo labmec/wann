@@ -3,15 +3,11 @@
 #endif
 
 #include <iostream>
+#include <TPZAnalyticSolution.h>
 #include "TPZWannGeometryTools.h"
 #include "TPZWannApproxTools.h"
 #include "TPZWannPostProcTools.h"
 #include "TPZWannAdaptivityTools.h"
-#include <TPZLinearAnalysis.h>
-#include <TPZSSpStructMatrix.h>
-#include <pzskylstrmatrix.h>
-#include <pzstepsolver.h>
-#include <TPZAnalyticSolution.h>
 #include "TPZWannAnalysis.h"
 
 using namespace std;
@@ -47,6 +43,11 @@ int main(int argc, char *argv[]) {
   // Problem data
   ProblemData SimData;  
   SimData.ReadJson(jsonfile);
+
+  // Pressure scale factor
+  // REAL pFactor = 1e-5;
+  // SimData.m_Fluid.viscosity *= pFactor;
+  // SimData.m_Fluid.density *= pFactor;
 
   // Read original geometric mesh and perform the refinement process 
   // described in refinementProcess.txt file

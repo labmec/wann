@@ -74,6 +74,7 @@ TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
     simData->m_Reservoir.matid = simData->EDomain;
 
     stringtoint[2]["surface_wellbore_cylinder"] = simData->ESurfWellCyl;
+    SetBC(simData, "surface_wellbore_cylinder", simData->ESurfWellCyl);
     stringtoint[2]["surface_wellbore_heel"] = simData->ESurfHeel;
     SetBC(simData, "surface_wellbore_heel", simData->ESurfHeel);
     stringtoint[2]["surface_wellbore_toe"] = simData->ESurfToe;
@@ -84,9 +85,9 @@ TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
     SetBC(simData, "surface_cap_rock", simData->ECapRock);
     
     stringtoint[1]["curve_wellbore"] = simData->ECurveWell;
-    simData->m_Wellbore.matid = simData->ECurveWell;
     stringtoint[1]["curve_heel"] = simData->ECurveHeel;
     stringtoint[1]["curve_toe"] = simData->ECurveToe;
+    simData->m_Wellbore.matid = simData->ECurveWell;
 
     stringtoint[0]["point_heel"] = simData->EPointHeel;
     SetBC(simData, "point_heel", simData->EPointHeel);

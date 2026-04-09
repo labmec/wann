@@ -125,7 +125,7 @@ TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData
 
   TPZCompMesh *cmesh = new TPZCompMesh(gmesh);
   cmesh->SetDimModel(dim);
-  cmesh->SetDefaultOrder(ReservoirData.pOrder+1); // First create everything with reservoir order
+  cmesh->SetDefaultOrder(ReservoirData.pOrder); // First create everything with reservoir order
   cmesh->SetAllCreateFunctionsContinuous();
 
   // Pressure skin material (as null material)
@@ -185,8 +185,8 @@ TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData
     if (cel->Material()->Id() != SimData->ECurveWell) continue;
     if (cel->NConnects() > 3) DebugStop(); // Wellbore H1 elements should have only 3 connects
     TPZConnect &c = cel->Connect(2);
-    c.SetOrder(WellboreData.pOrder+1);
-    c.SetNShape(WellboreData.pOrder);
+    c.SetOrder(WellboreData.pOrder);
+    c.SetNShape(WellboreData.pOrder-1);
   }
 
   if (SimData->m_PostProc.verbosityLevel)
@@ -544,12 +544,17 @@ void TPZWannApproxTools::EqualizeH1Connects(TPZCompMesh *cmesh, ProblemData *Sim
     for (auto it2 : nodes) {
       if (it2 == it) continue; // Do not add dependency to itself
       TPZConnect &c = cmesh->ConnectVec()[it2];
+      int nshape = c.NShape();
 
-      TPZFNMatrix<1,STATE> val(1,1,1.);
+      TPZFNMatrix<1,STATE> val(nshape,nshape,0.);
+      for (int i = 0; i < nshape; i++) {
+        val(i,i) = 1.;
+      }
+
       if (c.HasDependency()) {
         c.RemoveDepend();
       }
-      c.AddDependency(it2 ,it,val,0,0,1,1);
+      c.AddDependency(it2 ,it,val,0,0,nshape,nshape);
     }
   }
 
