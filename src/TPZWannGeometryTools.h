@@ -29,5 +29,6 @@ public:
   static void DividePyramids(TPZGeoMesh *gmesh);
 
 private:
+  static bool SetBC(ProblemData* simData, const std::string& bcName, int matid);
   static void CreatePressure2DEls(TPZGeoMesh *gmesh, ProblemData *SimData);
 };

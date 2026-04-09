@@ -75,13 +75,13 @@ TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
 
     stringtoint[2]["surface_wellbore_cylinder"] = simData->ESurfWellCyl;
     stringtoint[2]["surface_wellbore_heel"] = simData->ESurfHeel;
-    simData->m_Reservoir.BCs["surface_wellbore_heel"].matid = simData->ESurfHeel;
+    SetBC(simData, "surface_wellbore_heel", simData->ESurfHeel);
     stringtoint[2]["surface_wellbore_toe"] = simData->ESurfToe;
-    simData->m_Reservoir.BCs["surface_wellbore_toe"].matid = simData->ESurfToe;
+    SetBC(simData, "surface_wellbore_toe", simData->ESurfToe);
     stringtoint[2]["surface_farfield"] = simData->EFarField;
-    simData->m_Reservoir.BCs["surface_farfield"].matid = simData->EFarField;
+    SetBC(simData, "surface_farfield", simData->EFarField);
     stringtoint[2]["surface_cap_rock"] = simData->ECapRock;
-    simData->m_Reservoir.BCs["surface_cap_rock"].matid = simData->ECapRock;
+    SetBC(simData, "surface_cap_rock", simData->ECapRock);
     
     stringtoint[1]["curve_wellbore"] = simData->ECurveWell;
     simData->m_Wellbore.matid = simData->ECurveWell;
@@ -89,9 +89,9 @@ TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
     stringtoint[1]["curve_toe"] = simData->ECurveToe;
 
     stringtoint[0]["point_heel"] = simData->EPointHeel;
-    simData->m_Wellbore.BCs["point_heel"].matid = simData->EPointHeel;
+    SetBC(simData, "point_heel", simData->EPointHeel);
     stringtoint[0]["point_toe"] = simData->EPointToe;
-    simData->m_Wellbore.BCs["point_toe"].matid = simData->EPointToe;
+    SetBC(simData, "point_toe", simData->EPointToe);
     
     reader.SetDimNamePhysical(stringtoint);
     reader.GeometricGmshMesh(path, gmesh);
@@ -112,6 +112,22 @@ TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
     //remember to modify the matids in ProblemData according to the map
   }
   return gmesh;
+}
+
+bool TPZWannGeometryTools::SetBC(ProblemData* simData, const std::string& bcName, int matid) {
+  auto it = simData->m_Reservoir.BCs.find(bcName);
+  if (it != simData->m_Reservoir.BCs.end()) {
+    it->second.matid = matid;
+    return true;
+  }
+
+  it = simData->m_Wellbore.BCs.find(bcName);
+  if (it != simData->m_Wellbore.BCs.end()) {
+    it->second.matid = matid;
+    return true;
+  }
+
+  return false;
 }
 
 void TPZWannGeometryTools::ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh, ProblemData* SimData) {
