@@ -85,13 +85,10 @@ int main(int argc, char *argv[]) {
   TPZWannPostProcTools::WriteVTKs(cmeshH1, &SimData);
 
   // Integrated flux along segments of the well
-  TPZVec<REAL> segmentPoints = {0.0, SimData.m_Wellbore.length / 2.0,
-                                SimData.m_Wellbore.length};
+  TPZVec<REAL> segmentPoints = {0.0, SimData.m_Wellbore.length};
 
-  TPZVec<REAL> fluxes = TPZWannPostProcTools::ComputeWellFluxes(
-      cmeshMixed, &SimData, segmentPoints);
-  TPZVec<REAL> fluxesH1 = TPZWannPostProcTools::ComputeWellFluxes(
-      cmeshH1, &SimData, segmentPoints);
+  TPZVec<REAL> fluxes = TPZWannPostProcTools::ComputeWellFluxes(cmeshMixed, &SimData, segmentPoints);
+  TPZVec<REAL> fluxesH1 = TPZWannPostProcTools::ComputeWellFluxes(cmeshH1, &SimData, segmentPoints);
 
   std::cout << "Integrated well fluxes H(div): ";
   REAL inflow = 0.0;
@@ -110,6 +107,12 @@ int main(int argc, char *argv[]) {
   }
   std::cout << std::endl;
   std::cout << "Fluid loss H1: " << std::abs(inflowH1) - std::abs(SimData.m_Wellbore.BCs["point_heel"].value) << std::endl;
+
+  REAL pr = SimData.m_Reservoir.BCs.at("surface_farfield").value;
+  REAL pw = SimData.m_Wellbore.BCs.at("point_toe").value;
+  REAL Q = 2.0*M_PI*SimData.m_Reservoir.perm*SimData.m_Reservoir.length / (SimData.m_Fluid.viscosity * log(SimData.m_Reservoir.height/SimData.m_Wellbore.radius));
+  Q = Q * (pr - pw);
+  std::cout << "\nExpected flow entering the wellbore: " << Q << std::endl;
 
   std::cout << "\n--------- Post-processing finished ---------" << std::endl;
 
