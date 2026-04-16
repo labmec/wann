@@ -111,7 +111,7 @@ Physical Point("point_toe",109) = {10};
 Delete{ Point{9}; } // Center point no longer needed
 Mesh 3;
 Coherence Mesh;
-Save "mesh3D_Cyl.msh";
+Save "../input/mesh3D_Cyl.msh";
 
 
 
