@@ -15,7 +15,7 @@ TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
   }
 
   if (simData->m_Mesh.ToCylindrical) {
-    ModifyGeometricMeshToCylWell(gmesh, simData);
+    ModifyGeometricMeshToCylWell(gmesh, simData->ESurfWellCyl, simData->m_Wellbore.radius);
   }
 
   if (simData->m_Mesh.customRefinement != 0) {
@@ -131,15 +131,14 @@ bool TPZWannGeometryTools::SetBC(ProblemData* simData, const std::string& bcName
   return false;
 }
 
-void TPZWannGeometryTools::ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh, ProblemData* SimData) {
-  const REAL cylradius = SimData->m_Wellbore.radius;
+void TPZWannGeometryTools::ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh, int matid, REAL cylradius) {
   const TPZManVector<REAL,3> cylcenter = {0.,0.,0.}, cylaxis = {1.,0.,0.};
   int64_t nel = gmesh->NElements();
   for(int64_t iel = 0; iel < nel ; iel++) {
     TPZGeoEl* gel = gmesh->Element(iel);
     if(!gel) continue;
     if(gel->HasSubElement()) DebugStop();
-    if(gel->MaterialId() != SimData->ESurfWellCyl) continue;
+    if(gel->MaterialId() != matid) continue;
     
     TPZManVector<int64_t, 4> nodeindices;
     gel->GetNodeIndices(nodeindices);
@@ -195,7 +194,7 @@ void TPZWannGeometryTools::ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh, Probl
     if(!gel) continue;
     if(gel->HasSubElement()) DebugStop();
     // if(gel->MaterialId() != ESurfWellCyl && gel->MaterialId() != ESurfHeel && gel->MaterialId() != ESurfToe) continue;
-    if(gel->MaterialId() != SimData->ESurfWellCyl) continue;
+    if(gel->MaterialId() != matid) continue;
     int nsides = gel->NSides();
     // for (int iside = gel->NCornerNodes(); iside < nsides; iside++) {
     for (int iside = gel->FirstSide(1); iside < nsides; iside++) {
@@ -205,7 +204,7 @@ void TPZWannGeometryTools::ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh, Probl
         if(neigh.Element()->IsGeoBlendEl()) {
           continue;
         }
-        if (neigh.Element()->MaterialId() == SimData->ESurfWellCyl) {
+        if (neigh.Element()->MaterialId() == matid) {
           continue;
         }
         // if(neigh.Element()->Dimension() < 2) continue;

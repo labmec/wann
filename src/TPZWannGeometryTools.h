@@ -19,7 +19,7 @@ class TPZWannGeometryTools {
 public:
   static TPZGeoMesh* CreateGeoMesh(ProblemData* simData);
   static TPZGeoMesh* ReadMeshFromGmsh(ProblemData* simData);
-  static void ModifyGeometricMeshToCylWell(TPZGeoMesh *gmesh, ProblemData *SimData);
+  static void ModifyGeometricMeshToCylWell(TPZGeoMesh *gmesh, int matid, REAL cylradius);
   static void hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& RefinementIndicator);
   static void RefineFromFile(TPZGeoMesh* og_gmesh, const std::string& filename);
   static void InsertXCoorInSet(const REAL x, std::set<REAL>& nodeCoordsX, const REAL tol);
