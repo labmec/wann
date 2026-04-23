@@ -132,6 +132,9 @@ void TPZWannPostProcTools::PostProcessAllData(TPZCompMesh* cmesh, TPZGeoMesh* gm
 }
 
 TPZVec<REAL> TPZWannPostProcTools::ComputeWellFluxes(TPZCompMesh *cmesh, ProblemData *SimData, TPZVec<REAL> segmentPoints) {
+  int nsegments = segmentPoints.size() - 1;
+  TPZVec<REAL> fluxes(nsegments, 0.);
+
   // Check if cmesh is Hdiv or H1
   // We are assuming that only the Hdiv mesh is multiphyiscs
   bool isHdiv;
@@ -142,29 +145,43 @@ TPZVec<REAL> TPZWannPostProcTools::ComputeWellFluxes(TPZCompMesh *cmesh, Problem
     isHdiv = false;
   }
 
-  int matid = isHdiv ? SimData->EHDivBoundInterface : SimData->EPressure2DSkin;
-
-  int nsegments = segmentPoints.size() - 1;
-  TPZVec<REAL> fluxes(nsegments, 0.);
+  int matid = SimData->EDomain; 
 
   // Ensure references point to current mesh
   cmesh->Reference()->ResetReference();
   cmesh->LoadReferences();
+  TPZGeoMesh *gmesh = cmesh->Reference();
 
-  int64_t ncel = cmesh->NElements();
-  for (int64_t iel = 0; iel < ncel; iel++) {
-    TPZCompEl *cel = cmesh->Element(iel);
-    if (!cel) continue;
-    if (cel->Material()->Id() != matid) continue;
+  int64_t ngel = cmesh->Reference()->NElements();
 
-    TPZGeoEl *gel = cel->Reference();
-    if (!gel) DebugStop();
+  for (auto gel : gmesh->ElementVec()) {
+    if (gel->HasSubElement()) continue; // Skip non-leaf elements
+    if (gel->MaterialId() != matid) continue;
+
+    // Loop over sides to see if we are in a boundary element
+    bool isBoundaryElement = false;
+    int side = -1;
+    TPZGeoEl *faceGel = nullptr;
+    int firstFace = gel->FirstSide(gel->Dimension() - 1); 
+    int lastFace = gel->FirstSide(gel->Dimension());
+    for (int iside = firstFace; iside < lastFace; iside++) {
+      TPZGeoElSide gelside(gel, iside);
+      TPZGeoElSide neighside = gelside.HasNeighbour(SimData->ESurfWellCyl);
+      if (neighside) {
+        isBoundaryElement = true;
+        side = iside;
+        faceGel = neighside.Element();
+        break;
+      }
+    }
+
+    if (!isBoundaryElement) continue; // Skip elements that are not on the cylindrical surface
 
     // Center of the element
-    TPZManVector<REAL, 3> qsi(gel->Dimension());
+    TPZManVector<REAL, 3> qsi(faceGel->Dimension());
     TPZManVector<REAL, 3> xCenter(3, 0.);
-    gel->CenterPoint(gel->NSides() - 1, qsi); // center of the element interior
-    gel->X(qsi, xCenter);
+    faceGel->CenterPoint(faceGel->NSides() - 1, qsi); // center of the element interior
+    faceGel->X(qsi, xCenter);
 
     // Determine in which segment the element is located
     int segment = -1;
@@ -174,81 +191,60 @@ TPZVec<REAL> TPZWannPostProcTools::ComputeWellFluxes(TPZCompMesh *cmesh, Problem
         break;
       }
     }
-    if (segment == -1)
-      DebugStop(); // element not in any segment
+    if (segment == -1) DebugStop(); // element not in any segment
 
     // Compute contributions
-    if (isHdiv) {
-      // We are in an HdivBound element
-      int nconnects = cel->NConnects();
-      if (nconnects != 1) DebugStop(); // expecting only one connect for boundary element
+    const TPZIntPoints *intrule = nullptr;
+    intrule = gel->CreateSideIntegrationRule(side, SimData->m_Reservoir.pOrder);
+    for (int ip = 0; ip < intrule->NPoints(); ip++) {
+      int dimF = faceGel->Dimension();
+      TPZManVector<REAL, 3> ptOnSide(faceGel->Dimension());
+      TPZFNMatrix<9, REAL> jacobian, axes, jacinv;
+      REAL weight, detjac;
+      faceGel->Jacobian(ptOnSide, jacobian, axes, detjac, jacinv);
 
-      int64_t connectIndex = cel->ConnectIndex(0);
-      TPZConnect &connect = cel->Connect(0);
-      int blockPos = connect.SequenceNumber();
-      int blockSize = cmesh->Block().Size(blockPos);
-      int solPos = cmesh->Block().Position(blockPos);
+      // Compute normal
+      // Must done in the integration point to account for curved sides
+      TPZManVector<REAL, 3> v1(3), v2(3), normal(3);
+      v1[0] = axes(0, 0);
+      v1[1] = axes(0, 1);
+      v1[2] = axes(0, 2);
+      v2[0] = axes(1, 0);
+      v2[1] = axes(1, 1);
+      v2[2] = axes(1, 2);
 
-      TPZFMatrix<STATE> &sol = cmesh->Solution();
+      normal[0] = v1[1] * v2[2] - v1[2] * v2[1];
+      normal[1] = v1[2] * v2[0] - v1[0] * v2[2];
+      normal[2] = v1[0] * v2[1] - v1[1] * v2[0];
 
-      for (int i = 0; i < blockSize; i++) {
-        STATE value = sol(solPos + i, 0);
-        fluxes[segment] += value;
+      REAL norm = sqrt(normal[0] * normal[0] + normal[1] * normal[1] +
+                       normal[2] * normal[2]);
+      if (norm > 1e-12) {
+        normal[0] /= norm;
+        normal[1] /= norm;
+        normal[2] /= norm;
       }
-    } else {
-      // We are in a PressureSkin H1 element
-      // Get 3D neighbor element
-      TPZGeoElSide gelside(gel, gel->NSides() - 1);
-      TPZGeoElSide neighside = gelside.HasNeighbour(SimData->EDomain);
-      TPZGeoEl *gel3D = neighside.Element();
-      if (!gel3D) DebugStop();
-      TPZCompEl *cel3D = gel3D->Reference();
-      if (!cel3D) DebugStop();
-      if (cel3D->Material()->Id() != SimData->EDomain) DebugStop();
 
-      int sideWell = neighside.Side();
-      const TPZIntPoints *intrule = nullptr;
-      intrule = gel3D->CreateSideIntegrationRule(sideWell, 4);
-      for (int ip = 0; ip < intrule->NPoints(); ip++) {
-        TPZManVector<REAL, 3> ptOnSide(gel->Dimension());
-        TPZFNMatrix<9, REAL> jacobian, axes, jacinv;
-        REAL weight, detjac;
-        gel->Jacobian(ptOnSide, jacobian, axes, detjac, jacinv);
-
-        // Compute normal
-        // Must done in the integration point to account for curved sides
-        TPZManVector<REAL, 3> v1(3), v2(3), normal(3);
-        v1[0] = axes(0, 0);
-        v1[1] = axes(0, 1);
-        v1[2] = axes(0, 2);
-        v2[0] = axes(1, 0);
-        v2[1] = axes(1, 1);
-        v2[2] = axes(1, 2);
-
-        normal[0] = v1[1] * v2[2] - v1[2] * v2[1];
-        normal[1] = v1[2] * v2[0] - v1[0] * v2[2];
-        normal[2] = v1[0] * v2[1] - v1[1] * v2[0];
-
-        REAL norm = sqrt(normal[0] * normal[0] + normal[1] * normal[1] +
-                         normal[2] * normal[2]);
-        if (norm > 1e-12) {
-          normal[0] /= norm;
-          normal[1] /= norm;
-          normal[2] /= norm;
-        }
-
-        intrule->Point(ip, ptOnSide, weight);
-        TPZManVector<REAL, 3> ptInElement(gel3D->Dimension());
-        TPZTransform<> trans = gel3D->SideToSideTransform(sideWell, gel3D->NSides() - 1);
-        trans.Apply(ptOnSide, ptInElement);
-        weight *= fabs(detjac);
-        TPZManVector<REAL, 3> sigh(gel3D->Dimension(), 0.0);
-        cel3D->Solution(ptInElement, 7, sigh);
-
-        // get normal flux
-        REAL normalFLux = sigh[0] * normal[0] + sigh[1] * normal[1] + sigh[2] * normal[2];
-        fluxes[segment] += normalFLux * weight;
+      intrule->Point(ip, ptOnSide, weight);
+      TPZManVector<REAL, 3> ptInElement(gel->Dimension());
+      TPZTransform<> trans = gel->SideToSideTransform(side, gel->NSides() - 1);
+      trans.Apply(ptOnSide, ptInElement);
+      weight *= fabs(detjac);
+      TPZManVector<REAL, 3> sigh(gel->Dimension(), 0.0);
+      TPZCompEl *cel = gel->Reference();
+      if (isHdiv) {
+        auto mfcel = dynamic_cast<TPZMultiphysicsElement *>(cel);
+        if (!mfcel)
+          DebugStop();
+        TPZCompEl *celHdiv = mfcel->Element(0); // We are assuming that the first mesh is the H(div) mesh
+        celHdiv->Solution(ptInElement, 1, sigh);
+      } else {
+        cel->Solution(ptInElement, 7, sigh);
       }
+
+      // get normal flux
+      REAL normalFLux = sigh[0] * normal[0] + sigh[1] * normal[1] + sigh[2] * normal[2];
+      fluxes[segment] += normalFLux * weight;
     }
   }
   return fluxes;

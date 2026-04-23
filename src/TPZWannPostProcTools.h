@@ -18,5 +18,6 @@ public:
   static void WriteVTKs(TPZCompMesh* cmesh, ProblemData* SimData);
   static void PostProcessAllData(TPZCompMesh* cmesh, TPZGeoMesh* gmesh, ProblemData* SimData);
   static TPZVec<REAL> ComputeWellFluxes(TPZCompMesh* cmesh, ProblemData* SimData, TPZVec<REAL> segmentPoints);
+  static TPZVec<REAL> ComputeWellFluxesTest(TPZCompMesh *cmesh, ProblemData *SimData, TPZVec<REAL> segmentPoints);
   static REAL ProductivityIndex(TPZCompMesh* cmesh, ProblemData* SimData);
 };
