@@ -25,7 +25,6 @@
 TPZMultiphysicsCompMesh *MixedDarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TLaplaceExample1 *exact, bool isCondensed = false);
 TPZCompMesh *H1DarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TLaplaceExample1 *exact, bool isCondensed = false);
 TPZGeoMesh *CreateRadialMesh(ProblemData *SimData);
-REAL TotalSurfaceFlow(TPZCompMesh *cmesh, ProblemData *SimData);
 
 // =============
 // Main function
@@ -37,7 +36,7 @@ int main(int argc, char *argv[]) {
   exact.fDimension = 3;
   exact.fExact = TLaplaceExample1::ENone;
 
-  std::string jsonfile = "wann3D_Cyl.json";
+  std::string jsonfile = "radialTest.json";
 
   if (argc > 2) {
     std::cout << argv[0] << " being called with too many arguments." << std::endl;
@@ -64,11 +63,6 @@ int main(int argc, char *argv[]) {
   // Read original geometric mesh and perform the refinement process 
   // described in refinementProcess.txt file
   TPZGeoMesh* gmesh = CreateRadialMesh(&SimData);
-
-  // Aply cylindrical transformation in the exterior part of the reservoir as well!
-  // if (SimData.m_Mesh.ToCylindrical) {
-  //   CylindricalFarField(gmesh, &SimData);
-  // }
 
   // plot gmesh
   {
@@ -130,14 +124,15 @@ int main(int argc, char *argv[]) {
   Q = Q * (pr - pw);
   
   // Computed flow entering the wellbore
-  REAL QHdiv = TotalSurfaceFlow(cmeshMixed, &SimData);
-  REAL QH1 = TotalSurfaceFlow(cmeshH1, &SimData);
+  TPZVec<REAL> segmentPoints = {0.0, SimData.m_Wellbore.length};
+  TPZVec<REAL> QHdiv = TPZWannPostProcTools::ComputeWellFluxes(cmeshMixed, &SimData, segmentPoints);
+  TPZVec<REAL> QH1 = TPZWannPostProcTools::ComputeWellFluxes(cmeshH1, &SimData, segmentPoints);
   
   std::cout << "\nExpected flow entering the wellbore: " << Q << std::endl;
   std::cout << "Computed flow entering the wellbore (H(div) mesh): " << QHdiv
-            << " (relative error: " << std::abs(QHdiv - Q)/std::abs(Q) * 100 << " %)" << std::endl;
+            << " (relative error: " << std::abs(QHdiv[0] - Q)/std::abs(Q) * 100 << " %)" << std::endl;
   std::cout << "Computed flow entering the wellbore (H1 mesh): " << QH1
-            << " (relative error: " << std::abs(QH1 - Q)/std::abs(Q) * 100 << " %)" << std::endl;
+            << " (relative error: " << std::abs(QH1[0] - Q)/std::abs(Q) * 100 << " %)" << std::endl;
 
    std::cout << "\n--------- Post-processing finished ---------" << std::endl;
 
@@ -284,114 +279,4 @@ TPZCompMesh *H1DarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TLaplaceEx
   // Create the H1 computational mesh
   TPZCompMesh *cmesh = h1Creator.CreateClassicH1ApproximationSpace();
   return cmesh;
-}
-
-REAL TotalSurfaceFlow(TPZCompMesh *cmesh, ProblemData *SimData) {
-  // Check if cmesh is Hdiv or H1
-  // We are assuming that only the Hdiv mesh is multiphyiscs
-  bool isHdiv;
-  TPZMultiphysicsCompMesh *cmeshMult = dynamic_cast<TPZMultiphysicsCompMesh *>(cmesh);
-  if (cmeshMult) {
-    isHdiv = true;
-  } else {
-    isHdiv = false;
-  }
-
-  int matid = SimData->EDomain; 
-  REAL totalFlow = 0.;
-
-  // Ensure references point to current mesh
-  cmesh->Reference()->ResetReference();
-  cmesh->LoadReferences();
-  TPZGeoMesh *gmesh = cmesh->Reference();
-
-  int64_t ngel = cmesh->Reference()->NElements();
-
-  for (auto gel : gmesh->ElementVec()) {
-    if (gel->HasSubElement()) continue; // Skip non-leaf elements
-    if (gel->MaterialId() != matid) continue;
-
-    // Loop over sides to see if we are in a boundary element
-    bool isBoundaryElement = false;
-    int side = -1;
-    TPZGeoEl *faceGel = nullptr;
-    int firstFace = gel->FirstSide(gel->Dimension() - 1); 
-    int lastFace = gel->FirstSide(gel->Dimension());
-    for (int iside = firstFace; iside < lastFace; iside++) {
-      TPZGeoElSide gelside(gel, iside);
-      TPZGeoElSide neighside = gelside.HasNeighbour(SimData->ESurfWellCyl);
-      if (neighside) {
-        isBoundaryElement = true;
-        side = iside;
-        faceGel = neighside.Element();
-        break;
-      }
-    }
-
-    if (!isBoundaryElement) continue; // Skip elements that are not on the cylindrical surface
-
-    // Center of the element
-    TPZManVector<REAL, 3> qsi(faceGel->Dimension());
-    TPZManVector<REAL, 3> xCenter(3, 0.);
-    faceGel->CenterPoint(faceGel->NSides() - 1, qsi); // center of the element interior
-    faceGel->X(qsi, xCenter);
-
-    // Compute contributions
-    const TPZIntPoints *intrule = nullptr;
-    intrule = gel->CreateSideIntegrationRule(side, SimData->m_Reservoir.pOrder + 2);
-    for (int ip = 0; ip < intrule->NPoints(); ip++) {
-      int dimF = faceGel->Dimension();
-      TPZManVector<REAL, 3> ptOnSide(faceGel->Dimension());
-      TPZFNMatrix<9, REAL> jacobian, axes, jacinv;
-      REAL weight, detjac;
-      faceGel->Jacobian(ptOnSide, jacobian, axes, detjac, jacinv);
-
-      // Compute normal
-      // Must done in the integration point to account for curved sides
-      TPZManVector<REAL, 3> v1(3), v2(3), normal(3);
-      v1[0] = axes(0, 0);
-      v1[1] = axes(0, 1);
-      v1[2] = axes(0, 2);
-      v2[0] = axes(1, 0);
-      v2[1] = axes(1, 1);
-      v2[2] = axes(1, 2);
-
-      normal[0] = v1[1] * v2[2] - v1[2] * v2[1];
-      normal[1] = v1[2] * v2[0] - v1[0] * v2[2];
-      normal[2] = v1[0] * v2[1] - v1[1] * v2[0];
-
-      REAL norm = sqrt(normal[0] * normal[0] + normal[1] * normal[1] +
-                       normal[2] * normal[2]);
-      if (norm > 1e-12) {
-        normal[0] /= norm;
-        normal[1] /= norm;
-        normal[2] /= norm;
-      }
-
-      intrule->Point(ip, ptOnSide, weight);
-      TPZManVector<REAL, 3> ptInElement(gel->Dimension());
-      TPZTransform<> trans = gel->SideToSideTransform(side, gel->NSides() - 1);
-      trans.Apply(ptOnSide, ptInElement);
-      weight *= fabs(detjac);
-      TPZManVector<REAL, 3> sigh(gel->Dimension(), 0.0);
-      TPZCompEl *cel = gel->Reference();
-      if (isHdiv) {
-        auto mfcel = dynamic_cast<TPZMultiphysicsElement *>(cel);
-        if (!mfcel)
-          DebugStop();
-        TPZCompEl *celHdiv = mfcel->Element(
-            0); // We are assuming that the first mesh is the H(div) mesh
-        celHdiv->Solution(ptInElement, 1, sigh);
-      } else {
-        cel->Solution(ptInElement, 7, sigh);
-      }
-
-      // get normal flux
-      REAL normalFLux =
-          sigh[0] * normal[0] + sigh[1] * normal[1] + sigh[2] * normal[2];
-      totalFlow += normalFLux * weight;
-    }
-  }
-  // std::cout << "Number of boundary elements: " << count << std::endl;
-  return totalFlow;
 }

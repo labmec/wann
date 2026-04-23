@@ -1,8 +1,8 @@
 {
   "MeshData": {
-    "file": "mesh3D_Cyl.msh",
+    "file": "radialTest.msh",
     "customRefinement": 0,
-    "NumUniformRef": 0,
+    "NumUniformRef": 1,
     "NumDirRef": 0,
     "ToCylindrical": 1
   },
@@ -60,7 +60,7 @@
     "wellbore_vtk": "WannWell",
     "reservoir_vtk": "WannReservoir",
     "training_data": "training_data.txt",
-    "vtk_resolution": 2,
+    "vtk_resolution": 0,
     "training_resolution": 10, //number of subdivisions to generate training data
     "nthreads": 0,
     "verbosityLevel": 1
