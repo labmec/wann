@@ -3,16 +3,18 @@ Include "params.geo";
 // Near-well region dimensions (in function of wellbore dimensions)
 Lnw = Lw + Hr;
 Wnw = Hr;
-s = Sin(Pi/4.);
 
+// Auxiliary parameters
+s = Sin(Pi/4.);
+max_vert_disp = Hr/2-Rw;  
 theta_div = h_div + 1; // Azimuthal division (of each circle quarter)
 
 // Heel points
-p1 = newp; Point(p1) = {0,     0,     0, 1.0}; // Center of the domain (wellbore heel)
-p2 = newp; Point(p2) = {0, -Rw*s,  Rw*s, 1.0}; // Well
-p3 = newp; Point(p3) = {0,  Rw*s,  Rw*s, 1.0}; // Well
-p4 = newp; Point(p4) = {0,  Rw*s, -Rw*s, 1.0}; // Well
-p5 = newp; Point(p5) = {0, -Rw*s, -Rw*s, 1.0}; // Well
+p1 = newp; Point(p1) = {0,     0,     0 + ecc*max_vert_disp, 1.0}; // Center of the domain (wellbore heel)
+p2 = newp; Point(p2) = {0, -Rw*s,  Rw*s + ecc*max_vert_disp, 1.0}; // Well
+p3 = newp; Point(p3) = {0,  Rw*s,  Rw*s + ecc*max_vert_disp, 1.0}; // Well
+p4 = newp; Point(p4) = {0,  Rw*s, -Rw*s + ecc*max_vert_disp, 1.0}; // Well
+p5 = newp; Point(p5) = {0, -Rw*s, -Rw*s + ecc*max_vert_disp, 1.0}; // Well
 
 // Circle arcs for heel
 Circle(1) = {p2, p1, p3};

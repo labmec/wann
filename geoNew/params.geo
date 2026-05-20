@@ -10,6 +10,7 @@ Geometry.SnapPoints = 0;
 // Well bore dimensions
 Lw = 200;
 Rw = 0.1;
+ecc = -0.5; // Eccentricity of the wellbore (-0.5 <= ecc <= 0.5)
 
 // Reservoir dimensions
 Hr = 20;
