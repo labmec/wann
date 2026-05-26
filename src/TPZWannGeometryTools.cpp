@@ -6,12 +6,25 @@ TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
 
   TPZGeoMesh* gmesh = ReadMeshFromGmsh(simData);
   
-  // Divide pyramids if present in the OG mesh
-  DividePyramids(gmesh);
-
   if (1) {
     std::ofstream out("gmeshorig.vtk");
     TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
+  }
+
+  // Divide pyramids if present in the OG mesh
+  DividePyramids(gmesh);
+
+  // Verify consistency of initial mesh
+  bool hasErrors = TPZWannGeometryTools::VerifyMesh(gmesh, simData);
+
+  // Plot mesh if it has errors
+  if (hasErrors) {
+    std::ofstream out("gmeshWithErrors.vtk");
+    TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
+    std::cout << "Mesh has errors! Plotted elements with issues in "
+                 "gmeshWithErrors.vtk"
+              << std::endl;
+    DebugStop();
   }
 
   if (simData->m_Mesh.ToCylindrical) {
@@ -397,4 +410,82 @@ void TPZWannGeometryTools::DividePyramids(TPZGeoMesh *gmesh) {
       geoel->Divide(el);
     }
   }
+}
+
+bool TPZWannGeometryTools::VerifyMesh(TPZGeoMesh *gmesh, ProblemData *SimData) {
+  bool hasErrors = false;
+
+  // Check neighbors of 3D elements: All 3D elements should have a neighbour on each face.
+  // If the neighbour is 2D, it should have a material id corresponding to a surface of the simulaiton
+  for (int iel = 0; iel < gmesh->NElements(); iel++) {
+    TPZGeoEl *gel = gmesh->ElementVec()[iel];
+
+    if (!gel) DebugStop();
+    if (gel->HasSubElement()) continue;
+    if (gel->Dimension() != 3) continue; // only check 3D elements first
+
+    // All 3D elements should have the material id of the domain
+    if (gel->MaterialId() != SimData->EDomain) {
+      std::cout << "Element " << gel->Index() << " has wrong material id: " << gel->MaterialId() << std::endl;
+      gel->SetMaterialId(1001);
+      hasErrors = true;
+    }
+
+    // Check face neighborhood
+    // A 3D element should have exacly one neighbour on each face
+    int firstFace = gel->FirstSide(gel->Dimension() - 1);
+    int lastFace = gel->FirstSide(gel->Dimension()) - 1;
+
+    for (int side = firstFace; side <= lastFace; side++) {
+      TPZGeoElSide gelside(gel, side);
+
+      TPZGeoElSide neighbour = gelside.Neighbour();
+      if (neighbour == gelside) {
+        std::cout << "Element " << gel->Index() << " side " << side
+                  << " has itself as neighbour!" << std::endl;
+        gel->SetMaterialId(1002);
+        hasErrors = true;
+        continue;
+      } else {
+        int count = 0;
+        while (neighbour != gelside) {
+          neighbour = neighbour.Neighbour();
+          count++;
+        }
+        if (count > 1) {
+          std::cout << "Element " << gel->Index() << " side " << side
+                    << " has more than one neighbour!" << std::endl;
+          gel->SetMaterialId(1003);
+          hasErrors = true;
+          continue;
+        }
+      }
+    }
+  }
+
+  // Check neighbors of 2D elements
+  // All 2D elements should have at least one 3D neighbour on their face
+  for (int iel = 0; iel < gmesh->NElements(); iel++) {
+    TPZGeoEl *gel = gmesh->ElementVec()[iel];
+    if (!gel) DebugStop();
+    if (gel->HasSubElement()) continue;
+    if (gel->Dimension() != 2) continue;
+
+    int faceSide = gel->FirstSide(2);
+    TPZGeoElSide gelside(gel, faceSide);
+    TPZGeoElSide neighbour = gelside.Neighbour();
+    if (neighbour == gelside) {
+      std::cout << "2D Element " << gel->Index() << " has no neighbour on its face!" << std::endl;
+      gel->SetMaterialId(1004);
+      hasErrors = true;
+    } else {
+      if (neighbour.Element()->Dimension() != 3) {
+        std::cout << "2D Element " << gel->Index() << " has a neighbour with wrong dimension: " << neighbour.Element()->Dimension() << std::endl;
+        gel->SetMaterialId(1005);
+        hasErrors = true;
+      }
+    }
+  }
+
+  return hasErrors;
 }

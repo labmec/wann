@@ -31,4 +31,5 @@ public:
 private:
   static bool SetBC(ProblemData* simData, const std::string& bcName, int matid);
   static void CreatePressure2DEls(TPZGeoMesh *gmesh, ProblemData *SimData);
+  static bool VerifyMesh(TPZGeoMesh *gmesh, ProblemData *SimData);
 };
