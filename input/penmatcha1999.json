@@ -1,6 +1,6 @@
 {
   "MeshData": {
-    "file": "radialTest.msh",
+    "file": "penmatcha1999.msh",
     "customRefinement": 0,
     "NumUniformRef": 0,
     "NumDirRef": 0,
@@ -9,30 +9,31 @@
   "WellboreData": {
     "name": "curve_wellbore",
     "pOrder": 2,
-    "radius": 0.2,
-    "length": 2.0,
+    "radius": 0.0508,
+    "length": 1828.8,
     "eccentricity": [0.0, 0.0, 0.0],
     "BCs": [
       {
-        "name": "point_toe",
-        "type": 0,
-        "value": 0.0
+        "name": "point_heel",
+        "type": 1, //dirichlet:0    neumann:1
+        "value": -1.84e-3
       },
       {
-        "name": "point_heel",
+        "name": "point_toe",
         "type": 1,
-        "value": 0.06
+        "value": 0.0
       }
     ]
   },
   "ReservoirData": {
     "name": "volume_reservoir",
-    "perm": 1.0, 
-    "porosity": 2.96e-12,
+    "format": "box",
+    "perm": 2.96e-12,
+    "porosity": 1.0,
     "pOrder": 1,
-    "height": 2,
-    "width": 1,
-    "length": 2,
+    "height": 15.24,
+    "width": 1828.8,
+    "length": 3657.6,
     "BCs": [
       {
         "name": "surface_farfield",
@@ -45,9 +46,14 @@
         "value": 0.0
       },
       {
-        "name": "surface_wellbore_cylinder",
-        "type": 0,
-        "value": -1000.0
+        "name": "surface_wellbore_heel",
+        "type": 1,
+        "value": 0.0
+      },
+      {
+        "name": "surface_wellbore_toe",
+        "type": 1,
+        "value": 0.0
       }
     ]
   },
@@ -57,16 +63,16 @@
     "density": 784.9 // kg/m^3
   },
   "PostProcData": {
-    "wellbore_vtk": "RadialFlowWellbore",
-    "reservoir_vtk": "RadialFlowReservoir",
+    "wellbore_vtk": "WannWell",
+    "reservoir_vtk": "WannReservoir",
     "training_data": "training_data.txt",
     "vtk_resolution": 0,
     "training_resolution": 10, //number of subdivisions to generate training data
-    "nthreads": 6,
+    "nthreads": 4,
     "verbosityLevel": 1
   },
   "NumericsData": {
-    "nthreads": 6,
+    "nthreads": 0,
     "maxIterations" : 10,
     "res_tol": 1e-6,
     "corr_tol": 1e-6
