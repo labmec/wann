@@ -22,7 +22,7 @@ int main(int argc, char *argv[]) {
   exact.fDimension = 3;
   exact.fExact = TLaplaceExample1::ENone;
 
-  std::string jsonfile = "wann3D_Cyl.json";
+  std::string jsonfile = "penmatcha1999.json";
 
   if (argc > 2) {
     std::cout << argv[0] << " being called with too many arguments." << std::endl;
@@ -107,12 +107,6 @@ int main(int argc, char *argv[]) {
   }
   std::cout << std::endl;
   std::cout << "Fluid loss H1: " << std::abs(inflowH1) - std::abs(SimData.m_Wellbore.BCs["point_heel"].value) << std::endl;
-
-  REAL pr = SimData.m_Reservoir.BCs.at("surface_farfield").value;
-  REAL pw = SimData.m_Wellbore.BCs.at("point_toe").value;
-  REAL Q = 2.0*M_PI*SimData.m_Reservoir.perm*SimData.m_Reservoir.length / (SimData.m_Fluid.viscosity * log(SimData.m_Reservoir.height/SimData.m_Wellbore.radius));
-  Q = Q * (pr - pw);
-  std::cout << "\nExpected flow entering the wellbore: " << Q << std::endl;
 
   std::cout << "\n--------- Post-processing finished ---------" << std::endl;
 

@@ -1,6 +1,9 @@
 add_executable(wann3d wann3d.cpp)
 target_link_libraries(wann3d PRIVATE WANN_lib)
 
+add_executable(darcy3D darcy3D.cpp)
+target_link_libraries(darcy3D PRIVATE WANN_lib)
+
 add_executable(wann3dRef wann3dRef.cpp)
 target_link_libraries(wann3dRef PRIVATE WANN_lib)
 
