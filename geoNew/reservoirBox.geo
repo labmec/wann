@@ -29,7 +29,7 @@ l7 = newl; Line(l7) = {p7, p8};
 l8 = newl; Line(l8) = {p8, p5};
 
 Transfinite Line {l5, l7} = axial_div;
-Transfinite Line {l6, l8} = h_div;
+Transfinite Line {l6, l8} = h_div+1;
 
 // Grade mesh size with distance from the inner square (SmallBox):
 // keep fine elements near l5..l8 and grow toward the outer boundary.
@@ -55,6 +55,7 @@ Mesh.MeshSizeExtendFromBoundary = 0;
 clOuter = newcl; Curve Loop(clOuter) = {l1, l2, l3, l4};
 clInner = newcl; Curve Loop(clInner) = {l5, l6, l7, l8};
 sf = news; Plane Surface(sf) = {clOuter, clInner};
+// Recombine Surface{sf};
 
 // Extrude the resulting surface in z direction
 v[] = Extrude {0, 0, Hr} {Surface{sf}; Layers{h_div}; Recombine;};
@@ -63,8 +64,8 @@ v[] = Extrude {0, 0, Hr} {Surface{sf}; Layers{h_div}; Recombine;};
 Physical Surface("surface_farfield",307) = {12, 13, 14, 15};
 
 // Physical groups for merging with the near-well mesh
-Physical Surface("surface_cap_rock_out",206) = {11, 20};
-Physical Volume("volume_out_reservoir",210) = {1};
+Physical Surface("surface_cap_rock",306) = {11, 20};
+Physical Volume("volume_reservoir",310) = {1};
 
 // Generate mesh
 Mesh 3;

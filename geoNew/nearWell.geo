@@ -150,7 +150,7 @@ Transfinite Line {l13,l14,l15,l16,l17,l18,l19,l20} = radial_div Using Progressio
 Transfinite Line {1, 2, 3, 4, 7, 9, 11, 12} = theta_div; // Circles of the heel and toe
 Transfinite Line {l5,l6,l7,l8,l9,l10,l11,l12} = theta_div; // Lines of the near-well region (close to heel and toe)
 Transfinite Line {l1,l2,l3,l4} = axial_div; // Horizontal near-well region lines (no bump)
-Transfinite Line {5, 6, 8, 10} = axial_div Using Bump p_well; // Wellbore length (with bump)
+Transfinite Line {5, 6, 8, 10} = axial_div; // Using Bump p_well; // Wellbore length (with bump)
 Transfinite Surface "*";
 Transfinite Volume "*";
 Recombine Surface "*";
@@ -166,8 +166,8 @@ Physical Point("point_heel",308) = {2};
 Physical Point("point_toe",309) = {6};
 
 // Set preliminary physical entities for the near-well region (to be merged with the reservoir mesh)
-Physical Surface("surface_cap_rock_near_well",106) = {sf5,sf6};
-Physical Volume("volume_near_well",110) = Volume "*";
+Physical Surface("surface_cap_rock",306) = {sf5,sf6};
+Physical Volume("volume_reservoir",310) = Volume "*";
 
 Delete{ Point{p1}; } // Center point no longer needed
 

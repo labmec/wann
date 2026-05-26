@@ -1,33 +1,30 @@
 SetFactory("OpenCASCADE"); // Geometry kernel
 
 // Shared parameters used by both geometry generators.
-Geometry.MatchMeshTolerance = 1e-12;
-Geometry.Tolerance = 1e-16;
+Geometry.MatchMeshTolerance = 1e-08;
+Geometry.Tolerance = 1e-10;
 Mesh.ToleranceReferenceElement = 1e-10;
 General.Terminal = 1;
-Geometry.SnapPoints = 0;
+Geometry.SnapPoints = 1;
 
-// Well bore dimensions
-Lw = 200;
-Rw = 0.1;
-ecc = -0.5; // Eccentricity of the wellbore (-0.5 <= ecc <= 0.5)
+DefineConstant[
+	Lw = {200.0, Name "Lw"},
+	Rw = {5, Name "Rw"},
+	ecc = {0.0, Name "ecc"}, // Eccentricity of the wellbore (-0.5 <= ecc <= 0.5)
 
-// Reservoir dimensions
-Hr = 20;
-Wr = 300;
-Lr = 400;
+	Hr = {20.0, Name "Hr"},
+	Wr = {200.0, Name "Wr"},
+	Lr = {400.0, Name "Lr"},
 
-// Meshing parameters shared by both geometries
-h_div = 5;        // Division in z
-axial_div = 16;   // Divisions along the well length
+	h_div = {3, Name "h_div"}, // Division in z
+	axial_div = {31, Name "axial_div"}, // Divisions along the well length
 
-// Well only meshing parameters
-radial_div = 8;   // Radial division of the near-well region
-p_res = 1.6;      // Progression coefficient of the near-well region mesh
-p_well = 0.3;     // Progression coefficient of the wellbore mesh
+	radial_div = {6, Name "radial_div"}, // Radial division of the near-well region
+	p_res = {1.6, Name "p_res"}, // Progression coefficient of the near-well region mesh
+	p_well = {0.3, Name "p_well"}, // Progression coefficient of the wellbore mesh
 
-// Reservoir only meshing parameters
-size_min_res = 8.0;
-size_max_res = 80.0;
-dist_min_res = 10.0;
-dist_max_res = 100.0;
+	size_min_res = {15.0, Name "size_min_res"},
+	size_max_res = {300.0, Name "size_max_res"},
+	dist_min_res = {80.0, Name "dist_min_res"},
+	dist_max_res = {200.0, Name "dist_max_res"}
+];
