@@ -16,6 +16,7 @@ from pathlib import Path
 PARAM_KEYS = {
     "Lw": ("WellboreData", "length"),
     "Rw": ("WellboreData", "radius"),
+    "Hw": ("WellboreData", "height"),
     "ecc": ("WellboreData", "eccentricity", 2),
     "Hr": ("ReservoirData", "height"),
     "Wr": ("ReservoirData", "width"),
@@ -23,9 +24,9 @@ PARAM_KEYS = {
 }
 
 MESH_PARAMS = {
-    "h_div": 3,
+    "h_div": 5,
     "axial_div": 200,
-    "radial_div": 10,
+    "radial_div": 8,
     "p_res": 1.6,
     "p_well": 0.3,
     "size_min_res": 15.0,
@@ -64,6 +65,15 @@ def load_json(path: Path) -> dict:
 def extract_value(data: dict, path: tuple) -> float:
     value = data
     for key in path:
+        value = value[key]
+    return float(value)
+
+
+def extract_optional_value(data: dict, path: tuple) -> float | None:
+    value = data
+    for key in path:
+        if not isinstance(value, dict) or key not in value:
+            return None
         value = value[key]
     return float(value)
 
@@ -112,7 +122,9 @@ def main() -> int:
 
     json_data = load_json(json_path)
 
-    values = {name: extract_value(json_data, path) for name, path in PARAM_KEYS.items()}
+    values = {name: extract_value(json_data, path) for name, path in PARAM_KEYS.items() if name != "Hw"}
+    hw = extract_optional_value(json_data, PARAM_KEYS["Hw"])
+    values["Hw"] = hw if hw is not None else values["Hr"] / 2.0
     values.update(MESH_PARAMS)
 
     reservoir_format = json_data["ReservoirData"]["format"]

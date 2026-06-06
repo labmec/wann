@@ -13,8 +13,8 @@ SetFactory("OpenCASCADE");
 // Geometry parameters
 // ----------------------
 Rw = 0.2;
-Rr = 1.0;
-Lw = 2.0;
+Rr = 2.0;
+Lw = 8.0;
 
 Nr = 2;
 Nt = 12;   // multiple of 4
