@@ -28,7 +28,11 @@ TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
   }
 
   if (simData->m_Mesh.ToCylindrical) {
-    ModifyGeometricMeshToCylWell(gmesh, simData->ESurfWellCyl, simData->m_Wellbore.radius);
+    TPZManVector<REAL,3> cylcenter = {0.,0.,0.};
+    REAL hr = simData->m_Reservoir.height;
+    REAL lr = simData->m_Wellbore.height;
+    cylcenter[2] = lr - hr/2.;
+    ModifyGeometricMeshToCylWell(gmesh, simData->ESurfWellCyl, simData->m_Wellbore.radius, cylcenter);
   }
 
   if (simData->m_Mesh.customRefinement != 0) {
@@ -144,8 +148,8 @@ bool TPZWannGeometryTools::SetBC(ProblemData* simData, const std::string& bcName
   return false;
 }
 
-void TPZWannGeometryTools::ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh, int matid, REAL cylradius) {
-  const TPZManVector<REAL,3> cylcenter = {0.,0.,0.}, cylaxis = {1.,0.,0.};
+void TPZWannGeometryTools::ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh, int matid, REAL cylradius, TPZManVector<REAL,3> &cylcenter) {
+  const TPZManVector<REAL,3> cylaxis = {1.,0.,0.};
   int64_t nel = gmesh->NElements();
   for(int64_t iel = 0; iel < nel ; iel++) {
     TPZGeoEl* gel = gmesh->Element(iel);
