@@ -11,6 +11,7 @@
     "pOrder": 2,
     "radius": 0.5,
     "length": 200.0,
+    "height": 10.0,
     "eccentricity": [0.0, 0.0, 0.0],
     "BCs": [
       {

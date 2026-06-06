@@ -22,7 +22,7 @@
 // Global exact solution
 // =====================
 
-ProblemData SimData; 
+ProblemData SimData;
 
 // How to get things from SimData?
 auto exactSolution = [](const TPZVec<REAL> &loc, TPZVec<STATE> &result, TPZFMatrix<STATE> &deriv) {
@@ -69,6 +69,7 @@ TPZGeoMesh *CreateRadialMesh(ProblemData *SimData);
 int main(int argc, char *argv[]) {
   
   int maxRef = 3; // Maximum number of refinements to be performed.
+  std::ofstream results("radialTestResults.txt");
 
   TLaplaceExample1 exact; // Global variable to be used in the material objects
   exact.fDimension = 3;
@@ -88,7 +89,7 @@ int main(int argc, char *argv[]) {
   }
 
   std::cout << "Using json file: " << jsonfile << std::endl;
-  std::cout << "\n--------- Starting simulation ---------" << std::endl;
+  std::cout << "\n======= Starting simulation =======\n" << std::endl;
 
 #ifdef PZ_LOG
   TPZLogger::InitializePZLOG();
@@ -100,6 +101,7 @@ int main(int argc, char *argv[]) {
   // Read original geometric mesh and perform the refinement process 
   // described in refinementProcess.txt file
   TPZGeoMesh* gmesh = CreateRadialMesh(&SimData);
+  TPZCheckGeom checkgeom(gmesh); // For uniform refinement
 
   // plot gmesh
   {
@@ -107,43 +109,38 @@ int main(int argc, char *argv[]) {
     TPZVTKGeoMesh::PrintGMeshVTK(gmesh, plotfile);
   }
 
-  for (int ref = 0; ref < maxRef; ref++) {
+  for (int ref = 0; ref <= maxRef; ref++) {
 
-    std::cout << "\n===== Running simulation at refinement level: " << ref << " =====\n" << std::endl;
+    std::cout << "\n===== Running simulation at refinement level: " << ref << " =====" << std::endl;
+    results << "\n===== Running simulation at refinement level: " << ref << " =====" << std::endl;
 
     // Create computational meshes
-    TPZMultiphysicsCompMesh *cmeshMixed =
-        MixedDarcyCompMesh(gmesh, &SimData, false);
-    TPZCompMesh *cmeshH1 = H1DarcyCompMesh(gmesh, &SimData, false);
+    TPZMultiphysicsCompMesh *cmesh = MixedDarcyCompMesh(gmesh, &SimData, true);
+    // TPZCompMesh *cmesh = H1DarcyCompMesh(gmesh, &SimData, true);
+
+    std::cout << "Number of equations: " << cmesh->NEquations() << std::endl;
+    results << "Number of equations: " << cmesh->NEquations() << std::endl;
+
+    // Check if the mesh is H(div) or H1. Used to set solver.
+    bool isHdiv = dynamic_cast<TPZMultiphysicsCompMesh*>(cmesh) != nullptr;
 
     // H(div) analysis
-    TPZLinearAnalysis anMixed(cmeshMixed);
+    TPZLinearAnalysis an(cmesh);
 #ifdef PZ_USING_MKL
-    TPZSSpStructMatrix<STATE> matMixed(cmeshMixed);
+    TPZSSpStructMatrix<STATE> mat(cmesh);
 #else
-    TPZSkylStrMatrix matMixed(cmeshMixed);
+    TPZSkylStrMatrix mat(cmesh);
 #endif
-    matMixed.SetNumThreads(SimData.m_Numerics.nthreads);
-    anMixed.SetStructuralMatrix(matMixed);
-    TPZStepSolver<STATE> stepMixed;
-    stepMixed.SetDirect(ELDLt);
-    anMixed.SetSolver(stepMixed);
-    anMixed.Run();
-
-    // H1 analysis
-    TPZLinearAnalysis anH1(cmeshH1);
-#ifdef PZ_USING_MKL
-    TPZSSpStructMatrix<STATE> matH1(cmeshH1);
-#else
-    TPZSkylStrMatrix matH1(cmeshH1);
-#endif
-    matH1.SetNumThreads(SimData.m_Numerics.nthreads);
-    anH1.SetStructuralMatrix(matH1);
-
-    TPZStepSolver<STATE> stepH1;
-    stepH1.SetDirect(ECholesky);
-    anH1.SetSolver(stepH1);
-    anH1.Run();
+    mat.SetNumThreads(SimData.m_Numerics.nthreads);
+    an.SetStructuralMatrix(mat);
+    TPZStepSolver<STATE> step;
+    if (isHdiv) {
+      step.SetDirect(ELDLt);
+    } else {
+      step.SetDirect(ELU);
+    }
+    an.SetSolver(step);
+    an.Run();
 
     std::cout << "\n--- Simulation finished ---" << std::endl;
     std::cout << "\n--- Starting post-processing ---" << std::endl;
@@ -155,54 +152,52 @@ int main(int argc, char *argv[]) {
     }
 
     // Plotting solution
-    TPZWannPostProcTools::WriteReservoirVTK(cmeshMixed, &SimData);
-    TPZWannPostProcTools::WriteReservoirVTK(cmeshH1, &SimData);
+    TPZWannPostProcTools::WriteReservoirVTK(cmesh, &SimData);
 
     // Expected flow entering the wellbore
     // For this test, the reservoir height represent the external radius
     REAL pr = SimData.m_Reservoir.BCs.at("surface_farfield").value;
     REAL pw = SimData.m_Reservoir.BCs.at("surface_wellbore_cylinder").value;
-    REAL Q = 2.0 * M_PI * SimData.m_Reservoir.perm * SimData.m_Reservoir.length /
+    REAL Q = 2.0 * M_PI * SimData.m_Reservoir.perm[0] * SimData.m_Reservoir.length /
              (SimData.m_Fluid.viscosity *log(SimData.m_Reservoir.height / SimData.m_Wellbore.radius));
     Q = Q * (pr - pw);
 
     // Computed flow entering the wellbore
     TPZVec<REAL> segmentPoints = {0.0, SimData.m_Wellbore.length};
-    TPZVec<REAL> QHdiv = TPZWannPostProcTools::ComputeWellFluxes(cmeshMixed, &SimData, segmentPoints);
-    TPZVec<REAL> QH1 = TPZWannPostProcTools::ComputeWellFluxes(cmeshH1, &SimData, segmentPoints);
+    TPZVec<REAL> Qsim = TPZWannPostProcTools::ComputeWellFluxes(cmesh, &SimData, segmentPoints);
 
     std::cout << "\nExpected flow entering the wellbore: " << Q << std::endl;
-    std::cout << "Computed flow entering the wellbore (H(div) mesh): " << QHdiv
-              << " (relative error: " << std::abs(QHdiv[0] - Q) / std::abs(Q) * 100 << " %)" << std::endl;
-    std::cout << "Computed flow entering the wellbore (H1 mesh): " << QH1
-              << " (relative error: " << std::abs(QH1[0] - Q) / std::abs(Q) * 100 << " %)" << std::endl;
+    std::cout << "Computed flow entering the wellbore: " << Qsim
+              << " (relative error: " << std::abs(Qsim[0] - Q) / std::abs(Q) * 100 << " %)" << std::endl;
+
+    results << "\nExpected flow entering the wellbore: " << Q << std::endl;
+    results << "Computed flow entering the wellbore: " << Qsim
+            << " (relative error: " << std::abs(Qsim[0] - Q) / std::abs(Q) * 100 << " %)" << std::endl;
 
     // Approximation errors
-    TPZVec<REAL> errorsMixed(5, 0.);
-    TPZVec<REAL> errorsH1(3, 0.);
-    std::fstream errorfile("errors.txt", std::ios::app);
-    anMixed.SetThreadsForError(SimData.m_Numerics.nthreads);
-    anH1.SetThreadsForError(SimData.m_Numerics.nthreads);
-    anMixed.PostProcessError(errorsMixed, false, errorfile);
-    anH1.PostProcessError(errorsH1, false, errorfile);
+    // TPZVec<REAL> errorsMixed(5, 0.);
+    // TPZVec<REAL> errorsH1(3, 0.);
+    // std::fstream errorfile("errors.txt", std::ios::app);
+    // anMixed.SetThreadsForError(SimData.m_Numerics.nthreads);
+    // anH1.SetThreadsForError(SimData.m_Numerics.nthreads);
+    // anMixed.PostProcessError(errorsMixed, false, errorfile);
+    // anH1.PostProcessError(errorsH1, false, errorfile);
 
-    std::cout << "\nApproximation errors (H(div) mesh): " << std::endl;
-    std::cout << "L2 norm of pressure error: " << errorsMixed[0] << std::endl;
-    std::cout << "L2 norm of flux error: " << errorsMixed[1] << std::endl;
-    std::cout << "H(div) norm of flux error: " << errorsMixed[4] << std::endl;
-    std::cout << "L2 norm ofdivergence error: " << errorsMixed[2] << std::endl;
+    // std::cout << "\nApproximation errors (H(div) mesh): " << std::endl;
+    // std::cout << "L2 norm of pressure error: " << errorsMixed[0] << std::endl;
+    // std::cout << "L2 norm of flux error: " << errorsMixed[1] << std::endl;
+    // std::cout << "H(div) norm of flux error: " << errorsMixed[4] << std::endl;
+    // std::cout << "L2 norm ofdivergence error: " << errorsMixed[2] << std::endl;
 
-    std::cout << "\nApproximation errors (H1 mesh): " << std::endl;
-    std::cout << "L2 norm of pressure error: " << errorsH1[1] << std::endl;
-    std::cout << "L2 norm of flux error: " << errorsH1[2] << std::endl;
+    // std::cout << "\nApproximation errors (H1 mesh): " << std::endl;
+    // std::cout << "L2 norm of pressure error: " << errorsH1[1] << std::endl;
+    // std::cout << "L2 norm of flux error: " << errorsH1[2] << std::endl;
 
     std::cout << "\n--------- Post-processing finished ---------" << std::endl;
 
-    delete cmeshMixed;
-    delete cmeshH1;
+    delete cmesh;
 
     // Refine mesh
-    TPZCheckGeom checkgeom(gmesh);
     checkgeom.UniformRefine(1);
   }
   delete gmesh;
@@ -225,8 +220,9 @@ TPZGeoMesh* CreateRadialMesh(ProblemData* SimData) {
 
   if (SimData->m_Mesh.ToCylindrical) {
     // Internal and external cylindrical surfaces
-    TPZWannGeometryTools::ModifyGeometricMeshToCylWell(gmesh, SimData->ESurfWellCyl, SimData->m_Wellbore.radius);
-    TPZWannGeometryTools::ModifyGeometricMeshToCylWell(gmesh, SimData->EFarField, SimData->m_Reservoir.height);
+    TPZManVector<REAL,3> cylcenter = {0., 0., 0.};
+    TPZWannGeometryTools::ModifyGeometricMeshToCylWell(gmesh, SimData->ESurfWellCyl, SimData->m_Wellbore.radius, cylcenter);
+    TPZWannGeometryTools::ModifyGeometricMeshToCylWell(gmesh, SimData->EFarField, SimData->m_Reservoir.height, cylcenter);
   }
 
   if (SimData->m_Mesh.customRefinement != 0) {
@@ -278,8 +274,8 @@ TPZMultiphysicsCompMesh *MixedDarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimD
   auto &ReservoirData = SimData->m_Reservoir;
 
   TPZMixedDarcyFlow *reservoirMat = new TPZMixedDarcyFlow(SimData->EDomain, gmesh->Dimension());
-  reservoirMat->SetExactSol(exactSolution, 2);
-  reservoirMat->SetConstantPermeability(ReservoirData.perm/SimData->m_Fluid.viscosity);
+  reservoirMat->SetExactSol(exactSolution, 1);
+  reservoirMat->SetConstantPermeability(ReservoirData.perm[0]/SimData->m_Fluid.viscosity);
   hdivCreator.InsertMaterialObject(reservoirMat);
 
   // Boundary conditions --- 
@@ -290,7 +286,6 @@ TPZMultiphysicsCompMesh *MixedDarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimD
     TPZManVector<STATE> val2(1, 0);
     val2[0] = bc.value;
     TPZBndCondT<STATE> *BCond = reservoirMat->CreateBC(reservoirMat, bc.matid, bc.type, val1, val2);
-    BCond->SetForcingFunctionBC(exactSolution, 2);
     hdivCreator.InsertMaterialObject(BCond);
   }
 
@@ -310,8 +305,8 @@ TPZCompMesh *H1DarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, bool isCon
   // Insert material
   TPZDarcyFlow *reservoirMat = new TPZDarcyFlow(SimData->EDomain, gmesh->Dimension());
 
-  reservoirMat->SetExactSol(exactSolution, 2);
-  reservoirMat->SetConstantPermeability(ReservoirData.perm/SimData->m_Fluid.viscosity);
+  reservoirMat->SetExactSol(exactSolution, 1);
+  reservoirMat->SetConstantPermeability(ReservoirData.perm[0]/SimData->m_Fluid.viscosity);
   h1Creator.InsertMaterialObject(reservoirMat);
 
   // Boundary conditions ---
@@ -322,7 +317,6 @@ TPZCompMesh *H1DarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, bool isCon
     TPZManVector<STATE> val2(1, 0);
     val2[0] = bc.value;
     TPZBndCondT<STATE> *BCond = reservoirMat->CreateBC(reservoirMat, bc.matid, bc.type, val1, val2);
-    BCond->SetForcingFunctionBC(exactSolution, 2);
     h1Creator.InsertMaterialObject(BCond);
   }
 

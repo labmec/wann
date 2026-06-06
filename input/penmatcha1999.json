@@ -10,13 +10,14 @@
     "name": "curve_wellbore",
     "pOrder": 2,
     "radius": 0.0508,
+    "height": 7.87,
     "length": 1828.8,
     "eccentricity": [0.0, 0.0, 0.0],
     "BCs": [
       {
         "name": "point_heel",
         "type": 1, //dirichlet:0    neumann:1
-        "value": -1.84e-3
+        "value": -1.84e-2
       },
       {
         "name": "point_toe",
@@ -28,7 +29,7 @@
   "ReservoirData": {
     "name": "volume_reservoir",
     "format": "box",
-    "perm": 2.96e-12,
+    "perm": [2.96e-12, 2.96e-12, 2.96e-12],
     "porosity": 1.0,
     "pOrder": 1,
     "height": 15.24,
@@ -63,16 +64,16 @@
     "density": 784.9 // kg/m^3
   },
   "PostProcData": {
-    "wellbore_vtk": "WannWell",
-    "reservoir_vtk": "WannReservoir",
+    "wellbore_vtk": "PenmatchaWell",
+    "reservoir_vtk": "PenmatchaReservoir",
     "training_data": "training_data.txt",
     "vtk_resolution": 0,
     "training_resolution": 10, //number of subdivisions to generate training data
-    "nthreads": 4,
+    "nthreads": 6,
     "verbosityLevel": 1
   },
   "NumericsData": {
-    "nthreads": 0,
+    "nthreads": 6,
     "maxIterations" : 10,
     "res_tol": 1e-6,
     "corr_tol": 1e-6

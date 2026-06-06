@@ -10,7 +10,8 @@
     "name": "curve_wellbore",
     "pOrder": 2,
     "radius": 0.2,
-    "length": 2.0,
+    "height": 2.0,
+    "length": 8.0,
     "eccentricity": [0.0, 0.0, 0.0],
     "BCs": [
       {
@@ -27,12 +28,12 @@
   },
   "ReservoirData": {
     "name": "volume_reservoir",
-    "perm": 1.0, 
-    "porosity": 2.96e-12,
+    "perm": 2.96e-12, 
+    "porosity": 1.0,
     "pOrder": 1,
     "height": 2,
     "width": 1,
-    "length": 2,
+    "length": 8,
     "BCs": [
       {
         "name": "surface_farfield",
@@ -47,7 +48,7 @@
       {
         "name": "surface_wellbore_cylinder",
         "type": 0,
-        "value": -1000.0
+        "value": -137895.0
       }
     ]
   },

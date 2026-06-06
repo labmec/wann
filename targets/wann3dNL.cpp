@@ -22,7 +22,7 @@ int main(int argc, char *argv[]) {
   exact.fDimension = 3;
   exact.fExact = TLaplaceExample1::ENone;
 
-  std::string jsonfile = "penmatcha1999.json";
+  std::string jsonfile = "ozkan1999Box.json";
 
   if (argc > 2) {
     std::cout << argv[0] << " being called with too many arguments." << std::endl;
@@ -107,6 +107,13 @@ int main(int argc, char *argv[]) {
   }
   std::cout << std::endl;
   std::cout << "Fluid loss H1: " << std::abs(inflowH1) - std::abs(SimData.m_Wellbore.BCs["point_heel"].value) << std::endl;
+
+  // Computing productivity index
+  REAL PI = TPZWannPostProcTools::ProductivityIndex(cmeshMixed, &SimData);
+  REAL PI_H1 = TPZWannPostProcTools::ProductivityIndex(cmeshH1, &SimData);
+
+  std::cout << "Productivity Index H(div): " << PI << std::endl;
+  std::cout << "Productivity Index H1: " << PI_H1 << std::endl;
 
   std::cout << "\n--------- Post-processing finished ---------" << std::endl;
 
