@@ -60,15 +60,17 @@ void TPZWannMixedDarcyNL::Contribute(const TPZVec<TPZMaterialDataT<STATE>> &data
     REAL divQsol = datavec[0].divsol[0][0];
 
     // Tangent matrix
-    REAL K = GetPermeability(datavec[0].x);
-    REAL factor = weight / K;
-    ek.AddContribution(0, 0, phiQ, 1, phiQ, 0, factor);      // A
+    TPZFMatrix<STATE> InvPerm(3, 3, 0.);
+    GetInversePermeability(datavec[0].x, InvPerm);
+    TPZFMatrix<REAL> KappaInv_dot_tau;
+    InvPerm.Multiply(phiQ, KappaInv_dot_tau);
+    ek.AddContribution(0, 0, KappaInv_dot_tau, 1, phiQ, 0, weight);      // A
     ek.AddContribution(nphiQ, 0, phiP, 0, divQ, 1, -weight); // B^T
     ek.AddContribution(0, nphiQ, divQ, 0, phiP, 1, -weight); // B
 
     // Residual vector constitutive equation (negative)
-    ef.AddContribution(0, 0, phiQ, 1, QsolMat, 0, -factor);
-    factor = psol * weight;
+    ef.AddContribution(0, 0, KappaInv_dot_tau, 1, QsolMat, 0, -weight); // A * Qsol
+    REAL factor = psol * weight;
     ef.AddContribution(0, 0, divQ, 0, Aux, 1, factor);
 
     // Residual vector conservation equation (negative)
@@ -90,31 +92,21 @@ void TPZWannMixedDarcyNL::ContributeBC(const TPZVec<TPZMaterialDataT<STATE>> &da
 
     REAL v2 = bc.Val2()[0];
     REAL v1 = bc.Val1()(0, 0);
-    REAL u_D = 0;
-    REAL normflux = 0.;
 
+    // TODO: Needs refactor
     if (bc.HasForcingFunctionBC())
     {
         TPZManVector<STATE> res(3);
         TPZFNMatrix<9, STATE> gradu(3, 1);
         bc.ForcingFunctionBC()(datavec[0].x, res, gradu);
 
-        const STATE perm = GetPermeability(datavec[0].x);
-
-        for (int i = 0; i < 3; i++)
-        {
-            normflux += datavec[0].normal[i] * perm * gradu(i, 0);
-        }
-
         if (bc.Type() == 0 || bc.Type() == 4)
         {
             v2 = res[0];
-            u_D = res[0];
-            normflux *= (-1.);
         }
         else if (bc.Type() == 1 || bc.Type() == 2)
         {
-            v2 = -normflux;
+            v2 = 0.0;
             if (bc.Type() == 2)
             {
                 v2 = -res[0] + v2 / v1;
@@ -145,14 +137,7 @@ void TPZWannMixedDarcyNL::ContributeBC(const TPZVec<TPZMaterialDataT<STATE>> &da
         break;
 
     case 1: // Neumann condition
-        // for (int iq = 0; iq < phrq; iq++) {
-        //     REAL qn = qsol[0];
-        //     ef(iq, 0) += bigNumber * (v2-qn) * phiQ(iq, 0) * weight;
-        //     for (int jq = 0; jq < phrq; jq++) {
-
-        //         ek(iq, jq) += bigNumber * phiQ(iq, 0) * phiQ(jq, 0) * weight;
-        //     }
-        // }
+        // Nothing to do
         break;
     }
 }

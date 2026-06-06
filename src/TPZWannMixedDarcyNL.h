@@ -2,8 +2,9 @@
 #define TPZWannMixedDarcyNL_H
 
 #include "Material/DarcyFlow/TPZMixedDarcyFlow.h"
+#include "TPZAnisotropicPermeability.h"
 
-class TPZWannMixedDarcyNL : public TPZMixedDarcyFlow {
+class TPZWannMixedDarcyNL : public TPZMixedDarcyFlow, public TPZAnisotropicPermeability {
 
     using TBase = TPZMixedDarcyFlow;
 
@@ -32,6 +33,45 @@ public:
 	 * @brief Returns a 'std::string' with the name of the material
 	 */
     [[nodiscard]] std::string Name() const override { return "TPZWannMixedDarcyNL"; }
+
+    /**
+     * @brief Returns a unique class identifier
+     */
+    [[nodiscard]] int ClassId() const override { return Hash("TPZWannMixedDarcyNL") ^ (TBase::ClassId() << 1); }
+
+    void Read(TPZStream &buf, void *context) override { TBase::Read(buf, context); }
+
+    void Write(TPZStream &buf, int withclassid) const override { TBase::Write(buf, withclassid); }
+
+    void SetConstantPermeability(STATE constant)
+    {
+        TPZAnisotropicPermeability::SetConstantPermeability(constant);
+    }
+
+    void SetConstantPermeability(TPZFMatrix<STATE> constant)
+    {
+        TPZAnisotropicPermeability::SetConstantPermeability(constant);
+    }
+
+    void SetPermeabilityFunction(AnisotropicFunctionType &perm_function)
+    {
+        TPZAnisotropicPermeability::SetPermeabilityFunction(perm_function);
+    }
+
+    void SetPermeabilityFunction(IsotropicFunctionType &perm_function)
+    {
+        TPZAnisotropicPermeability::SetPermeabilityFunction(perm_function);
+    }
+
+    STATE GetPermeability(const TPZVec<REAL> &coord)
+    {
+        return TPZAnisotropicPermeability::GetPermeability(coord);
+    }
+
+    void GetPermeability(const TPZVec<REAL> &coord, TPZFMatrix<STATE> &perm_matrix)
+    {
+        TPZAnisotropicPermeability::GetPermeability(coord, perm_matrix);
+    }
 
     /**
      * @brief It computes a contribution to the stiffness matrix and load vector at one integration point

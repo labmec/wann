@@ -56,12 +56,14 @@ void TPZWannDarcyNL::Contribute(const TPZMaterialDataT<STATE> &data, REAL weight
     }
 
     // Tangent matrix
-    REAL K = GetPermeability(x);
-    REAL factor = weight * K;
-    ek.AddContribution(0, 0, dphi, 1, dphi, 0, factor);
+    TPZFMatrix<STATE> perm(3, 3, 0.);
+    GetPermeability(x, perm);
+    TPZFMatrix<STATE> perm_dot_dphi;
+    perm.Multiply(dphi, perm_dot_dphi);
+    ek.AddContribution(0, 0, perm_dot_dphi, 1, dphi, 0, weight);
 
     // Residual vector
-    ef.AddContribution(0, 0, dphi, 1, dpsol, 0, -factor);
+    ef.AddContribution(0, 0, perm_dot_dphi, 1, dpsol, 0, -weight);
     ef.AddContribution(0, 0, phi, 0, Aux, 0, -source_term * weight);
 }
 
@@ -76,6 +78,7 @@ void TPZWannDarcyNL::ContributeBC(const TPZMaterialDataT<STATE> &data, REAL weig
 
     STATE v2 = bc.Val2()[0];
 
+    // TODO: Needs refactor
     if (bc.HasForcingFunctionBC()) {
         TPZManVector<STATE, 1> rhs_val(1);
         TPZFNMatrix<1, STATE> mat_val(fDim, 1);
@@ -108,7 +111,7 @@ void TPZWannDarcyNL::ContributeBC(const TPZMaterialDataT<STATE> &data, REAL weig
 
     switch (bc.Type()) {
         case 0 : // Dirichlet condition
-            // Already done in the initial solution
+            // Nothing to do. Already done in the initial solution
             break;
         case 1 : // Neumann condition
             for (in = 0; in < phi.Rows(); in++) {
@@ -119,8 +122,7 @@ void TPZWannDarcyNL::ContributeBC(const TPZMaterialDataT<STATE> &data, REAL weig
             PZError << __PRETTY_FUNCTION__
                     << "\nBoundary condition type not implemented. Please use one of the following:\n"
                     << "\t 0: Dirichlet\n"
-                    << "\t 1: Neumann\n"
-                    << "\t 2: Robin\n";
+                    << "\t 1: Neumann\n";
             DebugStop();
     }
 }
@@ -143,4 +145,70 @@ void TPZWannDarcyNL::GetSolDimensions(uint64_t &u_len, uint64_t &du_row, uint64_
     u_len=1;
     du_row=fDim;
     du_col=1;
+}
+
+void TPZWannDarcyNL::Solution(const TPZMaterialDataT<STATE> &data, int var, TPZVec<STATE> &solOut) {
+
+    if(data.fShapeType == TPZMaterialData::EEmpty) {
+        solOut.Resize(NSolutionVariables(var));
+        solOut.Fill(0.);
+        return;
+    }
+    switch (var) {
+        case 1: {
+            // Solution/Pressure
+            solOut[0] = data.sol[0][0];
+            return;
+        }
+        case 2: {
+            // Derivative/GradU
+            TPZFNMatrix<9, STATE> dsoldx;
+            TPZAxesTools<STATE>::Axes2XYZ(data.dsol[0], dsoldx, data.axes);
+            for (int id = 0; id < fDim; id++) {
+                solOut[id] = dsoldx(id, 0);
+            }
+            return;
+        }
+        case 7: {
+            // MinusKGradU/Flux;
+            TPZFNMatrix<9, STATE> dsoldx;
+            TPZAxesTools<STATE>::Axes2XYZ(data.dsol[0], dsoldx, data.axes);
+            TPZFMatrix<STATE> perm(3, 3, 0.);
+            GetPermeability(data.x, perm);
+            TPZFMatrix<STATE> perm_dot_dsoldx;
+            perm.Multiply(dsoldx, perm_dot_dsoldx);
+            for (int id = 0; id < 3; id++) {
+                solOut[id] = - perm_dot_dsoldx(id, 0);
+            }
+            return;
+        }
+        case 8: {
+            // POrder
+            solOut[0] = data.p;
+            return;
+        }
+        case 9: {
+            // ExactPressure/ExactSolution
+            TPZVec<STATE> exact_pressure(1);
+            TPZFMatrix<STATE> exact_flux(fDim, 1);
+            fExactSol(data.x, exact_pressure, exact_flux);
+            solOut[0] = exact_pressure[0];
+            return;
+        }
+        case 10: {
+            // ExactFlux
+            TPZVec<STATE> exact_pressure(1);
+            TPZFMatrix<STATE> exact_flux(fDim, 1);
+            fExactSol(data.x, exact_pressure, exact_flux);
+            for (int id = 0; id < fDim; id++) {
+                solOut[id] = exact_flux[id];
+            }
+            return;
+        }
+
+    default: {
+            PZError << __PRETTY_FUNCTION__ << "\n Post-processing variable index not implemented!\n";
+            DebugStop();
+        }
+    }
 }

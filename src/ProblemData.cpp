@@ -12,6 +12,8 @@ using namespace std;
 ProblemData::ProblemData()
 {
     m_Wellbore.eccentricity.resize(3);
+    m_Wellbore.perm.resize(3);
+    m_Reservoir.perm.resize(3);
     m_Wellbore.BCs.reserve(2);
     m_Reservoir.BCs.reserve(3);
 }
@@ -54,7 +56,10 @@ void ProblemData::ReadJson(std::string file)
     if (wellbore.find("radius") == wellbore.end())
         DebugStop();
     m_Wellbore.radius = wellbore["radius"];
-    if (wellbore.find("length") == wellbore.end())
+    if (wellbore.find("height") == wellbore.end())
+        DebugStop();
+    m_Wellbore.height = wellbore["height"];
+    if (wellbore.find("length") == wellbore.end()) 
         DebugStop();
     m_Wellbore.length = wellbore["length"];
     if (wellbore.find("eccentricity") == wellbore.end())
@@ -91,7 +96,28 @@ void ProblemData::ReadJson(std::string file)
     m_Reservoir.name = reservoir["name"];
     if (reservoir.find("perm") == reservoir.end())
         DebugStop();
-    m_Reservoir.perm = reservoir["perm"];
+    const json &perm = reservoir["perm"];
+    if (perm.is_number())
+    {
+        m_Reservoir.perm[0] = perm;
+        m_Reservoir.perm[1] = perm;
+        m_Reservoir.perm[2] = perm;
+    }
+    else if (perm.is_array())
+    {
+        if (perm.size() != 3)
+            DebugStop();
+        for (int i = 0; i < 3; i++)
+        {
+            if (perm[i].is_null())
+                DebugStop();
+            m_Reservoir.perm[i] = perm[i];
+        }
+    }
+    else
+    {
+        DebugStop();
+    }
     if (reservoir.find("porosity") == reservoir.end())
         DebugStop();
     m_Reservoir.porosity = reservoir["porosity"];

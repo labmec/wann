@@ -25,7 +25,7 @@ class ProblemData
   {
     std::string name;                                  // name of the domain
     int matid = -1;                                    // domain material ID
-    REAL perm;                                         // domain permeability
+    TPZManVector<REAL, 3> perm;                        // domain permeability
     REAL pOrder;                                       // polynomial approximation order for flux
     std::unordered_map<std::string, BoundaryData> BCs; // map containing all the bcs info
   };
@@ -34,6 +34,7 @@ class ProblemData
   {
     REAL radius;                        // domain radius
     REAL length;                        // domain length
+    REAL height;                        // domain height
     TPZManVector<REAL, 3> eccentricity; // domain excentricity
   };
 

@@ -21,16 +21,17 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
   auto &ReservoirData = SimData->m_Reservoir;
   auto &FluidData = SimData->m_Fluid;
   {
-
-    // Add flag to indicate if we want to use nonlinear material?
-    // TPZMixedDarcyFlow *reservoirMat = new TPZMixedDarcyFlow(SimData->EDomain, dim);
     TPZWannMixedDarcyNL *reservoirMat = new TPZWannMixedDarcyNL(SimData->EDomain, dim);
     if (hasAnalyticSol) {
       reservoirMat->SetExactSol(exact->ExactSolution(), 3);
       reservoirMat->SetForcingFunction(exact->ForceFunc(), 3);
       reservoirMat->SetConstantPermeability(1.0);
     } else {
-      reservoirMat->SetConstantPermeability(ReservoirData.perm/FluidData.viscosity);
+      TPZFMatrix<STATE> perm(3, 3, 0.);
+      for (int i = 0; i < 3; i++) {
+        perm(i, i) = ReservoirData.perm[i] / FluidData.viscosity;
+      }
+      reservoirMat->SetConstantPermeability(perm);
     }
     hdivCreator.InsertMaterialObject(reservoirMat);
 
@@ -136,8 +137,12 @@ TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData
 
   // Reservoir material and 3D boundary conditions
   {
-    TPZDarcyFlow *reservoirMat = new TPZWannDarcyNL(SimData->EDomain, dim);
-    reservoirMat->SetConstantPermeability(ReservoirData.perm/FluidData.viscosity);
+    TPZWannDarcyNL *reservoirMat = new TPZWannDarcyNL(SimData->EDomain, dim);
+    TPZFMatrix<STATE> perm(3, 3, 0.);
+    for (int i = 0; i < 3; i++) {
+      perm(i, i) = ReservoirData.perm[i] / FluidData.viscosity;
+    }
+    reservoirMat->SetConstantPermeability(perm);
     cmesh->InsertMaterialObject(reservoirMat);
 
     for (auto &bcpair : ReservoirData.BCs)
