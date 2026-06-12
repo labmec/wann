@@ -18,7 +18,7 @@ Lw = 8.0;
 
 Nr = 2;
 Nt = 12;   // multiple of 4
-Nx = 10;
+Nx = 3;
 
 RadialProgression = 1.3;
 

@@ -103,12 +103,6 @@ int main(int argc, char *argv[]) {
   TPZGeoMesh* gmesh = CreateRadialMesh(&SimData);
   TPZCheckGeom checkgeom(gmesh); // For uniform refinement
 
-  // plot gmesh
-  {
-    std::ofstream plotfile("RadialMesh.vtk");
-    TPZVTKGeoMesh::PrintGMeshVTK(gmesh, plotfile);
-  }
-
   for (int ref = 0; ref <= maxRef; ref++) {
 
     std::cout << "\n===== Running simulation at refinement level: " << ref << " =====" << std::endl;
@@ -144,15 +138,6 @@ int main(int argc, char *argv[]) {
 
     std::cout << "\n--- Simulation finished ---" << std::endl;
     std::cout << "\n--- Starting post-processing ---" << std::endl;
-
-    // Plot mesh
-    {
-      std::ofstream plotfile("RadialMesh.vtk");
-      TPZVTKGeoMesh::PrintGMeshVTK(gmesh, plotfile);
-    }
-
-    // Plotting solution
-    TPZWannPostProcTools::WriteReservoirVTK(cmesh, &SimData);
 
     // Expected flow entering the wellbore
     // For this test, the reservoir height represent the external radius
@@ -192,6 +177,11 @@ int main(int argc, char *argv[]) {
     // std::cout << "\nApproximation errors (H1 mesh): " << std::endl;
     // std::cout << "L2 norm of pressure error: " << errorsH1[1] << std::endl;
     // std::cout << "L2 norm of flux error: " << errorsH1[2] << std::endl;
+
+    // Plot final solution
+    if (ref == maxRef) {
+        TPZWannPostProcTools::WriteReservoirVTK(cmesh, &SimData);
+    }
 
     std::cout << "\n--------- Post-processing finished ---------" << std::endl;
 
