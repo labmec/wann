@@ -128,12 +128,17 @@ def main() -> int:
     values.update(MESH_PARAMS)
 
     reservoir_format = json_data["ReservoirData"]["format"]
-    if reservoir_format not in {"box", "pill"}:
+    if reservoir_format not in {"box", "pill", "ball"}:
         print(f"Unsupported ReservoirData.format value: {reservoir_format}", file=sys.stderr)
         return 1
 
     output_file = json_data["MeshData"]["file"]
-    reservoir_geo = "reservoirBox.geo" if reservoir_format == "box" else "reservoirPill.geo"
+    if reservoir_format == "box":
+        reservoir_geo = "reservoirBox.geo"
+    elif reservoir_format == "pill":
+        reservoir_geo = "reservoirPill.geo"
+    else:
+        reservoir_geo = "reservoirBall.geo"
     final_mesh_path = resolve_output_path(json_path, output_file)
 
     run_gmsh(args.gmsh, script_dir, build_gmsh_args(values, reservoir_geo, True))
