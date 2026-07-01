@@ -1,9 +1,6 @@
 add_executable(wann3d wann3d.cpp)
 target_link_libraries(wann3d PRIVATE WANN_lib)
 
-add_executable(darcy3D darcy3D.cpp)
-target_link_libraries(darcy3D PRIVATE WANN_lib)
-
 add_executable(wann3dRef wann3dRef.cpp)
 target_link_libraries(wann3dRef PRIVATE WANN_lib)
 
@@ -18,6 +15,12 @@ target_link_libraries(wannPS PRIVATE WANN_lib)
 
 add_executable(adptRef adaptiveRefinement.cpp)
 target_link_libraries(adptRef PRIVATE WANN_lib)
+
+add_executable(goalDarcy goalOrientedDarcy.cpp)
+target_link_libraries(goalDarcy PRIVATE WANN_lib)
+
+add_executable(goalWann goalOrientedWann.cpp)
+target_link_libraries(goalWann PRIVATE WANN_lib)
 
 add_executable(oldwann3d old-wann3d.cpp)
 target_link_libraries(oldwann3d PRIVATE WANN_lib)
