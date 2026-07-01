@@ -124,6 +124,9 @@ public:
   void ReadJson(std::string jsonfile);
 
   void Print(std::ostream &out = std::cout);
+
+  ProblemData(const ProblemData&) = default;
+  ProblemData& operator=(const ProblemData&) = default;
 };
 
 #endif
