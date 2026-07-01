@@ -10,15 +10,12 @@ protected:
     static constexpr REAL relative_estimator_tol = 1e-3;
 
 public:
-  static REAL PragerSynge(TPZMultiphysicsCompMesh* cmeshHdiv, TPZCompMesh* cmeshH1, ProblemData* SimData, TPZVec<REAL>& elementErrors, int nthreads = 0);
-  static REAL GoalOriented(TPZMultiphysicsCompMesh* cmeshHdiv, TPZMultiphysicsCompMesh* cmeshDual, ProblemData* SimData, TPZVec<REAL>& elementErrors, int nthreads = 0);
-  static void MarkElementsForRefinement(const TPZVec<REAL>& elementErrors, TPZVec<int>& refinementIndicator, REAL tol);
-  static void MeshSmoothing(TPZGeoMesh* gmesh, TPZVec<int>& RefinementIndicator);
-  static void MeshWellCompatibility(TPZGeoMesh* gmesh, TPZVec<int>& RefinementIndicator, ProblemData* SimData);
+  static REAL PragerSynge(TPZMultiphysicsCompMesh* cmeshHdiv, TPZCompMesh* cmeshH1, ProblemData* SimData, TPZVec<REAL>& elementErrors, int nthreads = 0); 
+  static REAL GoalOriented(TPZMultiphysicsCompMesh* cmeshHdiv, TPZMultiphysicsCompMesh* cmeshDual, ProblemData* SimData, TPZVec<REAL>& elementErrors, int nthreads); 
+  static void AdaptivityProcess(TPZGeoMesh* gmesh, ProblemData* SimData, TPZVec<REAL>& elementErrors, REAL theta);
 
   // --- Old or testing stuff ---
   static REAL ErrorEstimation(TPZMultiphysicsCompMesh* cmeshHdiv, TPZCompMesh* cmeshH1, ProblemData* SimData, TPZVec<REAL>& elementErrors, int nthreads = 0);
-  static void EstimateAndRefine(TPZMultiphysicsCompMesh* cmeshHdiv, TPZCompMesh* cmeshH1, ProblemData* SimData, int nthreads = 1);
   static TPZVec<int> ErrorEstimationOld(TPZMultiphysicsCompMesh* cmeshHdiv, TPZCompMesh* cmeshH1, ProblemData* SimData, int nthreads = 0);
   static void CheckRef(TPZCompMesh* cmesh);
   static void FakeRefine(TPZGeoMesh* gmesh, ProblemData* SimData);
@@ -26,4 +23,10 @@ public:
 private:
   static REAL ForcingFunctionWellbore(TPZCompEl* celMixed, const TPZManVector<REAL,3>& pt);
   static REAL ElementDiameter(TPZGeoEl* gel);
+  static REAL GoalContribution3D(TPZCompEl* celMixed, TPZCompEl* celDual, ProblemData* SimData); 
+  static REAL GoalContributionInterface(TPZCompEl* celMixed, TPZCompEl* celDual, ProblemData* SimData);   
+  static REAL GoalContribution1D(TPZCompEl* celMixed, TPZCompEl* celDual, ProblemData* SimData);
+  static void MarkElementsForRefinement(const TPZVec<REAL>& elementErrors, TPZVec<int>& refinementIndicator, REAL theta);
+  static void MeshSmoothing(TPZGeoMesh* gmesh, TPZVec<int>& refinementIndicator);
+  static void MeshWellCompatibility(TPZGeoMesh* gmesh, TPZVec<int>& refinementIndicator, ProblemData* SimData);
 };
