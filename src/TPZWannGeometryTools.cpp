@@ -11,9 +11,6 @@ TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
     TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
   }
 
-  // Divide pyramids if present in the OG mesh
-  DividePyramids(gmesh);
-
   // Verify consistency of initial mesh
   bool hasErrors = TPZWannGeometryTools::VerifyMesh(gmesh, simData);
 
@@ -115,17 +112,17 @@ TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
     reader.GeometricGmshMesh(path, gmesh);
 
     // Remove gmsh boundary elements and create GeoElBC so normals are consistent
-    // int64_t nel = gmesh->NElements();
-    // for(int64_t el = 0; el < nel; el++){
-    //     TPZGeoEl *gel = gmesh->Element(el);
-    //     if(!gel || gel->Dimension() != gmesh->Dimension()-1) continue;
-    //     TPZGeoElSide gelside(gel);
-    //     TPZGeoElSide neigh = gelside.Neighbour();
-    //     gel->RemoveConnectivities();
-    //     int matid = gel->MaterialId();
-    //     delete gel;
-    //     TPZGeoElBC gbc(neigh, matid);
-    // }
+    int64_t nel = gmesh->NElements();
+    for(int64_t el = 0; el < nel; el++){
+        TPZGeoEl *gel = gmesh->Element(el);
+        if(!gel || gel->Dimension() != gmesh->Dimension()-1) continue;
+        TPZGeoElSide gelside(gel);
+        TPZGeoElSide neigh = gelside.Neighbour();
+        gel->RemoveConnectivities();
+        int matid = gel->MaterialId();
+        delete gel;
+        TPZGeoElBC gbc(neigh, matid);
+    }
 
     //remember to modify the matids in ProblemData according to the map
   }
@@ -350,17 +347,10 @@ bool TPZWannGeometryTools::CheckXInSet(const REAL x, const std::set<REAL>& nodeC
   return false;
 }
 
-void TPZWannGeometryTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int>& refinementIndicator) {
-  if (gmesh->NElements() != refinementIndicator.size()) {
-    std::cout << "Refinement vector size " << refinementIndicator.size() 
-              << " is different from number of elements in the mesh " << gmesh->NElements() << std::endl;
-    DebugStop();
-  }
-
-  for (int64_t i = 0; i < refinementIndicator.size(); ++i) {
-    if (refinementIndicator[i] == 0) continue;
+void TPZWannGeometryTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int64_t>& toRefine) {
+  for (int64_t i = 0; i < toRefine.size(); ++i) {
     TPZVec<TPZGeoEl *> pv;
-    TPZGeoEl* gel = gmesh->Element(i);
+    TPZGeoEl* gel = gmesh->Element(toRefine[i]);
     if (!gel) DebugStop();
     if (gel->HasSubElement()) continue;
     gel->Divide(pv);
@@ -383,15 +373,15 @@ void TPZWannGeometryTools::RefineFromFile(TPZGeoMesh* og_gmesh, const std::strin
       std::cerr << "Error: Could not read vector size from line: '" << line << "'\n";
       DebugStop();
     }
-    TPZVec<int> indicatorVec(vecSize, 0);
+    TPZVec<int64_t> toRefine(vecSize, 0);
     for (int i = 0; i < vecSize; ++i) {
-      if (!(iss >> indicatorVec[i])) {
+      if (!(iss >> toRefine[i])) {
         std::cerr << "Error: Not enough entries for vector of size " << vecSize << " in line: '" << line << "'\n";
         DebugStop();
       }
     }
 
-    hRefinement(og_gmesh, indicatorVec);
+    hRefinement(og_gmesh, toRefine);
   }
 }
 
