@@ -8,15 +8,15 @@ General.Terminal = 1;
 Geometry.SnapPoints = 0;
 
 // Wellbore dimensions
-Lw = 300.0;
-Rw = 0.1;
+Lw = 200.0;
+Rw = 0.5;
 
 // Near-well region dimensions (in function of wellbore dimensions)
 // Lr = Lw+500*Rw;
 // Hr = 500*Rw;
 // Wr = Hr;
 
-Hr = 100;
+Hr = 50.0;
 Lr = Lw+Hr;
 Wr = Hr;
 
@@ -24,9 +24,9 @@ ecc = 0; // Eccentricity of the wellbore (0 <= ecc <= 0.5)
 max_vert_disp = Hr/2-Rw; //[m]  
 
 // Meshing parameters
-h_div = 12;    // Horizontal division of the wellbore
+h_div = 5;    // Horizontal division of the wellbore
 r_div = 5;    // Radial division (of each circle quarter)
-l_div = 60;   // Axial division of the near-well region
+l_div = 20;   // Axial division of the near-well region
 p_res = 1.6;  // Progression coefficient of the near-well region mesh
 p_well = 0.3; // Progression coefficient of the wellbore mesh
 
@@ -201,12 +201,12 @@ Mesh.Smoothing = 0;
 Mesh 2;
 
 // Meshing smoothing loop
-For k In {0:40:1}
-	OptimizeMesh "Laplace2D";
-   Printf("k = %f", k );
-   k++;
-EndFor
+// For k In {0:40:1}
+// 	OptimizeMesh "Laplace2D";
+//    Printf("k = %f", k );
+//    k++;
+// EndFor
 
 Mesh 3;
 Coherence Mesh;
-Save "mesh3D_reservoirTest.msh";
+Save "../input/easyMesh.msh";

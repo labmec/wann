@@ -128,34 +128,50 @@ def main() -> int:
     values.update(MESH_PARAMS)
 
     reservoir_format = json_data["ReservoirData"]["format"]
-    if reservoir_format not in {"box", "pill", "ball"}:
+    if reservoir_format not in {"box", "pill", "ball", "nearWellbore"}:
         print(f"Unsupported ReservoirData.format value: {reservoir_format}", file=sys.stderr)
         return 1
 
     output_file = json_data["MeshData"]["file"]
-    if reservoir_format == "box":
-        reservoir_geo = "reservoirBox.geo"
-    elif reservoir_format == "pill":
-        reservoir_geo = "reservoirPill.geo"
-    else:
-        reservoir_geo = "reservoirBall.geo"
     final_mesh_path = resolve_output_path(json_path, output_file)
 
-    run_gmsh(args.gmsh, script_dir, build_gmsh_args(values, reservoir_geo, True))
-    run_gmsh(args.gmsh, script_dir, build_gmsh_args(values, "nearWell.geo", True))
-    run_gmsh(args.gmsh, script_dir, build_merge_args(values, "combineMeshes.geo", output_file))
+    if reservoir_format == "nearWellbore":
+        run_gmsh(args.gmsh, script_dir, build_gmsh_args(values, "nearWellOnly.geo", True))
 
-    merged_candidates = [
-        script_dir / "combined.msh",
-        json_path.parent / "combined.msh",
-    ]
-    for merged_mesh_path in merged_candidates:
-        if merged_mesh_path.exists():
-            final_mesh_path.parent.mkdir(parents=True, exist_ok=True)
-            if final_mesh_path.exists():
-                final_mesh_path.unlink()
-            merged_mesh_path.replace(final_mesh_path)
-            break
+        near_well_candidates = [
+            script_dir / "nearWell.msh",
+            json_path.parent / "nearWell.msh",
+        ]
+        for near_well_mesh_path in near_well_candidates:
+            if near_well_mesh_path.exists():
+                final_mesh_path.parent.mkdir(parents=True, exist_ok=True)
+                if final_mesh_path.exists():
+                    final_mesh_path.unlink()
+                near_well_mesh_path.replace(final_mesh_path)
+                break
+    else:
+        if reservoir_format == "box":
+            reservoir_geo = "reservoirBox.geo"
+        elif reservoir_format == "pill":
+            reservoir_geo = "reservoirPill.geo"
+        else:
+            reservoir_geo = "reservoirBall.geo"
+
+        run_gmsh(args.gmsh, script_dir, build_gmsh_args(values, reservoir_geo, True))
+        run_gmsh(args.gmsh, script_dir, build_gmsh_args(values, "nearWell.geo", True))
+        run_gmsh(args.gmsh, script_dir, build_merge_args(values, "combineMeshes.geo", output_file))
+
+        merged_candidates = [
+            script_dir / "combined.msh",
+            json_path.parent / "combined.msh",
+        ]
+        for merged_mesh_path in merged_candidates:
+            if merged_mesh_path.exists():
+                final_mesh_path.parent.mkdir(parents=True, exist_ok=True)
+                if final_mesh_path.exists():
+                    final_mesh_path.unlink()
+                merged_mesh_path.replace(final_mesh_path)
+                break
 
     return 0
 

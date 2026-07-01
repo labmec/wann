@@ -1,6 +1,6 @@
 {
   "MeshData": {
-    "file": "ozkan1999.msh",
+    "file": "simpleOzkan.msh",
     "customRefinement": 0,
     "NumUniformRef": 0,
     "NumDirRef": 0,
@@ -11,7 +11,7 @@
     "pOrder": 2,
     "radius": 0.0762,
     "length": 800.1,
-    "height": 3.3528,
+    "height": 10.0,
     "eccentricity": [0.0, 0.0, 0.0],
     "BCs": [
       {
@@ -28,7 +28,7 @@
   },
   "ReservoirData": {
     "name": "volume_reservoir",
-    "format": "pill",
+    "format": "nearWellbore",
     "perm": [8.38885e-12, 8.38885e-12, 1.48038e-12], // m^2
     "porosity": 1.0,
     "pOrder": 1,

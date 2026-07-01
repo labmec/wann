@@ -1,6 +1,6 @@
 {
   "MeshData": {
-    "file": "ozkan1999.msh",
+    "file": "simplestGoalDarcy.msh",
     "customRefinement": 0,
     "NumUniformRef": 0,
     "NumDirRef": 0,
@@ -9,15 +9,15 @@
   "WellboreData": {
     "name": "curve_wellbore",
     "pOrder": 2,
-    "radius": 0.0762,
-    "length": 800.1,
-    "height": 3.3528,
+    "radius": 10.0,
+    "length": 100.0,
+    "height": 40.0,
     "eccentricity": [0.0, 0.0, 0.0],
     "BCs": [
       {
         "name": "point_heel",
         "type": 1, //dirichlet:0    neumann:1
-        "value": -0.0552
+        "value": -1.0e-2
       },
       {
         "name": "point_toe",
@@ -28,13 +28,13 @@
   },
   "ReservoirData": {
     "name": "volume_reservoir",
-    "format": "pill",
-    "perm": [8.38885e-12, 8.38885e-12, 1.48038e-12], // m^2
+    "format": "box",
+    "perm": 1.0,
     "porosity": 1.0,
     "pOrder": 1,
-    "height": 21.9456,
-    "width": 1692.2496,
-    "length": 4000.0,
+    "height": 80.0,
+    "width": 100.0,
+    "length": 200.0,
     "BCs": [
       {
         "name": "surface_farfield",
@@ -45,6 +45,11 @@
         "name": "surface_cap_rock",
         "type": 1,
         "value": 0.0
+      },
+      {
+        "name": "surface_wellbore_cylinder",
+        "type": 0,
+        "value": -5.0
       },
       {
         "name": "surface_wellbore_heel",
@@ -60,12 +65,12 @@
   },
   "FluidData": {
     "name": "oil",
-    "viscosity": 1.43e-3, // Pa.s
-    "density": 881.0 // kg/m^3
+    "viscosity": 1.0, // Pa.s
+    "density": 1.0 // kg/m^3
   },
   "PostProcData": {
-    "wellbore_vtk": "OzkanWell",
-    "reservoir_vtk": "OzkanReservoir",
+    "wellbore_vtk": "WannWell",
+    "reservoir_vtk": "WannReservoir",
     "training_data": "training_data.txt",
     "vtk_resolution": 0,
     "training_resolution": 10, //number of subdivisions to generate training data
@@ -73,8 +78,8 @@
     "verbosityLevel": 1
   },
   "NumericsData": {
-    "nthreads": 11,
-    "maxIterations" : 10,
+    "nthreads": 10,
+    "maxIterations" : 8,
     "res_tol": 1e-6,
     "corr_tol": 1e-6
   }

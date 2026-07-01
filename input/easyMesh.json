@@ -4,20 +4,20 @@
     "customRefinement": 0,
     "NumUniformRef": 0,
     "NumDirRef": 0,
-    "ToCylindrical": 1
+    "ToCylindrical": 0
   },
   "WellboreData": {
     "name": "curve_wellbore",
     "pOrder": 2,
-    "radius": 0.5,
+    "radius": 0.1,
     "length": 200.0,
-    "height": 10.0,
+    "height": 25.0,
     "eccentricity": [0.0, 0.0, 0.0],
     "BCs": [
       {
         "name": "point_heel",
         "type": 1, //dirichlet:0    neumann:1
-        "value": -1.84e-3
+        "value": -1e-3
       },
       {
         "name": "point_toe",
@@ -28,13 +28,13 @@
   },
   "ReservoirData": {
     "name": "volume_reservoir",
-    "format": "box",
-    "perm": 2.96e-12,
+    "format": "nearWellbore",
+    "perm": 1.0e-12,
     "porosity": 1.0,
     "pOrder": 1,
-    "height": 30.0,
-    "width": 200.0,
-    "length": 400.0,
+    "height": 50.0,
+    "width": 50.0,
+    "length": 300.0,
     "BCs": [
       {
         "name": "surface_farfield",
@@ -61,7 +61,7 @@
   "FluidData": {
     "name": "oil",
     "viscosity": 1.0e-3, // Pa.s
-    "density": 784.9 // kg/m^3
+    "density": 1000.0 // kg/m^3
   },
   "PostProcData": {
     "wellbore_vtk": "WannWell",
@@ -73,8 +73,8 @@
     "verbosityLevel": 1
   },
   "NumericsData": {
-    "nthreads": 4,
-    "maxIterations" : 10,
+    "nthreads": 10,
+    "maxIterations" : 8,
     "res_tol": 1e-6,
     "corr_tol": 1e-6
   }
