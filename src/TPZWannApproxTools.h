@@ -15,7 +15,7 @@
 class TPZWannApproxTools {
 
 public:
-  static TPZMultiphysicsCompMesh* CreateMultiphysicsCompMesh(TPZGeoMesh* gmesh, ProblemData* SimData, TPZAnalyticSolution* exactsol);
+  static TPZMultiphysicsCompMesh* CreateMultiphysicsCompMesh(TPZGeoMesh* gmesh, ProblemData* SimData, TPZAnalyticSolution* exactsol, bool isDualProblem = false);
   static TPZCompMesh* CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TPZAnalyticSolution *exact);
 
 private:

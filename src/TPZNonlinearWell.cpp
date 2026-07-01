@@ -105,6 +105,14 @@ void TPZNonlinearWell::Contribute(const TPZVec<TPZMaterialDataT<STATE>> &datavec
     ef.AddContribution(nphiQ, 0, phiP, 0, Aux, 0, -factor);
     factor = fKvw * fPres * weight;
     ef.AddContribution(nphiQ, 0, phiP, 0, Aux, 0, -factor);
+
+    TPZFNMatrix<1, REAL> dualFunctional(1, 1, 0.0);
+    if (fForcingFunctionDual) {
+      TPZManVector<STATE> res(1);
+      fForcingFunctionDual(datavec[1].x, res);
+      dualFunctional(0, 0) = res[0];
+      ef.AddContribution(0, 0, divQ, 0, dualFunctional, 1, weight);
+    }
 }
 
 void TPZNonlinearWell::ContributeBC(const TPZVec<TPZMaterialDataT<STATE>> &datavec, REAL weight, TPZFMatrix<STATE> &ek,
@@ -166,6 +174,8 @@ void TPZNonlinearWell::ContributeResidual(const TPZVec<TPZMaterialDataT<STATE>> 
     REAL reynolds = (fRho * std::abs(Qsol) * fDw) / fMu;
     bool turbulent = reynolds > 1187.38;
 
+    turbulent = false;
+
     // Residual vector constitutive equation (negative)
     REAL factor = turbulent ? fC * weight * Qsol * pow(std::abs(Qsol), 3. / 4.) : fCLin * Qsol * weight;
     ef.AddContribution(0, 0, phiQ, 0, Aux, 0, -factor);
@@ -179,6 +189,14 @@ void TPZNonlinearWell::ContributeResidual(const TPZVec<TPZMaterialDataT<STATE>> 
     ef.AddContribution(nphiQ, 0, phiP, 0, Aux, 0, -factor);
     factor = fKvw * fPres * weight;
     ef.AddContribution(nphiQ, 0, phiP, 0, Aux, 0, -factor);
+
+    TPZFNMatrix<1, REAL> dualFunctional(1, 1, 0.0);
+    if (fForcingFunctionDual) {
+      TPZManVector<STATE> res(1);
+      fForcingFunctionDual(datavec[1].x, res);
+      dualFunctional(0, 0) = res[0];
+      ef.AddContribution(0, 0, divQ, 0, dualFunctional, 1, weight);
+    }
 }
 
 void TPZNonlinearWell::Solution(const TPZVec<TPZMaterialDataT<STATE>> &datavec, int var, TPZVec<STATE> &solOut)

@@ -4,7 +4,7 @@
 #include "TPZWannMixedDarcyNL.h"
 #include "TPZWannDarcyNL.h"
 
-TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TPZAnalyticSolution *exact)
+TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TPZAnalyticSolution *exact, bool isDualProblem)
 {
 
   const int dim = gmesh->Dimension();
@@ -57,9 +57,6 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
   auto &WellboreData = SimData->m_Wellbore;
   {
     const int dimwell = 1;
-    // Add flag to indicate if we want to use nonlinear material?
-    // TPZMixedDarcyFlow *wellboreMat = new TPZMixedDarcyFlow(SimData->ECurveWell, dimwell);
-    // TPZNonlinearWell *wellboreMat = new TPZNonlinearWell(SimData->ECurveWell, dimwell);
     
     TPZNonlinearWell *wellboreMat =
         new TPZNonlinearWell(SimData->ECurveWell, 2 * WellboreData.radius,
@@ -67,6 +64,36 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
     if (hasAnalyticSol) {
       wellboreMat->SetExactSol(exact->ExactSolution(), 3);
       wellboreMat->SetForcingFunction(exact->ForceFunc(), 3);
+    }
+
+    // Workaround to easy the dual computation.
+    // Basically tells the Contribute method of TPZNonlinearWell to add an extra source term
+    // TODO: refactor to avoid this kind of workaround
+    if (isDualProblem) {
+        // Goal functional
+        // Forcing function for the dual problem
+        REAL gLenght = SimData->m_Wellbore.length;
+        auto ForcingFunctionDual = [gLenght](const TPZVec<REAL> &pt,
+                                      TPZVec<STATE> &result) {
+          result.Resize(1); // Ensure proper size
+          REAL x = pt[0];
+          REAL y = pt[1];
+          REAL z = pt[2];
+
+          result[0] = 0.; // Tests 1 and 2
+          
+        //   if (x >= 0.0 && x <= gLenght) {
+        //     result[0] = (1.0 + exp((-x / (gLenght * gLenght)) * (gLenght - x)));
+        //   }
+
+          REAL a = 2.0*gLenght/6.0;
+          REAL b = 4.0 * gLenght / 6.0;
+          REAL k = 0.2;
+          result[0] = (1.0 / (1.0 + std::exp(-k * (x - a)))) *
+                      (1.0 / (1.0 + std::exp(k * (x - b))));
+        };
+
+        wellboreMat->SetForcingFunctionDual(ForcingFunctionDual, 5);
     }
 
     hdivCreator.InsertMaterialObject(wellboreMat); // This will only be used in the creation of the multiphysics mesh since the dimension is smaller than the dimension of the geometric mesh
@@ -683,13 +710,6 @@ void TPZWannApproxTools::EqualizePressureConnects(TPZCompMesh *cmesh, ProblemDat
     {
       DebugStop();
     }
-
-    std::cout << "Connect indexes of cel: ";
-    for (int i = 0; i < cel->NConnects(); i++)
-    {
-      std::cout << cel->ConnectIndex(i) << " ";
-    }
-    std::cout << std::endl;
   }
   cmesh->CleanUpUnconnectedNodes();
 
