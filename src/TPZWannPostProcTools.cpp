@@ -265,24 +265,28 @@ REAL TPZWannPostProcTools::ProductivityIndex(TPZCompMesh *cmesh, ProblemData *Si
   REAL totalFlux = 0.;
   REAL pheel = 0.;
 
-  for (TPZGeoEl* gel : gmesh->ElementVec()) {
-    if (!gel) continue;
-    if (gel->MaterialId() != SimData->EPointHeel) continue;
-    TPZGeoElSide gelside(gel, 0);
-    TPZGeoElSide neighside = gelside.HasNeighbour(SimData->ECurveWell);
-    TPZGeoEl *gelWell = neighside.Element();
-    if (!gelWell) DebugStop();
+  for (TPZCompEl* cel : cmesh->ElementVec()) {
+    if (!cel) continue;
+    TPZGeoEl* gel = cel->Reference();
+    if (!gel) DebugStop();
+    if (gel->HasSubElement()) DebugStop();
+    if (gel->MaterialId() != SimData->ECurveWell) continue;
 
-    TPZManVector<REAL, 3> qsi(gelWell->Dimension(), 0.);
-    TPZGeoElSide gelsideWell(gelWell, 0);
-    if (gelsideWell.HasNeighbour(SimData->EPointHeel)) {
+    TPZManVector<REAL, 3> qsi(gel->Dimension(), 0.);
+    TPZGeoElSide gelsideA(gel, 0);
+    TPZGeoElSide gelsideB(gel, 1);
+    TPZGeoElSide neighsideA = gelsideA.HasNeighbour(SimData->EPointHeel);
+    TPZGeoElSide neighsideB = gelsideB.HasNeighbour(SimData->EPointHeel);
+
+    if (neighsideA) {
       qsi[0] = -1.0;
-    } else {
+    } else if (neighsideB) {
       qsi[0] = 1.0;
+    } else {
+      continue;; // We want an element that is connected to the heel point
     }
-    
-    TPZCompEl* celWell = gelWell->Reference();
-    TPZMaterial* mat = celWell->Material();
+
+    TPZMaterial* mat = cel->Material();
     int pind;
     int qind;
     if (isMultiphysics) {
@@ -298,9 +302,9 @@ REAL TPZWannPostProcTools::ProductivityIndex(TPZCompMesh *cmesh, ProblemData *Si
     }
 
     TPZManVector<STATE, 3> output(1);
-    celWell->Solution(qsi,pind,output);
+    cel->Solution(qsi,pind,output);
     pheel = output[0];
-    celWell->Solution(qsi, qind, output);
+    cel->Solution(qsi, qind, output);
     totalFlux = output[0];
   }
 
