@@ -33,6 +33,6 @@ DefineConstant[
 // Derived parameters
 axial_div = Floor(h_div*Lw/(3*Hr));
 size_min_res = Lw/axial_div;
-size_max_res = Lr/10;
+size_max_res = Lr/30;
 dist_min_res = Hr;
 dist_max_res = Wr/3;

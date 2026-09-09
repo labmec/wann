@@ -54,11 +54,13 @@ Background Field = 2;
 Mesh.MeshSizeFromPoints = 0;
 Mesh.MeshSizeFromCurvature = 0;
 Mesh.MeshSizeExtendFromBoundary = 0;
+Mesh.Algorithm = 8;
 
 // Build a planar surface with a hole: BigBox minus SmallBox
 clOuter = newcl; Curve Loop(clOuter) = {l1, l2, l3, l4};
 clInner = newcl; Curve Loop(clInner) = {l5, l6, l7, l8};
 sf = news; Plane Surface(sf) = {clOuter, clInner};
+Recombine Surface "*";
 
 // Extrude the resulting surface in z direction
 v[] = Extrude {0, 0, Hr} {Surface{sf}; Layers{h_div}; Recombine;};
@@ -72,4 +74,6 @@ Physical Volume("volume_reservoir",310) = {1};
 
 // Generate mesh
 Mesh 3;
+Mesh.RecombineOptimizeTopology = 1;
+Mesh.RecombineNodeRepositioning = 1;
 Save "reservoir.msh";

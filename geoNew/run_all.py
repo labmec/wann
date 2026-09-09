@@ -24,7 +24,7 @@ PARAM_KEYS = {
 }
 
 MESH_PARAMS = {
-    "h_div": 5,
+    "h_div": 3,
     "axial_div": 200,
     "radial_div": 8,
     "p_res": 1.6,
