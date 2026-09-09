@@ -1,7 +1,7 @@
 {
   "MeshData": {
     "file": "ozkan1999.msh",
-    "customRefinement": 0,
+    "customRefinement": 1,
     "NumUniformRef": 0,
     "NumDirRef": 0,
     "ToCylindrical": 1

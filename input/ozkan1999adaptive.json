@@ -1,6 +1,6 @@
 {
   "MeshData": {
-    "file": "ozkan1999Box.msh",
+    "file": "ozkan1999.msh",
     "customRefinement": 0,
     "NumUniformRef": 0,
     "NumDirRef": 0,
@@ -28,13 +28,13 @@
   },
   "ReservoirData": {
     "name": "volume_reservoir",
-    "format": "box",
-    "perm": [8.38885e-12, 8.38885e-12, 1.48038e-12], // m^2
+    "format": "pill",
+    "perm": [1.0, 1.0, 0.176469957], // m^2
     "porosity": 1.0,
     "pOrder": 1,
     "height": 21.9456,
-    "width": 1700.0,
-    "length": 2500.0,
+    "width": 1692.2496,
+    "length": 4000.0,
     "BCs": [
       {
         "name": "surface_farfield",
@@ -60,7 +60,7 @@
   },
   "FluidData": {
     "name": "oil",
-    "viscosity": 1.43e-3, // Pa.s
+    "viscosity": 1.0, // Pa.s
     "density": 881.0 // kg/m^3
   },
   "PostProcData": {
@@ -73,7 +73,7 @@
     "verbosityLevel": 1
   },
   "NumericsData": {
-    "nthreads": 0,
+    "nthreads": 15,
     "maxIterations" : 10,
     "res_tol": 1e-6,
     "corr_tol": 1e-6
