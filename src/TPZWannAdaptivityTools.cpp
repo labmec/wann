@@ -2,6 +2,7 @@
 #include <random>
 #include <thread>
 #include <numeric>
+#include <algorithm>
 #include "TPZRefPatternDataBase.h"
 #include "TPZVTKGeoMesh.h"
 #include "TPZVTKGenerator.h"
@@ -218,8 +219,12 @@ REAL TPZWannAdaptivityTools::PragerSynge(TPZMultiphysicsCompMesh* cmeshMixed, TP
       if (celH1->Material()->Id() != matid) DebugStop();
 
       REAL hk = ElementDiameter(gel);
-      REAL perm = SimData->m_Reservoir.perm[0];
-      REAL sqrtPerm = sqrt(perm);
+      TPZManVector<REAL,3> perm = SimData->m_Reservoir.perm;
+      TPZManVector<REAL,3> sqrtPerm(3,0.0);
+      for (int d = 0; d < dim; ++d) {
+        sqrtPerm[d] = sqrt(perm[d]);
+      }
+      REAL minPerm = *std::min_element(perm.begin(), perm.end());
 
       REAL fluxError = 0.0;
       REAL balanceError = 0.0;
@@ -249,7 +254,7 @@ REAL TPZWannAdaptivityTools::PragerSynge(TPZMultiphysicsCompMesh* cmeshMixed, TP
         TPZManVector<REAL,3> termH1(dim, 0.0);
         celH1->Solution(ptInElement, 2, termH1);
         for (int d = 0; d < dim; ++d) {
-          termH1[d] = sqrtPerm * termH1[d];
+          termH1[d] = sqrtPerm[d] * termH1[d];
         }
 
         // Compute Hdiv term -K^(-1/2) sig and div(sig)
@@ -258,7 +263,7 @@ REAL TPZWannAdaptivityTools::PragerSynge(TPZMultiphysicsCompMesh* cmeshMixed, TP
         celMixed->Solution(ptInElement, 1, termHdiv);
         celMixed->Solution(ptInElement, 5, divFluxMixed);
         for (int d = 0; d < dim; ++d) {
-          termHdiv[d] = (-1./sqrtPerm) * termHdiv[d];
+          termHdiv[d] = (-1./sqrtPerm[d]) * termHdiv[d];
         }
 
         // Flux contribution
@@ -276,7 +281,7 @@ REAL TPZWannAdaptivityTools::PragerSynge(TPZMultiphysicsCompMesh* cmeshMixed, TP
       }
 
       int64_t igeo = cmeshMixed->Element(icel)->Reference()->Index();
-      elementErrors[igeo] = sqrt(fluxError) + (hk/(M_PI*sqrt(perm)))*sqrt(balanceError);
+      elementErrors[igeo] = sqrt(fluxError) + (hk/(M_PI*sqrt(minPerm)))*sqrt(balanceError);
       elementErrorsAux[icel] = elementErrors[igeo];
 
       totalError += elementErrors[igeo] * elementErrors[igeo];
@@ -656,29 +661,73 @@ REAL TPZWannAdaptivityTools::GoalContribution3D(TPZCompEl* celMixed, TPZCompEl* 
   return goalError;
 }
 
-void TPZWannAdaptivityTools::MarkElementsForRefinement(const TPZVec<REAL>& elementErrors, TPZVec<int>& refinementIndicator, REAL theta) {
-  int64_t nels = elementErrors.size();
+void TPZWannAdaptivityTools::MarkElementsForRefinement(const TPZVec<REAL>& elementErrors, TPZVec<int>& refinementIndicator, REAL theta, MarkingStrategy strategy) {
+  switch (strategy) {
+    case MarkingStrategy::ESimple:
+      SimpleMarking(elementErrors, refinementIndicator, theta);
+      return;
+    case MarkingStrategy::EBulk:
+      BulkMarking(elementErrors, refinementIndicator, theta);
+      return;
+    default:
+      std::cerr << "Warning: unknown marking strategy. Falling back to simple marking." << std::endl;
+      SimpleMarking(elementErrors, refinementIndicator, theta);
+      return;
+  }
+}
+
+void TPZWannAdaptivityTools::SimpleMarking(const TPZVec<REAL>& elementErrors, TPZVec<int>& refinementIndicator, REAL theta) {
+  const int64_t nels = elementErrors.size();
   refinementIndicator.Resize(nels);
   refinementIndicator.Fill(0);
+
+  if (nels == 0) {
+    return;
+  }
+
+  const REAL maxError = *std::max_element(elementErrors.begin(), elementErrors.end());
+  const REAL threshold = theta * maxError;
+
+  for (int64_t iel = 0; iel < nels; ++iel) {
+    if (elementErrors[iel] >= threshold) {
+      refinementIndicator[iel] = 1;
+    }
+  }
+}
+
+void TPZWannAdaptivityTools::BulkMarking(const TPZVec<REAL>& elementErrors, TPZVec<int>& refinementIndicator, REAL theta) {
+  const int64_t nels = elementErrors.size();
+  refinementIndicator.Resize(nels);
+  refinementIndicator.Fill(0);
+
+  if (nels == 0) {
+    return;
+  }
+
   REAL totalError = 0.0;
   for (int64_t iel = 0; iel < nels; ++iel) {
       totalError += elementErrors[iel];
   }
-  totalError = totalError * theta;
+  const REAL targetError = totalError * theta;
 
-  // Sort the element errors
+  // Sort the element errors from largest to smallest
   std::vector<std::pair<REAL, int64_t>> errorIndexPairs;
+  errorIndexPairs.reserve(static_cast<size_t>(nels));
   for (int64_t iel = 0; iel < nels; ++iel) {
       errorIndexPairs.emplace_back(elementErrors[iel], iel);
   }
-  std::sort(errorIndexPairs.begin(), errorIndexPairs.end());
+  std::sort(errorIndexPairs.begin(), errorIndexPairs.end(),
+            [](const std::pair<REAL, int64_t>& lhs, const std::pair<REAL, int64_t>& rhs) {
+              return lhs.first > rhs.first;
+            });
 
   REAL accumulatedError = 0.0;
-  while (accumulatedError < totalError && !errorIndexPairs.empty()) {
-      auto [error, index] = errorIndexPairs.back();
-      errorIndexPairs.pop_back();
+  for (const auto& [error, index] : errorIndexPairs) {
       accumulatedError += error;
       refinementIndicator[index] = 1;
+      if (accumulatedError >= targetError) {
+          break;
+      }
   }
 }
 
@@ -854,7 +903,7 @@ void TPZWannAdaptivityTools::MeshWellCompatibility(TPZGeoMesh* gmesh, TPZVec<int
   }
 }
 
-void TPZWannAdaptivityTools::AdaptivityProcess(TPZGeoMesh* gmesh, ProblemData* SimData, TPZVec<REAL>& elementErrors, REAL tol) {
+void TPZWannAdaptivityTools::AdaptivityProcess(TPZGeoMesh* gmesh, ProblemData* SimData, TPZVec<REAL>& elementErrors, TPZVec<int64_t>& refinedElements, REAL tol, MarkingStrategy strategy) {
   if (elementErrors.size() != gmesh->NElements()) {
     std::cerr << "Error: elementErrors size does not match number of geometric elements." << std::endl;
     DebugStop();
@@ -863,7 +912,7 @@ void TPZWannAdaptivityTools::AdaptivityProcess(TPZGeoMesh* gmesh, ProblemData* S
   TPZVec<int> refinementIndicator(gmesh->NElements(), 0);
     
   // Mark elements for refinement
-  TPZWannAdaptivityTools::MarkElementsForRefinement(elementErrors, refinementIndicator, tol);
+  TPZWannAdaptivityTools::MarkElementsForRefinement(elementErrors, refinementIndicator, tol, strategy);
   REAL sumRef = std::accumulate(refinementIndicator.begin(), refinementIndicator.end(), 0);
   std::cout << "Initial number of to-refine elements: " << sumRef << std::endl;
 
@@ -882,16 +931,16 @@ void TPZWannAdaptivityTools::AdaptivityProcess(TPZGeoMesh* gmesh, ProblemData* S
   sumRef = std::accumulate(refinementIndicator.begin(), refinementIndicator.end(), 0);
   std::cout << "Final number of to-refine elements: " << sumRef << std::endl;
 
-  // From refinementIndicator, get the list of elements to refine
-  TPZVec<int64_t> toRefine;
+  // List of elements to refine
+  refinedElements.resize(0);
   for (int64_t iel = 0; iel < refinementIndicator.size(); ++iel) {
     if (refinementIndicator[iel] == 1) {
-      toRefine.push_back(iel);
+      refinedElements.push_back(iel);
     }
   }
 
   // Finally perform the refinement.
-  TPZWannGeometryTools::hRefinement(gmesh, toRefine);
+  TPZWannGeometryTools::hRefinement(gmesh, refinedElements);
 }
 
 
