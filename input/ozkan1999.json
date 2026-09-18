@@ -1,7 +1,7 @@
 {
   "MeshData": {
     "file": "ozkan1999.msh",
-    "customRefinement": 1,
+    "customRefinement": 0,
     "NumUniformRef": 0,
     "NumDirRef": 0,
     "ToCylindrical": 1
@@ -73,7 +73,7 @@
     "verbosityLevel": 1
   },
   "NumericsData": {
-    "nthreads": 11,
+    "nthreads": 0,
     "maxIterations" : 10,
     "res_tol": 1e-6,
     "corr_tol": 1e-6

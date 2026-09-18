@@ -1,12 +1,11 @@
 #ifndef TPZWannDarcyNL_H
 #define TPZWannDarcyNL_H
 
-#include "Material/DarcyFlow/TPZDarcyFlow.h"
-#include "TPZAnisotropicPermeability.h"
+#include "TPZDarcyAnisotropic.h"
 
-class TPZWannDarcyNL : public TPZDarcyFlow, public TPZAnisotropicPermeability {
+class TPZWannDarcyNL : public TPZDarcyAnisotropic {
 
-    using TBase = TPZDarcyFlow;
+    using TBase = TPZDarcyAnisotropic;
 
 public:
     /**

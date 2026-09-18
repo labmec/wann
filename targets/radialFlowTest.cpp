@@ -24,34 +24,35 @@
 
 ProblemData SimData;
 
-// How to get things from SimData?
 auto exactSolution = [](const TPZVec<REAL> &loc, TPZVec<STATE> &result, TPZFMatrix<STATE> &deriv) {
-    // loc[0], loc[1], loc[2] are x, y, z coordinates
-    // result[0] should contain the pressure (scalar)
-    // deriv should be a Dim x 1 matrix with the gradient
-    
-    REAL x = loc[0];
-    REAL y = loc[1];
-    REAL z = loc[2];
-    
-    // Example: radial solution for cylindrical coordinates
-    REAL r = std::sqrt(y * y + z * z);
-    REAL r0 = SimData.m_Wellbore.radius;  // wellbore radius
-    REAL r_ext = SimData.m_Reservoir.height;  // external radius (reservoir height)
-    REAL p0 = 0.0;
-    REAL p_ext = SimData.m_Reservoir.BCs.at("surface_farfield").value;  // pressure at the far field
-    
-    // Pressure: logarithmic profile p = p0 + (p_ext - p0) * ln(r/r0) / ln(r_ext/r0)
-    REAL ln_ratio = std::log(r / r0) / std::log(r_ext / r0);
-    result[0] = p0 + (p_ext - p0) * ln_ratio;
-    
-    // Gradient
-    REAL dPdr = (p_ext - p0) / (r * std::log(r_ext / r0));
-    
-    // Chain rule: dp/dx = dP/dr * dr/dx = dP/dr * x/r
-    deriv(0, 0) = 0.0;  // dP/dx
-    deriv(1, 0) = dPdr * y / r;  // dP/dy
-    deriv(2, 0) = dPdr * z / r;  // dP/dz
+  result.Resize(1);
+  deriv.Redim(3, 1);
+
+  // loc[0], loc[1], loc[2] are x, y, z coordinates
+  // result[0] should contain the pressure (scalar)
+  // deriv should be a 3 x 1 matrix with the gradient
+
+  REAL y = loc[1];
+  REAL z = loc[2];
+
+  // Example: radial solution for cylindrical coordinates
+  REAL r = std::sqrt(y * y + z * z);
+  REAL r0 = SimData.m_Wellbore.radius;  // wellbore radius
+  REAL r_ext = SimData.m_Reservoir.height;  // external radius (reservoir height)
+  REAL p_ext = SimData.m_Reservoir.BCs.at("surface_farfield").value;  // pressure at the far field
+  REAL p0 = SimData.m_Reservoir.BCs.at("surface_wellbore_cylinder").value;  // pressure at inner boundary (wellbore)
+
+  // Pressure: logarithmic profile p = p0 + (p_ext - p0) * ln(r/r0) / ln(r_ext/r0)
+  REAL ln_ratio = std::log(r / r0) / std::log(r_ext / r0);
+  result[0] = p0 + (p_ext - p0) * ln_ratio;
+
+  // Gradient
+  REAL dPdr = (p_ext - p0) / (r * std::log(r_ext / r0));
+
+  // Chain rule: dp/dx = dP/dr * dr/dx = dP/dr * x/r
+  deriv(0, 0) = 0.0;  // dP/dx
+  deriv(1, 0) = dPdr * y / r;  // dP/dy
+  deriv(2, 0) = dPdr * z / r;  // dP/dz
 };
 
 // ====================
@@ -68,12 +69,8 @@ TPZGeoMesh *CreateRadialMesh(ProblemData *SimData);
 
 int main(int argc, char *argv[]) {
   
-  int maxRef = 3; // Maximum number of refinements to be performed.
+  int maxRef = 4; // Maximum number of refinements to be performed.
   std::ofstream results("radialTestResults.txt");
-
-  TLaplaceExample1 exact; // Global variable to be used in the material objects
-  exact.fDimension = 3;
-  exact.fExact = TLaplaceExample1::ENone;
 
   std::string jsonfile = "radialTest.json";
 
@@ -98,6 +95,13 @@ int main(int argc, char *argv[]) {
   // Problem data
   SimData.ReadJson(jsonfile);
 
+  if (SimData.m_Wellbore.radius <= 0.0 || SimData.m_Reservoir.height <= 0.0 ||
+      SimData.m_Reservoir.BCs.count("surface_farfield") == 0 ||
+      SimData.m_Reservoir.BCs.count("surface_wellbore_cylinder") == 0) {
+    std::cerr << "Invalid simulation data for exact solution." << std::endl;
+    DebugStop();
+  }
+
   // Read original geometric mesh and perform the refinement process 
   // described in refinementProcess.txt file
   TPZGeoMesh* gmesh = CreateRadialMesh(&SimData);
@@ -109,8 +113,8 @@ int main(int argc, char *argv[]) {
     results << "\n===== Running simulation at refinement level: " << ref << " =====" << std::endl;
 
     // Create computational meshes
-    TPZMultiphysicsCompMesh *cmesh = MixedDarcyCompMesh(gmesh, &SimData, true);
-    // TPZCompMesh *cmesh = H1DarcyCompMesh(gmesh, &SimData, true);
+    // TPZMultiphysicsCompMesh *cmesh = MixedDarcyCompMesh(gmesh, &SimData, true);
+    TPZCompMesh *cmesh = H1DarcyCompMesh(gmesh, &SimData, true);
 
     std::cout << "Number of equations: " << cmesh->NEquations() << std::endl;
     results << "Number of equations: " << cmesh->NEquations() << std::endl;
@@ -147,7 +151,7 @@ int main(int argc, char *argv[]) {
              (SimData.m_Fluid.viscosity *log(SimData.m_Reservoir.height / SimData.m_Wellbore.radius));
     Q = Q * (pr - pw);
 
-    // Computed flow entering the wellbore
+    // Computed flow entering the wellbore ---
     TPZVec<REAL> segmentPoints = {0.0, SimData.m_Wellbore.length};
     TPZVec<REAL> Qsim = TPZWannPostProcTools::ComputeWellFluxes(cmesh, &SimData, segmentPoints);
 
@@ -159,24 +163,38 @@ int main(int argc, char *argv[]) {
     results << "Computed flow entering the wellbore: " << Qsim
             << " (relative error: " << std::abs(Qsim[0] - Q) / std::abs(Q) * 100 << " %)" << std::endl;
 
-    // Approximation errors
-    // TPZVec<REAL> errorsMixed(5, 0.);
-    // TPZVec<REAL> errorsH1(3, 0.);
-    // std::fstream errorfile("errors.txt", std::ios::app);
-    // anMixed.SetThreadsForError(SimData.m_Numerics.nthreads);
-    // anH1.SetThreadsForError(SimData.m_Numerics.nthreads);
-    // anMixed.PostProcessError(errorsMixed, false, errorfile);
-    // anH1.PostProcessError(errorsH1, false, errorfile);
+    // Approximation errors ---
+    TPZVec<REAL> errors(3, 0.);
+    if (isHdiv) {
+      errors.Resize(5);
+      errors.Fill(0.);
+    }
 
-    // std::cout << "\nApproximation errors (H(div) mesh): " << std::endl;
-    // std::cout << "L2 norm of pressure error: " << errorsMixed[0] << std::endl;
-    // std::cout << "L2 norm of flux error: " << errorsMixed[1] << std::endl;
-    // std::cout << "H(div) norm of flux error: " << errorsMixed[4] << std::endl;
-    // std::cout << "L2 norm ofdivergence error: " << errorsMixed[2] << std::endl;
+    std::fstream errorfile("errors.txt", std::ios::app);
+    an.SetThreadsForError(SimData.m_Numerics.nthreads);
+    an.PostProcessError(errors, false, errorfile);
 
-    // std::cout << "\nApproximation errors (H1 mesh): " << std::endl;
-    // std::cout << "L2 norm of pressure error: " << errorsH1[1] << std::endl;
-    // std::cout << "L2 norm of flux error: " << errorsH1[2] << std::endl;
+    if (isHdiv) {
+      std::cout << "\nApproximation errors (H(div) mesh): " << std::endl;
+      std::cout << "L2 norm of pressure error: " << errors[0] << std::endl;
+      std::cout << "L2 norm of flux error: " << errors[1] << std::endl;
+      std::cout << "H(div) norm of flux error: " << errors[4] << std::endl;
+      std::cout << "L2 norm of divergence error: " << errors[2] << std::endl;
+
+      results << "\nApproximation errors (H(div) mesh): " << std::endl;
+      results << "L2 norm of pressure error: " << errors[0] << std::endl;
+      results << "L2 norm of flux error: " << errors[1] << std::endl;
+      results << "H(div) norm of flux error: " << errors[4] << std::endl;
+      results << "L2 norm of divergence error: " << errors[2] << std::endl;
+    } else {
+      std::cout << "\nApproximation errors (H1 mesh): " << std::endl;
+      std::cout << "L2 norm of pressure error: " << errors[1] << std::endl;
+      std::cout << "L2 norm of flux error: " << errors[2] << std::endl;
+
+      results << "\nApproximation errors (H1 mesh): " << std::endl;
+      results << "L2 norm of pressure error: " << errors[1] << std::endl;
+      results << "L2 norm of flux error: " << errors[2] << std::endl;
+    }
 
     // Plot final solution
     if (ref == maxRef) {
@@ -264,7 +282,7 @@ TPZMultiphysicsCompMesh *MixedDarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimD
   auto &ReservoirData = SimData->m_Reservoir;
 
   TPZMixedDarcyFlow *reservoirMat = new TPZMixedDarcyFlow(SimData->EDomain, gmesh->Dimension());
-  reservoirMat->SetExactSol(exactSolution, 1);
+  reservoirMat->SetExactSol(exactSolution, 8);
   reservoirMat->SetConstantPermeability(ReservoirData.perm[0]/SimData->m_Fluid.viscosity);
   hdivCreator.InsertMaterialObject(reservoirMat);
 
@@ -295,7 +313,7 @@ TPZCompMesh *H1DarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, bool isCon
   // Insert material
   TPZDarcyFlow *reservoirMat = new TPZDarcyFlow(SimData->EDomain, gmesh->Dimension());
 
-  reservoirMat->SetExactSol(exactSolution, 1);
+  reservoirMat->SetExactSol(exactSolution, 8);
   reservoirMat->SetConstantPermeability(ReservoirData.perm[0]/SimData->m_Fluid.viscosity);
   h1Creator.InsertMaterialObject(reservoirMat);
 

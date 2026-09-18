@@ -22,7 +22,7 @@ int main(int argc, char *argv[]) {
   exact.fDimension = 3;
   exact.fExact = TLaplaceExample1::ENone;
 
-  std::string jsonfile = "ozkan1999Box.json";
+  std::string jsonfile = "ozkan1999.json";
 
   if (argc > 2) {
     std::cout << argv[0] << " being called with too many arguments." << std::endl;
@@ -49,6 +49,9 @@ int main(int argc, char *argv[]) {
   // Read original geometric mesh and perform the refinement process 
   // described in refinementProcess.txt file
   TPZGeoMesh* gmesh = TPZWannGeometryTools::CreateGeoMesh(&SimData);
+  std::ofstream out("gmeshWannFinal.vtk");
+  TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
+  
 
   // H(div) Simulation
 
