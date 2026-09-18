@@ -62,13 +62,18 @@ public:
     STATE GetPermeability(const TPZVec<REAL> &coord);
 
     /**
+     * @brief Return the inverse of the permeability value at a coordinate.
+     * @param [in] coord coordinate of interest
+     * @param [out] inv_perm_matrix inverse permeability matrix at the given coordinate
+     */
+    void GetInversePermeability(const TPZVec<REAL> &coord, TPZFMatrix<STATE> &inv_perm_matrix);
+
+    /**
      * @brief Return the permeability value (or its average value) at a coordinate
      * @param [in] coord coordinate of interest
      * @param [out] perm_matrix permeability matrix at the given coordinate
      */
     void GetPermeability(const TPZVec<REAL> &coord, TPZFMatrix<STATE> &perm_matrix);
-
-    void GetInversePermeability(const TPZVec<REAL> &coord, TPZFMatrix<STATE> &inv_perm_matrix);
 
     [[nodiscard]] int ClassId() const override;
 
@@ -82,7 +87,6 @@ private:
     STATE fConstantPermeabilityScalar = 1.;
     TPZFMatrix<STATE> fConstantPermeability;
     TPZFMatrix<STATE> fConstantInversePermeability;
-
     bool fHomogeneous = true;
     bool fIsotropic = true;
 

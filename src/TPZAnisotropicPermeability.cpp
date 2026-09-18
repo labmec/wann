@@ -19,15 +19,19 @@ void TPZAnisotropicPermeability::SetConstantPermeability(const STATE constant) {
 }
 
 void TPZAnisotropicPermeability::SetConstantPermeability(TPZFMatrix<STATE> constant) {
-    if (constant.Cols() != constant.Rows() && constant.Cols() != 3) {
-        PZError << "Permeability matrix must be 3x3.";
-        DebugStop();
-    }
     fConstantPermeability = constant;
-    fConstantInversePermeability.Redim(3, 3);
-    constant.Inverse(fConstantInversePermeability,ELU);
     fHomogeneous = true;
     fIsotropic = false;
+    STATE determinant = constant(0, 0) * (constant(1, 1) * constant(2, 2) - constant(1, 2) * constant(2, 1))
+                       -constant(0, 1) * (constant(1, 0) * constant(2, 2) - constant(1, 2) * constant(2, 0))
+                       +constant(0, 2) * (constant(1, 0) * constant(2, 1) - constant(1, 1) * constant(2, 0));
+    if (determinant <= 0.) {
+        PZError << "Invalid permeability matrix determinant.";
+        DebugStop();
+    }
+    fConstantPermeabilityScalar = pow(determinant, 1./3.);
+    TPZFMatrix<STATE> aux_matrix = constant;
+    aux_matrix.Inverse(fConstantInversePermeability, ELU);
 }
 
 void TPZAnisotropicPermeability::SetPermeabilityFunction(IsotropicFunctionType &perm_function) {
@@ -47,7 +51,7 @@ STATE TPZAnisotropicPermeability::GetPermeability(const TPZVec<REAL> &coord) {
         return fHomogeneous ? fConstantPermeabilityScalar : fIsotropicPermeabilityFunction(coord);
     } else {
         std::cout << "Anisotropic permeability can not be represented as a scalar." << std::endl;
-        DebugStop();
+        return 0.;
     }
 }
 
