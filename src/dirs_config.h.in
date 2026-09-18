@@ -9,3 +9,7 @@
 #ifndef MESHESDIR
 #define MESHDIR "@MESHESDIR@"
 #endif
+
+#ifndef MESHESDIRNEW
+#define MESHESDIRNEW "@MESHESDIRNEW@"
+#endif

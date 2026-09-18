@@ -42,3 +42,6 @@ target_link_libraries(testDarcyNL PRIVATE WANN_lib)
 
 add_executable(test-nonlinear-1d test-nonlinear-1d.cpp)
 target_link_libraries(test-nonlinear-1d PRIVATE WANN_lib)
+
+add_executable(visualize visualizeMesh.cpp)
+target_link_libraries(visualize PRIVATE WANN_lib)

@@ -2,6 +2,7 @@
 set(INPUTSDIR ${PROJECT_SOURCE_DIR}/input)
 set(TRAININGSDIR ${PROJECT_SOURCE_DIR}/training)
 set(MESHESDIR ${PROJECT_SOURCE_DIR}/geo)
+set(MESHESDIRNEW ${PROJECT_SOURCE_DIR}/geoNew)
 set(CONFIG_H "${CMAKE_CURRENT_SOURCE_DIR}/dirs_config.h")
 configure_file ("${CMAKE_CURRENT_SOURCE_DIR}/dirs_config.h.in" ${CONFIG_H})
 
