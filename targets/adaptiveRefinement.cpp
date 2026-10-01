@@ -93,6 +93,7 @@ int main(int argc, char *argv[]) {
   int refIt = 0;
   REAL estimatedError = errorTolerance + 1.0;
   TPZVec estimatedErrorVec(maxIterations+1, 0.0);
+  TPZVec maxErrorVec(maxIterations+1, 0.0);
 
   // Open file to store refinement process
   std::string file = SimData.m_Mesh.file;
@@ -185,7 +186,9 @@ int main(int argc, char *argv[]) {
     // Prager-Synge error estimation
     estimatedError = TPZWannAdaptivityTools::PragerSynge(cmeshMixed, cmeshH1, &SimData, elementErrors, SimData.m_Numerics.nthreads);
     estimatedErrorVec[refIt] = estimatedError;
+    maxErrorVec[refIt] = *std::max_element(elementErrors.begin(), elementErrors.end());
     std::cout << "Estimated error: " << estimatedErrorVec[refIt] << std::endl;
+    std::cout << "Max element error: " << maxErrorVec[refIt] << std::endl;
 
     // Mesh adaptive refinement (in the last iteration we only compute the error, no refinement)
     if (refIt < maxIterations) {
@@ -215,9 +218,16 @@ int main(int argc, char *argv[]) {
   }
 
   std::cout << "\n=== Adaptive refinement loop completed ===" << std::endl;
-  std::cout << "Error history: ";
+  std::cout << "Estimated error history: ";
   for (int i = 0; i < refIt; ++i) {
     std::cout << estimatedErrorVec[i];
+    if (i != refIt - 1) std::cout << ", ";
+  }
+  std::cout << std::endl;
+
+  std::cout << "Max element error history: ";
+  for (int i = 0; i < refIt; ++i) {
+    std::cout << maxErrorVec[i];
     if (i != refIt - 1) std::cout << ", ";
   }
   std::cout << std::endl;
