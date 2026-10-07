@@ -55,6 +55,11 @@ auto exactSolution = [](const TPZVec<REAL> &loc, TPZVec<STATE> &result, TPZFMatr
   deriv(2, 0) = dPdr * z / r;  // dP/dz
 };
 
+auto forcingFunction = [](const TPZVec<REAL> &loc, TPZVec<STATE> &result) {
+  result.Resize(1);
+  result[0] = 0.0;  // No source term for the radial flow problem
+};
+
 // ====================
 // Functions prototypes
 // ====================
@@ -113,8 +118,8 @@ int main(int argc, char *argv[]) {
     results << "\n===== Running simulation at refinement level: " << ref << " =====" << std::endl;
 
     // Create computational meshes
-    // TPZMultiphysicsCompMesh *cmesh = MixedDarcyCompMesh(gmesh, &SimData, true);
-    TPZCompMesh *cmesh = H1DarcyCompMesh(gmesh, &SimData, true);
+    TPZMultiphysicsCompMesh *cmesh = MixedDarcyCompMesh(gmesh, &SimData, true);
+    // TPZCompMesh *cmesh = H1DarcyCompMesh(gmesh, &SimData, true);
 
     std::cout << "Number of equations: " << cmesh->NEquations() << std::endl;
     results << "Number of equations: " << cmesh->NEquations() << std::endl;
@@ -282,8 +287,9 @@ TPZMultiphysicsCompMesh *MixedDarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimD
   auto &ReservoirData = SimData->m_Reservoir;
 
   TPZMixedDarcyFlow *reservoirMat = new TPZMixedDarcyFlow(SimData->EDomain, gmesh->Dimension());
-  reservoirMat->SetExactSol(exactSolution, 8);
+  reservoirMat->SetExactSol(exactSolution, 20);
   reservoirMat->SetConstantPermeability(ReservoirData.perm[0]/SimData->m_Fluid.viscosity);
+  reservoirMat->SetForcingFunction(forcingFunction,20);
   hdivCreator.InsertMaterialObject(reservoirMat);
 
   // Boundary conditions --- 
@@ -313,8 +319,9 @@ TPZCompMesh *H1DarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, bool isCon
   // Insert material
   TPZDarcyFlow *reservoirMat = new TPZDarcyFlow(SimData->EDomain, gmesh->Dimension());
 
-  reservoirMat->SetExactSol(exactSolution, 8);
+  reservoirMat->SetExactSol(exactSolution, 20);
   reservoirMat->SetConstantPermeability(ReservoirData.perm[0]/SimData->m_Fluid.viscosity);
+  reservoirMat->SetForcingFunction(forcingFunction, 20);
   h1Creator.InsertMaterialObject(reservoirMat);
 
   // Boundary conditions ---
