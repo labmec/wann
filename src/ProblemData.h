@@ -26,15 +26,16 @@ class ProblemData
     std::string name;                                  // name of the domain
     int matid = -1;                                    // domain material ID
     TPZManVector<REAL, 3> perm;                        // domain permeability
-    REAL pOrder;                                       // polynomial approximation order for flux
     std::unordered_map<std::string, BoundaryData> BCs; // map containing all the bcs info
   };
 
   struct WellboreData : public DomainData
   {
+    int matidSurf;                      // wellbore surface material ID
+    int matidToeSurf;                   // wellbore toe surface material ID
+    int matidHeelSurf;                  // wellbore heel surface material ID
     REAL radius;                        // domain radius
     REAL length;                        // domain length
-    REAL height;                        // domain height
     TPZManVector<REAL, 3> eccentricity; // domain excentricity
   };
 
@@ -51,6 +52,7 @@ class ProblemData
     std::string name;
     REAL viscosity;
     REAL density;
+    // Maybe add how the relative permeability is computed...
   };
 
   struct MeshData
@@ -77,38 +79,22 @@ class ProblemData
   {
     int nthreads;
     int maxIterations;
+    int reservoirPorder;
+    int wellPorder;
+    REAL refPressure;
+    REAL pressureScale;
     REAL res_tol;
     REAL corr_tol;
   };
 
 public:
-  enum EMatid
-  {
-    ENone,
-    EDomain,
-    EFarField,
-    ESurfWellCyl,
-    ESurfHeel,
-    ESurfToe, // 5
-    ECurveWell,
-    ECurveHeel,
-    ECurveToe,
-    ESurfWellCylNonLin,
-    ECapRock, // 10
-    EPressure2DSkin,
-    EPressureInterface,
-    EPointHeel,
-    EPointToe,
-    EHDivBoundInterface
-  };
-
   using json = nlohmann::json; // declaration of json class
 
-  WellboreData m_Wellbore; // wellbore data
+  TPZVec<WellboreData> m_Wellbore; // Data for all the wellbores in the simulation
 
   ReservoirData m_Reservoir; // reservoir data
 
-  FluidData m_Fluid; // fluid data
+  TPZVec<FluidData> m_Fluid; // Fluid data for all phases
 
   MeshData m_Mesh; // mesh data
 
@@ -116,12 +102,24 @@ public:
 
   NumericsData m_Numerics; // numerics data
 
+  // Auxiliary material IDs for the coupling elements
+  // They are initialized to -1, and will be set in the ReadJson function
+  int EPressure2DSkin = -1; // material ID for the 2D pressure skin elements
+  int EPressureInterface = -1; // material ID for the pressure interface elements
+  int EHDivBoundInterface = -1; // material ID for the HDiv boundary interface elements
+
 public:
   ProblemData();
 
   ~ProblemData();
 
   void ReadJson(std::string jsonfile);
+
+  void UpdateAuxiliaryMaterialIds();
+
+  void UpdateReservoirBCsForWellbores();
+
+  void ApplyPressureScaling();
 
   void Print(std::ostream &out = std::cout);
 

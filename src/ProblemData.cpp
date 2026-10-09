@@ -11,10 +11,7 @@ using namespace std;
 // constructor
 ProblemData::ProblemData()
 {
-    m_Wellbore.eccentricity.resize(3);
-    m_Wellbore.perm.resize(3);
     m_Reservoir.perm.resize(3);
-    m_Wellbore.BCs.reserve(2);
     m_Reservoir.BCs.reserve(3);
 }
 
@@ -49,43 +46,79 @@ void ProblemData::ReadJson(std::string file)
 
     if (input.find("WellboreData") == input.end())
         DebugStop();
-    json wellbore = input["WellboreData"];
-    if (wellbore.find("name") == wellbore.end())
-        DebugStop();
-    m_Wellbore.pOrder = wellbore["pOrder"];
-    if (wellbore.find("radius") == wellbore.end())
-        DebugStop();
-    m_Wellbore.radius = wellbore["radius"];
-    if (wellbore.find("height") == wellbore.end())
-        DebugStop();
-    m_Wellbore.height = wellbore["height"];
-    if (wellbore.find("length") == wellbore.end()) 
-        DebugStop();
-    m_Wellbore.length = wellbore["length"];
-    if (wellbore.find("eccentricity") == wellbore.end())
-        DebugStop();
-    for (int i = 0; i < 3; i++)
-    {
-        if (wellbore["eccentricity"][i].is_null())
+    auto readWellbore = [&](const json &wellboreJson) {
+        WellboreData wellbore;
+        if (wellboreJson.find("name") == wellboreJson.end())
             DebugStop();
-        m_Wellbore.eccentricity[i] = wellbore["eccentricity"][i];
+        wellbore.name = wellboreJson["name"];
+        if (wellboreJson.find("matid") == wellboreJson.end())
+            DebugStop();
+        wellbore.matid = wellboreJson["matid"];
+        if (wellboreJson.find("matidSurf") == wellboreJson.end())
+            DebugStop();
+        wellbore.matidSurf = wellboreJson["matidSurf"];
+        if (wellboreJson.find("matidToeSurf") == wellboreJson.end())
+            DebugStop();
+        wellbore.matidToeSurf = wellboreJson["matidToeSurf"];
+        if (wellboreJson.find("matidHeelSurf") == wellboreJson.end())
+            DebugStop();
+        wellbore.matidHeelSurf = wellboreJson["matidHeelSurf"];
+        if (wellboreJson.find("radius") == wellboreJson.end())
+            DebugStop();
+        wellbore.radius = wellboreJson["radius"];
+        if (wellboreJson.find("length") == wellboreJson.end())
+            DebugStop();
+        wellbore.length = wellboreJson["length"];
+        if (wellboreJson.find("eccentricity") == wellboreJson.end())
+            DebugStop();
+        const json &eccentricity = wellboreJson["eccentricity"];
+        if (!eccentricity.is_array() || eccentricity.size() != 3)
+            DebugStop();
+        wellbore.eccentricity.Resize(3);
+        for (int i = 0; i < 3; i++)
+        {
+            if (eccentricity[i].is_null())
+                DebugStop();
+            wellbore.eccentricity[i] = eccentricity[i];
+        }
+        if (wellboreJson.find("BCs") == wellboreJson.end())
+            DebugStop();
+        const json &bcs = wellboreJson["BCs"];
+        if (!bcs.is_array())
+            DebugStop();
+        for (int i = 0; i < bcs.size(); i++)
+        {
+            if (bcs[i].find("name") == bcs[i].end())
+                DebugStop();
+            std::pair<std::string, BoundaryData> bcpair;
+            bcpair.first = bcs[i]["name"];
+            if (bcs[i].find("matid") == bcs[i].end())
+                DebugStop();
+            bcpair.second.matid = bcs[i]["matid"];
+            if (bcs[i].find("type") == bcs[i].end())
+                DebugStop();
+            bcpair.second.type = bcs[i]["type"];
+            if (bcs[i].find("value") == bcs[i].end())
+                DebugStop();
+            bcpair.second.value = bcs[i]["value"];
+            wellbore.BCs.insert(bcpair);
+        }
+        m_Wellbore.push_back(wellbore);
+    };
+    const json &wellboreData = input["WellboreData"];
+    m_Wellbore.Resize(0);
+    if (wellboreData.is_array())
+    {
+        for (const auto &wellboreJson : wellboreData)
+            readWellbore(wellboreJson);
     }
-    if (wellbore.find("BCs") == wellbore.end())
-        DebugStop();
-    json bcs = wellbore["BCs"];
-    for (int i = 0; i < bcs.size(); i++)
+    else if (wellboreData.is_object())
     {
-        if (bcs[i].find("name") == bcs[i].end())
-            DebugStop();
-        std::pair<std::string, BoundaryData> bcpair;
-        bcpair.first = bcs[i]["name"];
-        if (bcs[i].find("type") == bcs[i].end())
-            DebugStop();
-        bcpair.second.type = bcs[i]["type"];
-        if (bcs[i].find("value") == bcs[i].end())
-            DebugStop();
-        bcpair.second.value = bcs[i]["value"];
-        m_Wellbore.BCs.insert(bcpair);
+        readWellbore(wellboreData);
+    }
+    else
+    {
+        DebugStop();
     }
 
     if (input.find("ReservoirData") == input.end())
@@ -94,6 +127,9 @@ void ProblemData::ReadJson(std::string file)
     if (reservoir.find("name") == reservoir.end())
         DebugStop();
     m_Reservoir.name = reservoir["name"];
+    if (reservoir.find("matid") == reservoir.end())
+        DebugStop();
+    m_Reservoir.matid = reservoir["matid"];
     if (reservoir.find("perm") == reservoir.end())
         DebugStop();
     const json &perm = reservoir["perm"];
@@ -121,9 +157,6 @@ void ProblemData::ReadJson(std::string file)
     if (reservoir.find("porosity") == reservoir.end())
         DebugStop();
     m_Reservoir.porosity = reservoir["porosity"];
-    if (reservoir.find("pOrder") == reservoir.end())
-        DebugStop();
-    m_Reservoir.pOrder = reservoir["pOrder"];
     if (reservoir.find("height") == reservoir.end())
         DebugStop();
     m_Reservoir.height = reservoir["height"];
@@ -142,6 +175,9 @@ void ProblemData::ReadJson(std::string file)
             DebugStop();
         std::pair<std::string, BoundaryData> bcpair;
         bcpair.first = bcsres[i]["name"];
+        if (bcsres[i].find("matid") == bcsres[i].end())
+            DebugStop();
+        bcpair.second.matid = bcsres[i]["matid"];
         if (bcsres[i].find("type") == bcsres[i].end())
             DebugStop();
         bcpair.second.type = bcsres[i]["type"];
@@ -153,16 +189,34 @@ void ProblemData::ReadJson(std::string file)
 
     if (input.find("FluidData") == input.end())
         DebugStop();
-    json fluid = input["FluidData"];
-    if (fluid.find("name") == fluid.end())
+    auto readFluid = [&](const json &fluidJson) {
+        FluidData fluid;
+        if (fluidJson.find("name") == fluidJson.end())
+            DebugStop();
+        fluid.name = fluidJson["name"];
+        if (fluidJson.find("viscosity") == fluidJson.end())
+            DebugStop();
+        fluid.viscosity = fluidJson["viscosity"];
+        if (fluidJson.find("density") == fluidJson.end())
+            DebugStop();
+        fluid.density = fluidJson["density"];
+        m_Fluid.push_back(fluid);
+    };
+    const json &fluidData = input["FluidData"];
+    m_Fluid.Resize(0);
+    if (fluidData.is_array())
+    {
+        for (const auto &fluidJson : fluidData)
+            readFluid(fluidJson);
+    }
+    else if (fluidData.is_object())
+    {
+        readFluid(fluidData);
+    }
+    else
+    {
         DebugStop();
-    m_Fluid.name = fluid["name"];
-    if (fluid.find("viscosity") == fluid.end())
-        DebugStop();
-    m_Fluid.viscosity = fluid["viscosity"];
-    if (fluid.find("density") == fluid.end())
-        DebugStop();
-    m_Fluid.density = fluid["density"];
+    }
 
     if (input.find("PostProcData") == input.end())
         DebugStop();
@@ -196,6 +250,10 @@ void ProblemData::ReadJson(std::string file)
     m_Numerics.maxIterations = 10;
     m_Numerics.res_tol = 1e-6;
     m_Numerics.corr_tol = 1e-6;
+    m_Numerics.reservoirPorder = 1;
+    m_Numerics.wellPorder = 2;
+    m_Numerics.refPressure = 1e5;
+    m_Numerics.pressureScale = 1e5;
 
     if (input.find("NumericsData") == input.end())
         DebugStop();
@@ -208,6 +266,91 @@ void ProblemData::ReadJson(std::string file)
         m_Numerics.res_tol = numerics["res_tol"];
     if (numerics.find("corr_tol") != numerics.end())
         m_Numerics.corr_tol = numerics["corr_tol"];
+    if (numerics.find("reservoirPorder") != numerics.end())
+        m_Numerics.reservoirPorder = numerics["reservoirPorder"];
+    if (numerics.find("wellPorder") != numerics.end())
+        m_Numerics.wellPorder = numerics["wellPorder"];
+    if (numerics.find("refPressure") != numerics.end())
+        m_Numerics.refPressure = numerics["refPressure"];
+    if (numerics.find("pressureScale") != numerics.end())
+        m_Numerics.pressureScale = numerics["pressureScale"];
+
+    // After reading the json file, set the auxiliary material IDs
+    UpdateAuxiliaryMaterialIds();
+
+    // After reading the json file, we add some additional BCs in the Reservoir Data.
+    // This BCs account for the no flux condition on the toe and heel surfaces of each wellbore.
+    UpdateReservoirBCsForWellbores();
+
+    // Apply pressure scaling factors
+    ApplyPressureScaling();
+}
+
+void ProblemData::UpdateAuxiliaryMaterialIds()
+{
+    int maxID = m_Reservoir.matid;
+    for (auto &bcs : m_Reservoir.BCs) {
+        if (bcs.second.matid > maxID) maxID = bcs.second.matid;
+    }
+
+    for (auto &wellbore : m_Wellbore) {
+        if (wellbore.matid > maxID) maxID = wellbore.matid;
+        if (wellbore.matidSurf > maxID) maxID = wellbore.matidSurf;
+        if (wellbore.matidToeSurf > maxID) maxID = wellbore.matidToeSurf;
+        if (wellbore.matidHeelSurf > maxID) maxID = wellbore.matidHeelSurf;
+        for (auto &bc : wellbore.BCs) {
+            if (bc.second.matid > maxID) maxID = bc.second.matid;
+        }
+    }
+
+    // Set the auxiliary material IDs to be greater than the maximum existing ID
+    EPressure2DSkin = maxID + 1;
+    EPressureInterface = maxID + 2;
+    EHDivBoundInterface = maxID + 3;
+}
+
+void ProblemData::UpdateReservoirBCsForWellbores()
+{
+    for (const auto &wellbore : m_Wellbore) {
+        // Add no flux BC for the toe surface
+        std::string toeBCName = "no_flux_toe_" + wellbore.name;
+        BoundaryData toeBC;
+        toeBC.matid = wellbore.matidToeSurf;
+        toeBC.type = 1; // Neumann BC
+        toeBC.value = 0.0; // No flux
+        m_Reservoir.BCs[toeBCName] = toeBC;
+
+        // Add no flux BC for the heel surface
+        std::string heelBCName = "no_flux_heel_" + wellbore.name;
+        BoundaryData heelBC;
+        heelBC.matid = wellbore.matidHeelSurf;
+        heelBC.type = 1; // Neumann BC
+        heelBC.value = 0.0; // No flux
+        m_Reservoir.BCs[heelBCName] = heelBC;
+    }
+}
+
+void ProblemData::ApplyPressureScaling()
+{
+    // Update viscosity and density of each fluid based on the pressure scaling factor
+    for (auto &fluid : m_Fluid) {
+        fluid.viscosity = fluid.viscosity * m_Numerics.pressureScale;
+        fluid.density = fluid.density * m_Numerics.pressureScale;
+    }
+
+    // Update the pressure boundary conditions
+    for (auto &bc : m_Reservoir.BCs) {
+        if (bc.second.type == 0) { // Direct BC
+            bc.second.value = (bc.second.value - m_Numerics.refPressure) * m_Numerics.pressureScale;
+        }
+    }
+    for (auto &wellbore : m_Wellbore) {
+        for (auto &bc : wellbore.BCs) {
+            if (bc.second.type == 0) { // Direct BC
+                bc.second.value = (bc.second.value - m_Numerics.refPressure) * m_Numerics.pressureScale;
+            }
+        }
+    }
 }
 
 void ProblemData::Print(std::ostream &out)
@@ -221,19 +364,23 @@ void ProblemData::Print(std::ostream &out)
         << std::endl;
 
     out << "Wellbore Data:\n";
-    out << "Name: " << m_Wellbore.name << std::endl;
-    out << "Material ID: " << m_Wellbore.matid << std::endl;
-    out << "Polynomial order: " << m_Wellbore.pOrder << std::endl;
-    out << "Radius: " << m_Wellbore.radius << std::endl;
-    out << "Length: " << m_Wellbore.length << std::endl;
-    out << "Eccentricity: " << m_Wellbore.eccentricity << std::endl;
-    out << "Boundary conditions:\n";
-    for (const auto &bc : m_Wellbore.BCs)
+    int wellboreIndex = 0;
+    for (const auto &wellbore : m_Wellbore)
     {
-        out << "  Name: " << bc.first << std::endl;
-        out << "  Material ID: " << bc.second.matid << std::endl;
-        out << "  Type: " << bc.second.type << std::endl;
-        out << "  Value: " << bc.second.value << std::endl;
+        out << "Wellbore " << wellboreIndex++ << ":\n";
+        out << "  Name: " << wellbore.name << std::endl;
+        out << "  Material ID: " << wellbore.matid << std::endl;
+        out << "  Radius: " << wellbore.radius << std::endl;
+        out << "  Length: " << wellbore.length << std::endl;
+        out << "  Eccentricity: " << wellbore.eccentricity << std::endl;
+        out << "  Boundary conditions:\n";
+        for (const auto &bc : wellbore.BCs)
+        {
+            out << "    Name: " << bc.first << std::endl;
+            out << "    Material ID: " << bc.second.matid << std::endl;
+            out << "    Type: " << bc.second.type << std::endl;
+            out << "    Value: " << bc.second.value << std::endl;
+        }
     }
     out << std::endl;
 
@@ -242,7 +389,6 @@ void ProblemData::Print(std::ostream &out)
     out << "Material ID: " << m_Reservoir.matid << std::endl;
     out << "Permeability: " << m_Reservoir.perm << std::endl;
     out << "Porosity: " << m_Reservoir.porosity << std::endl;
-    out << "Polynomial order: " << m_Reservoir.pOrder << std::endl;
     out << "Height: " << m_Reservoir.height << std::endl;
     out << "Width: " << m_Reservoir.width << std::endl;
     out << "Length: " << m_Reservoir.length << std::endl;
@@ -257,10 +403,15 @@ void ProblemData::Print(std::ostream &out)
     out << std::endl;
 
     out << "Fluid Data:\n";
-    out << "Name: " << m_Fluid.name << std::endl;
-    out << "Viscosity: " << m_Fluid.viscosity << std::endl;
-    out << "Density: " << m_Fluid.density << std::endl
-        << std::endl
+    int fluidIndex = 0;
+    for (const auto &fluid : m_Fluid)
+    {
+        out << "Fluid " << fluidIndex++ << ":\n";
+        out << "  Name: " << fluid.name << std::endl;
+        out << "  Viscosity: " << fluid.viscosity << std::endl;
+        out << "  Density: " << fluid.density << std::endl;
+    }
+    out << std::endl
         << std::endl;
 
     out << "Post Processing Data:\n";

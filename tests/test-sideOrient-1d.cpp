@@ -6,7 +6,6 @@
 #include "TPZWannGeometryTools.h"
 #include "TPZWannApproxTools.h"
 #include "TPZWannPostProcTools.h"
-#include "TPZWannAdaptivityTools.h"
 #include <TPZLinearAnalysis.h>
 #include <TPZSSpStructMatrix.h> //symmetric sparse matrix storage>
 #include <pzskylstrmatrix.h>

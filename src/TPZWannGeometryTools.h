@@ -26,10 +26,10 @@ public:
   static REAL FindClosestX(const REAL x, const std::set<REAL>& nodeCoordsX, const REAL tol);
   static bool CheckXInSet(const REAL x, const std::set<REAL>& nodeCoordsX, const REAL tol);
   static void OrderIds(TPZGeoMesh *gmesh, ProblemData *SimData);
+  static void OrderIdsSingleWell(TPZGeoMesh *gmesh, int wellid, const TPZManVector<REAL,3>& axisPoint, const TPZManVector<REAL,3>& axis);
+  static REAL ComputeAxialCoordinate(const TPZManVector<REAL,3>& point, const TPZManVector<REAL,3>& axisPoint, const TPZManVector<REAL,3>& axis);
 
 private:
-  static bool SetBC(ProblemData* simData, const std::string& bcName, int matid);
-  static void CreatePressure2DEls(TPZGeoMesh *gmesh, ProblemData *SimData);
+  static void CreateCouplingEls(TPZGeoMesh *gmesh, ProblemData *SimData);
   static bool VerifyMesh(TPZGeoMesh *gmesh, ProblemData *SimData);
-  static void DividePyramids(TPZGeoMesh *gmesh);
 };

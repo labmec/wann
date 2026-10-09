@@ -1,15 +1,11 @@
 #include "TPZWannGeometryTools.h"
-#include "TPZWannAdaptivityTools.h"
 #include "TPZRefPatternTools.h"
+#include <cmath>
 
 TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
 
+  // Import mesh from gmsh file
   TPZGeoMesh* gmesh = ReadMeshFromGmsh(simData);
-  
-  if (1) {
-    std::ofstream out("gmeshorig.vtk");
-    TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
-  }
 
   // Verify consistency of initial mesh
   bool hasErrors = TPZWannGeometryTools::VerifyMesh(gmesh, simData);
@@ -24,54 +20,28 @@ TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
     DebugStop();
   }
 
-  if (simData->m_Mesh.ToCylindrical) {
-    TPZManVector<REAL,3> cylcenter = {0.,0.,0.};
-    REAL hr = simData->m_Reservoir.height;
-    REAL lr = simData->m_Wellbore.height;
-    cylcenter[2] = lr - hr/2.;
-    ModifyGeometricMeshToCylWell(gmesh, simData->ESurfWellCyl, simData->m_Wellbore.radius, cylcenter);
-  }
+  // TODO: implement a more robust way to do the cylindrical surfaces.
+  // It should account for multiple wellbores and well axis orientation and height.
 
-  if (simData->m_Mesh.customRefinement != 0) {
-    std::string file = simData->m_Mesh.file;
-    std::string baseName = file.substr(0, file.find_last_of('.'));
-    std::string refProcessFile = baseName + "_refProcess.txt";
-    std::string path(std::string(INPUTDIR) + "/" + refProcessFile);
-    TPZWannGeometryTools::RefineFromFile(gmesh, path);
-    if (simData->m_PostProc.verbosityLevel) {
-      std::ofstream out("gmesh_customref.vtk");
-      TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
-    }
-  
-  // Only perform uniform and directional refinements if no custom refinement is specified
-  } else {
-    if (simData->m_Mesh.NumUniformRef) {
-      TPZCheckGeom checkgeom(gmesh);
-      checkgeom.UniformRefine(simData->m_Mesh.NumUniformRef);
+  // if (simData->m_Mesh.ToCylindrical) {
+  //   TPZManVector<REAL,3> cylcenter = {0.,0.,0.};
+  //   REAL hr = simData->m_Reservoir.height;
+  //   REAL lr = simData->m_Wellbore[0].height; // TODO: generalize for multiple wellbores
+  //   cylcenter[2] = lr - hr/2.;
+  //   ModifyGeometricMeshToCylWell(gmesh, simData->ESurfWellCyl, simData->m_Wellbore[0].radius, cylcenter);
+  // }
 
-      if (simData->m_PostProc.verbosityLevel) {
-        std::ofstream out("gmeshnonlin.vtk");
-        TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
-      }
-    }
-
-    if (simData->m_Mesh.NumDirRef) {
-      gRefDBase.InitializeRefPatterns(gmesh->Dimension());
-      for (int i = 0; i < simData->m_Mesh.NumDirRef; i++) {
-        TPZRefPatternTools::RefineDirectional(gmesh, {simData->ECurveHeel, simData->ECurveToe});
-      }
-      if (simData->m_PostProc.verbosityLevel) {
-        std::ofstream out("gmeshnonlin_ref.vtk");
-        TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
-      }
-    }
-  }
-
-  // Create GeoelBCs in same location as geoels with ESurfWell
-  CreatePressure2DEls(gmesh, simData);
+  // Create geo elements for wellbore-reservoir coupling
+  // Such auxiliary elements live in the wellbore cylindrical surface
+  CreateCouplingEls(gmesh, simData);
 
   // Order nodes Id in the well according to the x-coordinate
   OrderIds(gmesh, simData);
+
+  if (simData->m_PostProc.verbosityLevel > 0) {
+    std::ofstream out("gmeshWannFinal.vtk");
+    TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
+  }
 
   return gmesh;
 }
@@ -83,32 +53,6 @@ TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
   TPZGeoMesh* gmesh = new TPZGeoMesh();
   {
     TPZGmshReader reader;
-    TPZManVector<std::map<std::string, int>, 4> stringtoint(4);
-    stringtoint[3]["volume_reservoir"] = simData->EDomain;
-    simData->m_Reservoir.matid = simData->EDomain;
-
-    stringtoint[2]["surface_wellbore_cylinder"] = simData->ESurfWellCyl;
-    SetBC(simData, "surface_wellbore_cylinder", simData->ESurfWellCyl);
-    stringtoint[2]["surface_wellbore_heel"] = simData->ESurfHeel;
-    SetBC(simData, "surface_wellbore_heel", simData->ESurfHeel);
-    stringtoint[2]["surface_wellbore_toe"] = simData->ESurfToe;
-    SetBC(simData, "surface_wellbore_toe", simData->ESurfToe);
-    stringtoint[2]["surface_farfield"] = simData->EFarField;
-    SetBC(simData, "surface_farfield", simData->EFarField);
-    stringtoint[2]["surface_cap_rock"] = simData->ECapRock;
-    SetBC(simData, "surface_cap_rock", simData->ECapRock);
-    
-    stringtoint[1]["curve_wellbore"] = simData->ECurveWell;
-    stringtoint[1]["curve_heel"] = simData->ECurveHeel;
-    stringtoint[1]["curve_toe"] = simData->ECurveToe;
-    simData->m_Wellbore.matid = simData->ECurveWell;
-
-    stringtoint[0]["point_heel"] = simData->EPointHeel;
-    SetBC(simData, "point_heel", simData->EPointHeel);
-    stringtoint[0]["point_toe"] = simData->EPointToe;
-    SetBC(simData, "point_toe", simData->EPointToe);
-    
-    reader.SetDimNamePhysical(stringtoint);
     reader.GeometricGmshMesh(path, gmesh);
 
     // Remove gmsh boundary elements and create GeoElBC so normals are consistent
@@ -124,25 +68,12 @@ TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
         TPZGeoElBC gbc(neigh, matid);
     }
 
-    //remember to modify the matids in ProblemData according to the map
+    if (simData->m_PostProc.verbosityLevel > 0) {
+      std::ofstream out("gmeshWannOrig.vtk");
+      TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
+    }
   }
   return gmesh;
-}
-
-bool TPZWannGeometryTools::SetBC(ProblemData* simData, const std::string& bcName, int matid) {
-  auto it = simData->m_Reservoir.BCs.find(bcName);
-  if (it != simData->m_Reservoir.BCs.end()) {
-    it->second.matid = matid;
-    return true;
-  }
-
-  it = simData->m_Wellbore.BCs.find(bcName);
-  if (it != simData->m_Wellbore.BCs.end()) {
-    it->second.matid = matid;
-    return true;
-  }
-
-  return false;
 }
 
 void TPZWannGeometryTools::ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh, int matid, REAL cylradius, TPZManVector<REAL,3> &cylcenter) {
@@ -233,13 +164,19 @@ void TPZWannGeometryTools::ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh, int m
   }  
 }
 
-void TPZWannGeometryTools::CreatePressure2DEls(TPZGeoMesh* gmesh, ProblemData* SimData) {
+void TPZWannGeometryTools::CreateCouplingEls(TPZGeoMesh* gmesh, ProblemData* SimData) {
+
+  // Gather all ids related to wellbore cylindrical surfaces
+  std::set<int64_t> wellboreCylindricalSurfaces;
+  for (int i = 0; i < SimData->m_Wellbore.size(); i++) {
+    auto &WellboreData = SimData->m_Wellbore[i];
+    wellboreCylindricalSurfaces.insert(WellboreData.matidSurf);
+  }
+
   const int nel = gmesh->NElements();
   for (int64_t iel = 0; iel < nel; iel++) {
     TPZGeoEl* gel = gmesh->Element(iel);
-    if (gel->MaterialId() != SimData->ESurfWellCyl) continue;  
-    if (gel->HasSubElement()) continue;
-    // pressure2Dels.insert(iel);
+    if (wellboreCylindricalSurfaces.find(gel->MaterialId()) == wellboreCylindricalSurfaces.end()) continue;
     TPZGeoElBC bc(gel,gel->NSides()-1,SimData->EPressure2DSkin); 
     TPZGeoElBC bc2(gel,gel->NSides()-1,SimData->EPressureInterface);
     TPZGeoElBC bc3(gel,gel->NSides()-1,SimData->EHDivBoundInterface);
@@ -247,36 +184,82 @@ void TPZWannGeometryTools::CreatePressure2DEls(TPZGeoMesh* gmesh, ProblemData* S
 }
 
 void TPZWannGeometryTools::OrderIds(TPZGeoMesh* gmesh, ProblemData* SimData) {
+  for (int i = 0; i < SimData->m_Wellbore.size(); i++) {
+    const int matid = SimData->m_Wellbore[i].matidSurf;
+    // TODO: we are still picking bc matids by names. Should we change that?
+    const int matidPointHeel = SimData->m_Wellbore[i].BCs["point_heel"].matid;
+    const int matidPointToe = SimData->m_Wellbore[i].BCs["point_toe"].matid;
+    if (matidPointHeel == -1 || matidPointToe == -1) {
+      std::cout << "Error: matidPointHeel or matidPointToe not found for wellbore " << i << std::endl;
+      DebugStop();
+    }
+    TPZManVector<REAL,3> heelPoint = {0., 0., 0.};
+    TPZManVector<REAL,3> toePoint = {0., 0., 0.};
+
+    for (int64_t iel = 0; iel < gmesh->NElements(); iel++) {
+      TPZGeoEl* gel = gmesh->Element(iel);
+      if (!gel) continue;
+      if (gel->Dimension() != 0) continue;
+      if (gel->MaterialId() == matidPointHeel) {
+        gel->NodePtr(0)->GetCoordinates(heelPoint);
+      } else if (gel->MaterialId() == matidPointToe) {
+        gel->NodePtr(0)->GetCoordinates(toePoint);
+      }
+    }
+
+    const TPZManVector<REAL,3> axis = toePoint - heelPoint;
+    OrderIdsSingleWell(gmesh, matid, heelPoint, axis);
+  }
+}
+
+REAL TPZWannGeometryTools::ComputeAxialCoordinate(const TPZManVector<REAL,3>& point, const TPZManVector<REAL,3>& axisPoint, const TPZManVector<REAL,3>& axis) {
+  if (point.size() != 3 || axisPoint.size() != 3 || axis.size() != 3) {
+    DebugStop();
+  }
+  const REAL axisNorm = Norm(axis);
+  if (!(axisNorm > 0.) || !std::isfinite(axisNorm)) {
+    DebugStop();
+  }
+  REAL axialCoord = 0.;
+  for (int d = 0; d < 3; d++) {
+    axialCoord += (point[d] - axisPoint[d]) * (axis[d] / axisNorm);
+  }
+  return axialCoord;
+}
+
+void TPZWannGeometryTools::OrderIdsSingleWell(TPZGeoMesh* gmesh, int wellid, const TPZManVector<REAL,3>& axisPoint, const TPZManVector<REAL,3>& axis) {
   const int nel = gmesh->NElements();
   const REAL tol = 1.e-4;
   std::set<int64_t> pressure2Dels;
-  std::set<REAL> nodeCoordsX;
+  std::set<REAL> nodeCoordsAxial;
   for (int64_t iel = 0; iel < nel; iel++) {
     TPZGeoEl* gel = gmesh->Element(iel);
-    if (gel->MaterialId() != SimData->ESurfWellCyl) continue;  
+    if (!gel) continue;
+    if (gel->MaterialId() != wellid) continue;  
     if (gel->HasSubElement()) continue;
     pressure2Dels.insert(iel);
     for (int i = 0; i < gel->NCornerNodes(); i++) {
       TPZManVector<REAL,3> coor(3);
       gel->NodePtr(i)->GetCoordinates(coor);
-      InsertXCoorInSet(coor[0], nodeCoordsX, tol);
+      REAL axialCoord = ComputeAxialCoordinate(coor, axisPoint, axis);
+      InsertXCoorInSet(axialCoord, nodeCoordsAxial, tol);
     }
   }
 
-  std::map<REAL,std::set<int64_t>> xToNodes;
+  std::map<REAL,std::set<int64_t>> axialToNodes;
   for (auto iel : pressure2Dels) {
     TPZGeoEl* gel = gmesh->Element(iel);
-    if (gel->MaterialId() != SimData->ESurfWellCyl) DebugStop();
+    if (gel->MaterialId() != wellid) DebugStop();
     for (int i = 0; i < gel->NCornerNodes(); i++) {
       TPZManVector<REAL,3> coor(3);
       gel->NodePtr(i)->GetCoordinates(coor);
-      REAL closestX = FindClosestX(coor[0], nodeCoordsX, tol);
-      xToNodes[closestX].insert(gel->NodeIndex(i));
+      REAL axialCoord = ComputeAxialCoordinate(coor, axisPoint, axis);
+      REAL closestPoint = FindClosestX(axialCoord, nodeCoordsAxial, tol);
+      axialToNodes[closestPoint].insert(gel->NodeIndex(i));
     }
   }
 
-  for (auto& it : xToNodes) {
-    const REAL x = it.first;
+  for (auto& it : axialToNodes) {
     const auto& nodes = it.second;
     const int64_t nnodes = nodes.size();
     if (nnodes < 2) DebugStop();          
@@ -303,15 +286,18 @@ void TPZWannGeometryTools::InsertXCoorInSet(const REAL x, std::set<REAL>& nodeCo
     if (fabs(x - ref1) <= tol) {
       return;
     }
-    REAL ref2 = *(--it);
-    if (fabs(x - ref2) <= tol) {
-      return;
+    if (it != nodeCoordsX.begin()) {
+      REAL ref2 = *(--it);
+      if (fabs(x - ref2) <= tol) {
+        return;
+      }
     }
     nodeCoordsX.insert(x);
   }
 }
 
 REAL TPZWannGeometryTools::FindClosestX(const REAL x, const std::set<REAL>& nodeCoordsX, const REAL tol) {
+  if (nodeCoordsX.empty()) DebugStop();
   REAL closestX = -1000;
   auto it = std::lower_bound(nodeCoordsX.begin(), nodeCoordsX.end(), x);
   if (it == nodeCoordsX.end()) {
@@ -324,10 +310,12 @@ REAL TPZWannGeometryTools::FindClosestX(const REAL x, const std::set<REAL>& node
     closestX = ref;
     return closestX;
   }
-  ref = *(--it);
-  if (fabs(x - ref) <= tol) {
-    closestX = ref;
-    return closestX;
+  if (it != nodeCoordsX.begin()) {
+    ref = *(--it);
+    if (fabs(x - ref) <= tol) {
+      closestX = ref;
+      return closestX;
+    }
   }
   DebugStop();
   return -1;
@@ -385,27 +373,6 @@ void TPZWannGeometryTools::RefineFromFile(TPZGeoMesh* og_gmesh, const std::strin
   }
 }
 
-void TPZWannGeometryTools::DividePyramids(TPZGeoMesh *gmesh) {
-  gRefDBase.InitializeRefPatterns(EPiramide);
-  auto refpatter = gRefDBase.FindRefPattern("PyrTwoTets");
-
-  if (!refpatter) {
-    std::cout << "Refinement pattern for pyramids not found!" << std::endl;
-    DebugStop();
-  }
-  int64_t nelements = gmesh->NElements();
-  for (int64_t el = 0; el < nelements; el++) {
-    TPZGeoEl *geoel = gmesh->Element(el);
-    if (!geoel)
-      continue;
-    if (geoel->Type() == EPiramide) {
-      geoel->SetRefPattern(refpatter);
-      TPZManVector<TPZGeoEl *> el(0);
-      geoel->Divide(el);
-    }
-  }
-}
-
 bool TPZWannGeometryTools::VerifyMesh(TPZGeoMesh *gmesh, ProblemData *SimData) {
   bool hasErrors = false;
 
@@ -419,7 +386,7 @@ bool TPZWannGeometryTools::VerifyMesh(TPZGeoMesh *gmesh, ProblemData *SimData) {
     if (gel->Dimension() != 3) continue; // only check 3D elements first
 
     // All 3D elements should have the material id of the domain
-    if (gel->MaterialId() != SimData->EDomain) {
+    if (gel->MaterialId() != SimData->m_Reservoir.matid) {
       std::cout << "Element " << gel->Index() << " has wrong material id: " << gel->MaterialId() << std::endl;
       gel->SetMaterialId(1001);
       hasErrors = true;

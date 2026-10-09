@@ -59,7 +59,7 @@ REAL TPZWannAdaptivityTools::ErrorEstimation(TPZMultiphysicsCompMesh* cmeshMixed
       REAL hk = ElementDiameter(gel);
       REAL perm = SimData->m_Reservoir.perm[0];
       if (matid == SimData->ECurveWell) {
-        perm = SimData->m_Wellbore.perm[0];
+        perm = SimData->m_Wellbore[0].perm[0]; // TODO: Generalize for multiple wellbores
       }
       REAL sqrtPerm = sqrt(perm);
 
@@ -404,9 +404,9 @@ REAL TPZWannAdaptivityTools::GoalOriented(TPZMultiphysicsCompMesh* cmeshHdiv, TP
 
 REAL TPZWannAdaptivityTools::GoalContribution1D(TPZCompEl* celMixed, TPZCompEl* celDual, ProblemData* SimData) {
   // Some useful constants
-  REAL diameter = SimData->m_Wellbore.radius * 2.0;
-  REAL rho = SimData->m_Fluid.density;
-  REAL mu = SimData->m_Fluid.viscosity;
+  REAL diameter = SimData->m_Wellbore[0].radius * 2.0; // TODO: Generalize for multiple wellbores
+  REAL rho = SimData->m_Fluid[0].density; // TODO: assuming single phase flow for now
+  REAL mu = SimData->m_Fluid[0].viscosity;
   REAL c = (2.252610888 * pow(diameter, 19. / 7.)) / (pow(mu, 1. / 7.) * pow(rho, 3. / 7.));
   REAL CNL = pow(c, -7. / 4.);
   REAL CLin = 128. * mu / (M_PI * pow(diameter, 4));
@@ -522,7 +522,7 @@ REAL TPZWannAdaptivityTools::GoalContribution3D(TPZCompEl* celMixed, TPZCompEl* 
     // Flux contribution
     REAL FluxTerm = 0.0;
     for (int d = 0; d < dim; ++d) {
-      FluxTerm += (SimData->m_Fluid.density / perm[d]) * sigh[d] * psih[d];
+      FluxTerm += (SimData->m_Fluid[0].density / perm[d]) * sigh[d] * psih[d]; // TODO: Generalize for multiple phases
     }
 
     // div contributions

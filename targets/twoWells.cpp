@@ -3,16 +3,17 @@
 #endif
 
 #include <iostream>
-#include <TPZAnalyticSolution.h>
 #include "TPZWannGeometryTools.h"
 #include "TPZWannApproxTools.h"
 #include "TPZWannPostProcTools.h"
-#include "TPZWannAdaptivityTools.h"
+#include <TPZLinearAnalysis.h>
+#include <TPZSSpStructMatrix.h>
+#include <pzskylstrmatrix.h>
+#include <pzstepsolver.h>
+#include <TPZAnalyticSolution.h>
 #include "TPZWannAnalysis.h"
 
 using namespace std;
-
-const int global_nthread = 12;
 
 int main(int argc, char *argv[]) {
   
@@ -20,7 +21,7 @@ int main(int argc, char *argv[]) {
   exact.fDimension = 3;
   exact.fExact = TLaplaceExample1::ENone;
 
-  std::string jsonfile = "wann3D_parameterStudy.json";
+  std::string jsonfile = "ozkan1999.json";
 
   if (argc > 2) {
     std::cout << argv[0] << " being called with too many arguments." << std::endl;
@@ -47,13 +48,18 @@ int main(int argc, char *argv[]) {
   // Read original geometric mesh and perform the refinement process 
   // described in refinementProcess.txt file
   TPZGeoMesh* gmesh = TPZWannGeometryTools::CreateGeoMesh(&SimData);
+  std::ofstream out("gmeshWannFinal.vtk");
+  TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
 
-  // H(div) Simulation
+  // --- H(div) Simulation ---
 
-  // For some reason we have to change the sign of boundary condition 
-  // when using cylindrical map. TODO: fix it
-  if (SimData.m_Mesh.ToCylindrical) {
-    SimData.m_Wellbore.BCs["point_heel"].value *= -1;
+  // For some reason we have to change the sign of boundary condition when using cylindrical map. 
+  // TODO: fix it
+  // TODO: If unable to fix it, adapt the workaround to multiple wellbores
+  for (auto &Wellbore : SimData.m_Wellbore) {
+    for (auto &BC : Wellbore.BCs) {
+      BC.second.value *= -1.0;
+    }
   }
 
   TPZMultiphysicsCompMesh* cmeshMixed = TPZWannApproxTools::CreateMultiphysicsCompMesh(gmesh, &SimData, &exact);
@@ -63,21 +69,15 @@ int main(int argc, char *argv[]) {
   anMixed.Initialize();
   anMixed.NewtonIteration();
 
-  // Reverse sign changes
-  if (SimData.m_Mesh.ToCylindrical) {
-    SimData.m_Wellbore.BCs["point_heel"].value *= -1;
+  // Revert sign changes
+  for (auto &Wellbore : SimData.m_Wellbore) {
+    for (auto &BC : Wellbore.BCs) {
+      BC.second.value *= -1.0;
+    }
   }
 
-  std::cout << "\n--------- Simulation finished ---------" << std::endl;
-  std::cout << "\n--------- Starting post-processing ---------" << std::endl;
-
+  // --- Post-processing ----
   TPZWannPostProcTools::WriteVTKs(cmeshMixed, &SimData);
-  REAL ProductivityIndex = TPZWannPostProcTools::ProductivityIndex(cmeshMixed, &SimData);
-  std::cout << "Computed productivity index: " << ProductivityIndex << std::endl;
-
-  std::cout << "\n--------- Post-processing finished ---------" << std::endl;
-
-  // --- Clean up ---
 
   delete cmeshMixed;
   delete gmesh;

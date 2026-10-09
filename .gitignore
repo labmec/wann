@@ -36,6 +36,10 @@ build
 pytorch/__pycache__
 .vscode
 
+# Python cache files
+__pycache__/
+*.pyc
+
 # config files
 src/dirs_config.h
 

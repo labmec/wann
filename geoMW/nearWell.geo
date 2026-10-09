@@ -1,4 +1,6 @@
 Include "params.geo";
+DefineConstant[well_y = {0, Name "well_y"}];
+Mesh.MshFileVersion = 2.2;
 
 // Near-well region dimensions (in function of wellbore dimensions)
 Lnw = Lw + Hr;
@@ -10,11 +12,11 @@ s = Sin(Pi/4.);
 theta_div = h_div + 1; // Azimuthal division (of each circle quarter)
 
 // Heel points
-p1 = newp; Point(p1) = {0,     0,     0 + Hw, 1.0}; // Center of the domain (wellbore heel)
-p2 = newp; Point(p2) = {0, -Rw*s,  Rw*s + Hw, 1.0}; // Well
-p3 = newp; Point(p3) = {0,  Rw*s,  Rw*s + Hw, 1.0}; // Well
-p4 = newp; Point(p4) = {0,  Rw*s, -Rw*s + Hw, 1.0}; // Well
-p5 = newp; Point(p5) = {0, -Rw*s, -Rw*s + Hw, 1.0}; // Well
+p1 = newp; Point(p1) = {0, (     0) + well_y,     0 + Hw, 1.0}; // Center of the domain (wellbore heel)
+p2 = newp; Point(p2) = {0, ( -Rw*s) + well_y,  Rw*s + Hw, 1.0}; // Well
+p3 = newp; Point(p3) = {0, (  Rw*s) + well_y,  Rw*s + Hw, 1.0}; // Well
+p4 = newp; Point(p4) = {0, (  Rw*s) + well_y, -Rw*s + Hw, 1.0}; // Well
+p5 = newp; Point(p5) = {0, ( -Rw*s) + well_y, -Rw*s + Hw, 1.0}; // Well
 
 // Circle arcs for heel
 Circle(1) = {p2, p1, p3};
@@ -30,16 +32,16 @@ ids() = Extrude {Lw, 0, 0}{
 // --- Begin: Points and lines of the near-well region ---
 
 // Close to wellbore heel
-p6 = newp; Point(p6) = {-(Lnw-Lw)/2, -Wnw/2, Hr/2, 1.0};
-p7 = newp; Point(p7) = {-(Lnw-Lw)/2, Wnw/2, Hr/2, 1.0}; 
-p8 = newp; Point(p8) = {-(Lnw-Lw)/2, Wnw/2, -Hr/2, 1.0};
-p9 = newp; Point(p9) = {-(Lnw-Lw)/2, -Wnw/2, -Hr/2, 1.0};
+p6 = newp; Point(p6) = {-(Lnw-Lw)/2, ( -Wnw/2) + well_y, Hr/2, 1.0};
+p7 = newp; Point(p7) = {-(Lnw-Lw)/2, ( Wnw/2) + well_y, Hr/2, 1.0}; 
+p8 = newp; Point(p8) = {-(Lnw-Lw)/2, ( Wnw/2) + well_y, -Hr/2, 1.0};
+p9 = newp; Point(p9) = {-(Lnw-Lw)/2, ( -Wnw/2) + well_y, -Hr/2, 1.0};
 
 // Close to wellbore toe
-p10 = newp; Point(p10) = {Lw+(Lnw-Lw)/2, -Wnw/2, Hr/2, 1.0};
-p11 = newp; Point(p11) = {Lw+(Lnw-Lw)/2, Wnw/2, Hr/2, 1.0}; 
-p12 = newp; Point(p12) = {Lw+(Lnw-Lw)/2, Wnw/2, -Hr/2, 1.0};
-p13 = newp; Point(p13) = {Lw+(Lnw-Lw)/2, -Wnw/2, -Hr/2, 1.0};
+p10 = newp; Point(p10) = {Lw+(Lnw-Lw)/2, ( -Wnw/2) + well_y, Hr/2, 1.0};
+p11 = newp; Point(p11) = {Lw+(Lnw-Lw)/2, ( Wnw/2) + well_y, Hr/2, 1.0}; 
+p12 = newp; Point(p12) = {Lw+(Lnw-Lw)/2, ( Wnw/2) + well_y, -Hr/2, 1.0};
+p13 = newp; Point(p13) = {Lw+(Lnw-Lw)/2, ( -Wnw/2) + well_y, -Hr/2, 1.0};
 
 // Lines aligned with the wellbore axis
 l1 = newl; Line(l1) = {p6,p10}; 
@@ -165,9 +167,7 @@ Physical Point("point_toe", id_toe_point) = {6};
 
 // Set preliminary physical entities for the near-well region (to be merged with the reservoir mesh)
 Physical Surface("surface_cap_rock", id_cap_rock) = {sf5,sf6};
-Physical Surface("surface_farfield", id_farfield) = {sf1,sf2,sf3,sf4};
 Physical Volume("volume_reservoir", id_reservoir) = Volume "*";
-
 
 Delete{ Point{p1}; } // Center point no longer needed
 

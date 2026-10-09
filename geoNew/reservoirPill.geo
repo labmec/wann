@@ -66,11 +66,11 @@ Recombine Surface "*";
 v[] = Extrude {0, 0, Hr} {Surface{sf}; Layers{h_div}; Recombine;};
 
 // Physical groups for the final mesh
-Physical Surface("surface_farfield",307) = {12, 13, 14, 15};
+Physical Surface("surface_farfield", id_farfield) = {12, 13, 14, 15};
 
 // Physical groups for merging with the near-well mesh
-Physical Surface("surface_cap_rock",306) = {11, 20};
-Physical Volume("volume_reservoir",310) = {1};
+Physical Surface("surface_cap_rock", id_cap_rock) = {11, 20};
+Physical Volume("volume_reservoir", id_reservoir) = {1};
 
 // Generate mesh
 Mesh 3;

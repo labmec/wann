@@ -458,12 +458,13 @@ void TPZWannAnalysis::FillBCMatids(std::set<int> &bcMatids, int type)
         if (bc_type == type)
             bcMatids.insert(matid);
     }
-    for (auto it = fSimData->m_Wellbore.BCs.begin(); it != fSimData->m_Wellbore.BCs.end(); ++it)
-    {
+    
+    for (auto &WellboreData : fSimData->m_Wellbore) {
+      for (auto it = WellboreData.BCs.begin(); it != WellboreData.BCs.end(); ++it) {
         int matid = it->second.matid;
         int bc_type = it->second.type;
-        if (bc_type == type)
-            bcMatids.insert(matid);
+        if (bc_type == type) bcMatids.insert(matid);
+      }
     }
 }
 
@@ -509,6 +510,12 @@ void TPZWannAnalysis::SetInitialSolution(std::set<int> &bcMatids)
 
           int64_t blockSize = fCompMesh->Block().Size(seq);
 
+          // Here we are finding the BC value associated with the current element.
+          // It is a bit cumbersome since BCs are stored in a string-keyed map inside the Reservoir
+          // data and each Wellbore data 
+          // TODO: Make the BC data handling more straightforward, maybe by storing a map from matid to BC value directly.
+          // We could also collect all BCs in a single map at the beginning of the simulation to avoid searching through multiple structures.
+
           std::string bc_name;
           REAL val;
           bool found = false;
@@ -522,13 +529,15 @@ void TPZWannAnalysis::SetInitialSolution(std::set<int> &bcMatids)
             }
           }
           if (!found) {
-            for (auto it = fSimData->m_Wellbore.BCs.begin();
-                 it != fSimData->m_Wellbore.BCs.end(); ++it) {
-              if (it->second.matid == elMatID) {
-                bc_name = it->first;
-                val = fSimData->m_Wellbore.BCs[bc_name].value;
-                found = true;
-                break;
+            for (int iwell = 0; iwell < fSimData->m_Wellbore.size(); iwell++) {
+              for (auto it = fSimData->m_Wellbore[iwell].BCs.begin();
+                   it != fSimData->m_Wellbore[iwell].BCs.end(); ++it) {
+                if (it->second.matid == elMatID) {
+                  bc_name = it->first;
+                  val = fSimData->m_Wellbore[iwell].BCs[bc_name].value;
+                  found = true;
+                  break;
+                }
               }
             }
           }

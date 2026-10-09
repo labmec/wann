@@ -19,6 +19,7 @@ public:
   static TPZCompMesh* CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TPZAnalyticSolution *exact);
 
 private:
+  static void ComputeTotalMobility(TPZCompMesh* cmesh, ProblemData* SimData);
   static void AddPressureSkinElements(TPZCompMesh* cmesh, ProblemData* SimData, const int laglevel);
   static void EqualizePressureSkinConnects(TPZCompMesh* cmesh, ProblemData* SimData);
   static void EqualizeH1Connects(TPZCompMesh *cmesh, ProblemData *SimData);

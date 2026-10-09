@@ -156,18 +156,16 @@ Transfinite Volume "*";
 Recombine Surface "*";
 
 // Set physical entites for the final mesh
-Physical Curve("curve_wellbore",300) = {5}; 
-Physical Curve("curve_toe",301) = {7,9,11,12};
-Physical Curve("curve_heel",302) = {1,2,3,4};
-Physical Surface("surface_wellbore_cylinder",303) = {1,2,3,4}; 
-Physical Surface("surface_wellbore_toe",304) = {sf20}; 
-Physical Surface("surface_wellbore_heel",305) = {sf19};
-Physical Point("point_heel",308) = {2};
-Physical Point("point_toe",309) = {6};
+Physical Curve("curve_wellbore", id_well) = {5};
+Physical Surface("surface_wellbore_cylinder", id_well_surface) = {1,2,3,4};
+Physical Surface("surface_wellbore_toe", id_toe_surface) = {sf20};
+Physical Surface("surface_wellbore_heel", id_heel_surface) = {sf19};
+Physical Point("point_heel", id_heel_point) = {2};
+Physical Point("point_toe", id_toe_point) = {6};
 
 // Set preliminary physical entities for the near-well region (to be merged with the reservoir mesh)
-Physical Surface("surface_cap_rock",306) = {sf5,sf6};
-Physical Volume("volume_reservoir",310) = Volume "*";
+Physical Surface("surface_cap_rock", id_cap_rock) = {sf5,sf6};
+Physical Volume("volume_reservoir", id_reservoir) = Volume "*";
 
 Delete{ Point{p1}; } // Center point no longer needed
 

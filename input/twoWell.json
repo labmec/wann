@@ -1,14 +1,14 @@
 {
   "MeshData": {
-    "file": "ozkan1999.msh",
+    "file": "twoWell.msh",
     "customRefinement": 0,
     "NumUniformRef": 0,
     "NumDirRef": 0,
-    "ToCylindrical": 1
+    "ToCylindrical": 0
   },
   "WellboreData": [
     {
-      "name": "curve_wellbore",
+      "name": "curve_wellbore_1",
       "matid": 1,
       "matidSurf": 2,
       "matidToeSurf": 3,
@@ -22,7 +22,7 @@
           "name": "point_heel",
           "matid": 5,
           "type": 1, //dirichlet:0    neumann:1
-          "value": -0.0552
+          "value": -0.06
         },
         {
           "name": "point_toe",
@@ -31,11 +31,36 @@
           "value": 0.0
         }
       ]
+    },
+    {
+      "name": "curve_wellbore_2",
+      "matid": 7,
+      "matidSurf": 8,
+      "matidToeSurf": 9,
+      "matidHeelSurf": 10,
+      "radius": 0.0762,
+      "length": 800.1,
+      "height": 3.3528,
+      "eccentricity": [0.0, 0.0, 0.0],
+      "BCs": [
+        {
+          "name": "point_heel",
+          "matid": 11,
+          "type": 1, //dirichlet:0    neumann:1
+          "value": 0.02
+        },
+        {
+          "name": "point_toe",
+          "matid": 12,
+          "type": 1,
+          "value": 0.0
+        }
+      ]
     }
   ],
   "ReservoirData": {
     "name": "volume_reservoir",
-    "matid": 7,
+    "matid": 13,
     "format": "pill",
     "perm": [8.38885e-12, 8.38885e-12, 1.48038e-12], // m^2
     "porosity": 1.0,
@@ -45,13 +70,13 @@
     "BCs": [
       {
         "name": "surface_farfield",
-        "matid": 8,
+        "matid": 14,
         "type": 0,
         "value": 0.0
       },
       {
         "name": "surface_cap_rock",
-        "matid": 9,
+        "matid": 15,
         "type": 1,
         "value": 0.0
       }
@@ -77,7 +102,7 @@
     "reservoirPorder": 1,
     "wellPorder": 2,
     "refPressure": 0.0,
-    "pressureScale": 1e-5,
+    "pressureScale": 1.0,
     "nthreads": 0,
     "maxIterations" : 10,
     "res_tol": 1e-6,
