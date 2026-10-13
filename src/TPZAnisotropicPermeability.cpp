@@ -1,10 +1,51 @@
 //
 // Created by Gi Taraschi 27/05/26
-// The current version is hard-coded to work with 3D problems. 
-// Future iterations should be generalized to work with 2D and 1D problems as well.
+// Tensors are stored in global 3D coordinates; 1D/2D inputs use the x-axis/xy-plane.
 //
 
 #include "TPZAnisotropicPermeability.h"
+#include <cmath>
+
+namespace {
+// Preserve three-component flux multiplication while accepting lower-dimensional tensors.
+TPZFMatrix<STATE> NormalizePermeability(TPZFMatrix<STATE> tensor) {
+    const auto size = tensor.Rows();
+    if (tensor.Cols() != size || (size < 1 || size > 3)) {
+        PZError << "Permeability tensor must be 1x1, 2x2 or 3x3.";
+        DebugStop();
+    }
+    if (size == 1) {
+        const STATE permeability = tensor(0, 0);
+        if (permeability <= 0.) {
+            PZError << "Invalid 1D permeability value.";
+            DebugStop();
+        }
+        TPZFMatrix<STATE> embedded(3, 3, 0.);
+        for (int i = 0; i < 3; i++) {
+            embedded(i, i) = permeability;
+        }
+        return embedded;
+    }
+    if (size == 2) {
+        const STATE determinant = tensor(0, 0) * tensor(1, 1)
+                                - tensor(0, 1) * tensor(1, 0);
+        if (determinant <= 0.) {
+            PZError << "Invalid 2D permeability matrix determinant.";
+            DebugStop();
+        }
+        TPZFMatrix<STATE> embedded(3, 3, 0.);
+        for (int i = 0; i < 2; i++) {
+            for (int j = 0; j < 2; j++) {
+                embedded(i, j) = tensor(i, j);
+            }
+        }
+        embedded(2, 2) = std::sqrt(determinant);
+        return embedded;
+    }
+    return tensor;
+}
+}
+
 
 void TPZAnisotropicPermeability::SetConstantPermeability(const STATE constant) {
     fConstantPermeabilityScalar = constant;
@@ -21,6 +62,7 @@ void TPZAnisotropicPermeability::SetConstantPermeability(const STATE constant) {
 }
 
 void TPZAnisotropicPermeability::SetConstantPermeability(TPZFMatrix<STATE> constant) {
+    constant = NormalizePermeability(constant);
     fConstantPermeability = constant;
     fHomogeneous = true;
     fIsotropic = false;
@@ -58,11 +100,7 @@ STATE TPZAnisotropicPermeability::GetPermeability(const TPZVec<REAL> &coord) {
 }
 
 void TPZAnisotropicPermeability::GetPermeability(const TPZVec<REAL> &coord, TPZFMatrix<STATE> &perm_matrix) {
-    if (perm_matrix.Cols() != perm_matrix.Rows() && perm_matrix.Cols() != 3) {
-        PZError << "Permeability matrix must be 3x3.";
-        DebugStop();
-    }
-
+    perm_matrix.Redim(3, 3);
     perm_matrix = 0;
     if (fIsotropic) {
         STATE perm_value = fHomogeneous ? fConstantPermeabilityScalar : fIsotropicPermeabilityFunction(coord);
@@ -73,7 +111,7 @@ void TPZAnisotropicPermeability::GetPermeability(const TPZVec<REAL> &coord, TPZF
         if (fHomogeneous) {
             perm_matrix = fConstantPermeability;
         } else {
-            perm_matrix = fAnisotropicPermeabilityFunction(coord);
+            perm_matrix = NormalizePermeability(fAnisotropicPermeabilityFunction(coord));
         }
     }
 }

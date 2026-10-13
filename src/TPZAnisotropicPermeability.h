@@ -37,13 +37,16 @@ public:
     void SetConstantPermeability(STATE constant);
 
         /**
-     * @brief Set a constant isotropic permeability to the material
-     * @param [in] constant permeability value
+     * @brief Set a constant tensor (1x1 along global x, 2x2 in global xy, or 3x3).
+     * A 1x1 tensor [k] is embedded as k times the 3x3 identity.
+     * A 2x2 tensor is embedded with Kzz = sqrt(det(K2D)) and zero z coupling.
+     * @param [in] constant permeability tensor
      */
     void SetConstantPermeability(TPZFMatrix<STATE> constant);
 
     /**
      * @brief Set a varying anisotropic permeability field to the material
+     * The callback may return a 1x1 x-axis, 2x2 xy-plane, or 3x3 global tensor.
      * @param [in] perm_function function that describes the permeability field
      */
     void SetPermeabilityFunction(AnisotropicFunctionType &perm_function);
@@ -63,14 +66,14 @@ public:
     /**
      * @brief Return the inverse of the permeability value at a coordinate.
      * @param [in] coord coordinate of interest
-     * @param [out] inv_perm_matrix inverse permeability matrix at the given coordinate
+     * @param [out] inv_perm_matrix 3x3 inverse permeability matrix at the given coordinate
      */
     void GetInversePermeability(const TPZVec<REAL> &coord, TPZFMatrix<STATE> &inv_perm_matrix);
 
     /**
      * @brief Return the permeability value (or its average value) at a coordinate
      * @param [in] coord coordinate of interest
-     * @param [out] perm_matrix permeability matrix at the given coordinate
+     * @param [out] perm_matrix 3x3 permeability matrix at the given coordinate
      */
     void GetPermeability(const TPZVec<REAL> &coord, TPZFMatrix<STATE> &perm_matrix);
 
