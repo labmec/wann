@@ -1,11 +1,17 @@
 #include "TPZWannPostProcTools.h"
-#include "TPZNonlinearWell.h"
-#include "TPZNonLinearWellH1.h"
+#include "TPZWannGeometryTools.h"
+
+#include <algorithm>
+#include <cmath>
+#include "TPZWannMixedWell.h"
+#include "TPZWannH1Well.h"
 
 #include <set>
 
-void TPZWannPostProcTools::GenerateTrainingData(TPZGeoMesh* gmesh, ProblemData* SimData) {
+// TODO: deprecated. Must be extended to support multiple wellbores.
+// Also, the current implementation assumes x-axis aligned wellbore.
 
+void TPZWannPostProcTools::GenerateTrainingData(TPZGeoMesh* gmesh, ProblemData* SimData) {
   auto& PostProcData = SimData->m_PostProc;
   std::string filename = PostProcData.training_data;
   std::string path = std::string(TRAININGDIR) + "/" + filename;
@@ -52,8 +58,7 @@ void TPZWannPostProcTools::GenerateTrainingData(TPZGeoMesh* gmesh, ProblemData* 
     // Now postprocess the pressure and div q of the cel reference by gel
     TPZCompEl* cel = gel->Reference();
     TPZMaterial* mat = cel->Material();
-    // TPZMixedDarcyFlow* wellmat = dynamic_cast<TPZMixedDarcyFlow*>(mat);
-    TPZNonlinearWell* wellmat = dynamic_cast<TPZNonlinearWell*>(mat);
+    TPZWannMixedWell* wellmat = dynamic_cast<TPZWannMixedWell*>(mat);
     if(!wellmat) DebugStop();
     
     const int pind = wellmat->VariableIndex("Pressure");
@@ -77,7 +82,6 @@ void TPZWannPostProcTools::GenerateTrainingData(TPZGeoMesh* gmesh, ProblemData* 
 }
 
 void TPZWannPostProcTools::WriteWellboreVTK(TPZCompMesh* cmesh, ProblemData* SimData) {
-
   auto& PostProcData = SimData->m_PostProc;
 
   // Check whether the simulation is H1 or Hdiv
@@ -96,7 +100,7 @@ void TPZWannPostProcTools::WriteWellboreVTK(TPZCompMesh* cmesh, ProblemData* Sim
   for (size_t wellIndex = 0; wellIndex < SimData->m_Wellbore.size(); wellIndex++) {
     const auto& well = SimData->m_Wellbore[wellIndex];
     const std::string filename = PostProcData.wellbore_vtk + "_" + simType
-                               + "_well_" + std::to_string(wellIndex);
+                               + "_" + std::to_string(wellIndex);
     TPZVTKGenerator vtk(cmesh, std::set<int>{well.matid}, fieldnames,
                        filename, PostProcData.vtk_resolution);
     vtk.SetNThreads(PostProcData.nthreads);
@@ -105,7 +109,6 @@ void TPZWannPostProcTools::WriteWellboreVTK(TPZCompMesh* cmesh, ProblemData* Sim
 }
 
 void TPZWannPostProcTools::WriteReservoirVTK(TPZCompMesh* cmesh, ProblemData* SimData) {
-
   auto& PostProcData = SimData->m_PostProc;
 
   // Check whether the simulation is H1 or Hdiv
@@ -128,13 +131,11 @@ void TPZWannPostProcTools::WriteReservoirVTK(TPZCompMesh* cmesh, ProblemData* Si
 }
 
 void TPZWannPostProcTools::WriteVTKs(TPZCompMesh* cmesh, ProblemData* SimData) {
-
   WriteReservoirVTK(cmesh, SimData);
   WriteWellboreVTK(cmesh, SimData);
 }
 
 void TPZWannPostProcTools::PostProcessAllData(TPZCompMesh* cmesh, TPZGeoMesh* gmesh, ProblemData* SimData) {
-
   cmesh->Reference()->ResetReference();
   cmesh->LoadReferences();
 
@@ -146,187 +147,238 @@ void TPZWannPostProcTools::PostProcessAllData(TPZCompMesh* cmesh, TPZGeoMesh* gm
 // TODO: deprecated. Need to be extended to handle multiple wellbores and multiphysics simulations
 
 
-// TPZVec<REAL> TPZWannPostProcTools::ComputeWellFluxes(TPZCompMesh *cmesh, ProblemData *SimData, TPZVec<REAL> segmentPoints) {
-//   int nsegments = segmentPoints.size() - 1;
-//   TPZVec<REAL> fluxes(nsegments, 0.);
 
-//   // Check if cmesh is Hdiv or H1
-//   // We are assuming that only the Hdiv mesh is multiphyiscs
-//   bool isHdiv;
-//   TPZMultiphysicsCompMesh *cmeshMult = dynamic_cast<TPZMultiphysicsCompMesh *>(cmesh);
-//   if (cmeshMult) {
-//     isHdiv = true;
-//   } else {
-//     isHdiv = false;
-//   }
+TPZVec<REAL> TPZWannPostProcTools::ComputeWellFluxes(TPZCompMesh *cmesh, ProblemData *SimData, int wellIndex, int nSegments) {
+  if (wellIndex < 0 || wellIndex >= SimData->m_Wellbore.size()) {
+    std::cerr << "Invalid well index: " << wellIndex << std::endl;
+    DebugStop();
+  }
 
-//   int matid = SimData->EDomain; 
+  if (nSegments <= 0) {
+    std::cerr << "Invalid number of segments: " << nSegments << std::endl;
+    DebugStop();
+  }
 
-//   // Ensure references point to current mesh
-//   cmesh->Reference()->ResetReference();
-//   cmesh->LoadReferences();
-//   TPZGeoMesh *gmesh = cmesh->Reference();
+  TPZVec<REAL> fluxes(nSegments, 0.);
 
-//   int64_t ngel = cmesh->Reference()->NElements();
+  // Check if cmesh is Hdiv or H1
+  // We are assuming that only the Hdiv mesh is multiphyiscs
+  bool isHdiv = (dynamic_cast<TPZMultiphysicsCompMesh *>(cmesh) != nullptr);
 
-//   for (auto gel : gmesh->ElementVec()) {
-//     if (gel->HasSubElement()) continue; // Skip non-leaf elements
-//     if (gel->MaterialId() != matid) continue;
+  int matid = SimData->m_Reservoir.matid;
+  const auto &well = SimData->m_Wellbore[wellIndex];
+  const int wellMatid = well.matidSurf;
 
-//     // Loop over sides to see if we are in a boundary element
-//     bool isBoundaryElement = false;
-//     int side = -1;
-//     TPZGeoEl *faceGel = nullptr;
-//     int firstFace = gel->FirstSide(gel->Dimension() - 1); 
-//     int lastFace = gel->FirstSide(gel->Dimension());
-//     for (int iside = firstFace; iside < lastFace; iside++) {
-//       TPZGeoElSide gelside(gel, iside);
-//       TPZGeoElSide neighside = gelside.HasNeighbour(SimData->ESurfWellCyl);
-//       if (neighside) {
-//         isBoundaryElement = true;
-//         side = iside;
-//         faceGel = neighside.Element();
-//         break;
-//       }
-//     }
+  // Ensure references point to current mesh
+  cmesh->Reference()->ResetReference();
+  cmesh->LoadReferences();
+  TPZGeoMesh *gmesh = cmesh->Reference();
 
-//     if (!isBoundaryElement) continue; // Skip elements that are not on the cylindrical surface
+  // Locate this well's endpoints to compute axil coordinates and length
+  const auto heelBC = well.BCs.find("point_heel");
+  const auto toeBC = well.BCs.find("point_toe");
+  if (heelBC == well.BCs.end() || toeBC == well.BCs.end() ||
+      heelBC->second.matid < 0 || toeBC->second.matid < 0 ||
+      heelBC->second.matid == toeBC->second.matid) {
+    std::cerr << "Invalid heel/toe material IDs for well " << wellIndex << std::endl;
+    DebugStop();
+  }
+  TPZManVector<REAL, 3> heelPoint(3, 0.), toePoint(3, 0.);
+  bool foundHeel = false, foundToe = false;
+  for (auto gel : gmesh->ElementVec()) {
+    if (!gel || gel->Dimension() != 0) continue;
+    if (gel->MaterialId() == heelBC->second.matid) {
+      gel->NodePtr(0)->GetCoordinates(heelPoint);
+      foundHeel = true;
+    } else if (gel->MaterialId() == toeBC->second.matid) {
+      gel->NodePtr(0)->GetCoordinates(toePoint);
+      foundToe = true;
+    }
+  }
+  if (!foundHeel || !foundToe) {
+    std::cerr << "Heel/toe points not found for well " << wellIndex << std::endl;
+    DebugStop();
+  }
+  const TPZManVector<REAL, 3> axis = toePoint - heelPoint;
+  const REAL length = Norm(axis);
+  if (!(length > 0.) || !std::isfinite(length)) DebugStop();
+  const REAL axialTolerance = 1.e-8 * length;
 
-//     // Center of the element
-//     TPZManVector<REAL, 3> qsi(faceGel->Dimension());
-//     TPZManVector<REAL, 3> xCenter(3, 0.);
-//     faceGel->CenterPoint(faceGel->NSides() - 1, qsi); // center of the element interior
-//     faceGel->X(qsi, xCenter);
+  for (auto gel : gmesh->ElementVec()) {
+    if (!gel) continue;
+    if (gel->HasSubElement()) continue; // Skip non-leaf elements
+    if (gel->MaterialId() != matid) continue;
 
-//     // Determine in which segment the element is located
-//     int segment = -1;
-//     for (int j = 0; j < nsegments; j++) {
-//       if (xCenter[0] >= segmentPoints[j] && xCenter[0] < segmentPoints[j + 1]) {
-//         segment = j;
-//         break;
-//       }
-//     }
-//     if (segment == -1) DebugStop(); // element not in any segment
+    // Loop over sides to see if we are in contact with the wellvore
+    bool isBoundaryElement = false;
+    int side = -1;
+    TPZGeoEl *faceGel = nullptr;
+    int firstFace = gel->FirstSide(gel->Dimension() - 1); 
+    int lastFace = gel->FirstSide(gel->Dimension());
+    for (int iside = firstFace; iside < lastFace; iside++) {
+      TPZGeoElSide gelside(gel, iside);
+      TPZGeoElSide neighside = gelside.HasNeighbour(wellMatid);
+      if (neighside) {
+        isBoundaryElement = true;
+        side = iside;
+        faceGel = neighside.Element();
+        break;
+      }
+    }
 
-//     // Compute contributions
-//     const TPZIntPoints *intrule = nullptr;
-//     intrule = gel->CreateSideIntegrationRule(side, SimData->m_Numerics.reservoirPorder);
-//     for (int ip = 0; ip < intrule->NPoints(); ip++) {
-//       int dimF = faceGel->Dimension();
-//       TPZManVector<REAL, 3> ptOnSide(faceGel->Dimension());
-//       TPZFNMatrix<9, REAL> jacobian, axes, jacinv;
-//       REAL weight, detjac;
-//       faceGel->Jacobian(ptOnSide, jacobian, axes, detjac, jacinv);
+    if (!isBoundaryElement) continue; // Skip elements that are not on the cylindrical surface
 
-//       // Compute normal
-//       // Must done in the integration point to account for curved sides
-//       TPZManVector<REAL, 3> v1(3), v2(3), normal(3);
-//       v1[0] = axes(0, 0);
-//       v1[1] = axes(0, 1);
-//       v1[2] = axes(0, 2);
-//       v2[0] = axes(1, 0);
-//       v2[1] = axes(1, 1);
-//       v2[2] = axes(1, 2);
+    // Center of the element
+    TPZManVector<REAL, 3> qsi(faceGel->Dimension());
+    TPZManVector<REAL, 3> xCenter(3, 0.);
+    faceGel->CenterPoint(faceGel->NSides() - 1, qsi); // center of the element interior
+    faceGel->X(qsi, xCenter);
 
-//       normal[0] = v1[1] * v2[2] - v1[2] * v2[1];
-//       normal[1] = v1[2] * v2[0] - v1[0] * v2[2];
-//       normal[2] = v1[0] * v2[1] - v1[1] * v2[0];
+    // Assign the entire face to the segment containing its axial centroid.
+    const REAL axialCoord = TPZWannGeometryTools::ComputeAxialCoordinate(xCenter, heelPoint, axis);
+    if (!std::isfinite(axialCoord) || axialCoord < -axialTolerance || axialCoord > length + axialTolerance) {
+      std::cerr << "Face centroid outside well " << wellIndex << std::endl;
+      DebugStop();
+    }
+    const REAL boundedCoord = std::clamp(axialCoord, REAL(0), length);
+    const int segment = std::min(nSegments - 1, static_cast<int>(std::floor((boundedCoord / length) * nSegments)));
 
-//       REAL norm = sqrt(normal[0] * normal[0] + normal[1] * normal[1] +
-//                        normal[2] * normal[2]);
-//       if (norm > 1e-12) {
-//         normal[0] /= norm;
-//         normal[1] /= norm;
-//         normal[2] /= norm;
-//       }
+    // Compute contributions
+    const TPZIntPoints *intrule = nullptr;
+    intrule = gel->CreateSideIntegrationRule(side, SimData->m_Numerics.reservoirPorder);
+    for (int ip = 0; ip < intrule->NPoints(); ip++) {
+      int dimF = faceGel->Dimension();
+      TPZManVector<REAL, 3> ptOnSide(faceGel->Dimension());
+      TPZFNMatrix<9, REAL> jacobian, axes, jacinv;
+      REAL weight, detjac;
+      faceGel->Jacobian(ptOnSide, jacobian, axes, detjac, jacinv);
 
-//       intrule->Point(ip, ptOnSide, weight);
-//       TPZManVector<REAL, 3> ptInElement(gel->Dimension());
-//       TPZTransform<> trans = gel->SideToSideTransform(side, gel->NSides() - 1);
-//       trans.Apply(ptOnSide, ptInElement);
-//       weight *= fabs(detjac);
-//       TPZManVector<REAL, 3> sigh(gel->Dimension(), 0.0);
-//       TPZCompEl *cel = gel->Reference();
-//       if (isHdiv) {
-//         auto mfcel = dynamic_cast<TPZMultiphysicsElement *>(cel);
-//         if (!mfcel)
-//           DebugStop();
-//         TPZCompEl *celHdiv = mfcel->Element(0); // We are assuming that the first mesh is the H(div) mesh
-//         celHdiv->Solution(ptInElement, 1, sigh);
-//       } else {
-//         cel->Solution(ptInElement, 7, sigh);
-//       }
+      // Compute normal
+      // Must done in the integration point to account for curved sides
+      TPZManVector<REAL, 3> v1(3), v2(3), normal(3);
+      v1[0] = axes(0, 0);
+      v1[1] = axes(0, 1);
+      v1[2] = axes(0, 2);
+      v2[0] = axes(1, 0);
+      v2[1] = axes(1, 1);
+      v2[2] = axes(1, 2);
 
-//       // get normal flux
-//       REAL normalFLux = sigh[0] * normal[0] + sigh[1] * normal[1] + sigh[2] * normal[2];
-//       fluxes[segment] += normalFLux * weight;
-//     }
-//   }
-//   return fluxes;
-// }
+      normal[0] = v1[1] * v2[2] - v1[2] * v2[1];
+      normal[1] = v1[2] * v2[0] - v1[0] * v2[2];
+      normal[2] = v1[0] * v2[1] - v1[1] * v2[0];
 
-// REAL TPZWannPostProcTools::ProductivityIndex(TPZCompMesh *cmesh, ProblemData *SimData) {
-//   // TODO: Generalize for multiple wellbores
-//   REAL pff = SimData->m_Wellbore[0].BCs["surface_farfield"].value;
+      REAL norm = sqrt(normal[0] * normal[0] + normal[1] * normal[1] +
+                       normal[2] * normal[2]);
+      if (norm > 1e-12) {
+        normal[0] /= norm;
+        normal[1] /= norm;
+        normal[2] /= norm;
+      }
 
-//   cmesh->Reference()->ResetReference();
-//   cmesh->LoadReferences();
+      intrule->Point(ip, ptOnSide, weight);
+      TPZManVector<REAL, 3> ptInElement(gel->Dimension());
+      TPZTransform<> trans = gel->SideToSideTransform(side, gel->NSides() - 1);
+      trans.Apply(ptOnSide, ptInElement);
+      weight *= fabs(detjac);
+      TPZManVector<REAL, 3> sigh(gel->Dimension(), 0.0);
+      TPZCompEl *cel = gel->Reference();
+      if (isHdiv) {
+        auto mfcel = dynamic_cast<TPZMultiphysicsElement *>(cel);
+        if (!mfcel)
+          DebugStop();
+        TPZCompEl *celHdiv = mfcel->Element(0); // We are assuming that the first mesh is the H(div) mesh
+        celHdiv->Solution(ptInElement, 1, sigh);
+      } else {
+        cel->Solution(ptInElement, 7, sigh);
+      }
 
-//   // Check whether the simulation is H1 or Hdiv
-//   bool isMultiphysics = true;
-//   TPZMultiphysicsCompMesh *cmeshMP = dynamic_cast<TPZMultiphysicsCompMesh *>(cmesh);
-//   if (!cmeshMP) isMultiphysics = false;
+      // get normal flux
+      REAL normalFLux = sigh[0] * normal[0] + sigh[1] * normal[1] + sigh[2] * normal[2];
+      fluxes[segment] += normalFLux * weight;
+    }
+  }
+  return fluxes;
+}
 
-//   TPZGeoMesh* gmesh = cmesh->Reference();
-//   REAL totalFlux = 0.;
-//   REAL pheel = 0.;
+REAL TPZWannPostProcTools::ProductivityIndex(TPZCompMesh *cmesh, ProblemData *SimData, int wellIndex) {
+  int matidWell = SimData->m_Wellbore[wellIndex].matid;
+  int matidPointHeel = SimData->m_Wellbore[wellIndex].BCs["point_heel"].matid;
+  int matidPointToe = SimData->m_Wellbore[wellIndex].BCs["point_toe"].matid;
+  
+  // Check if toe and heel matids are valid
+  if (matidPointHeel < 0 || matidPointToe < 0) {
+    std::cerr << "Invalid heel/toe material IDs for well " << wellIndex << std::endl;
+    DebugStop();
+  }
 
-//   for (TPZCompEl* cel : cmesh->ElementVec()) {
-//     if (!cel) continue;
-//     TPZGeoEl* gel = cel->Reference();
-//     if (!gel) DebugStop();
-//     if (gel->HasSubElement()) DebugStop();
-//     if (gel->MaterialId() != SimData->ECurveWell) continue;
+  REAL pff = SimData->m_Reservoir.BCs["surface_farfield"].value;
 
-//     TPZManVector<REAL, 3> qsi(gel->Dimension(), 0.);
-//     TPZGeoElSide gelsideA(gel, 0);
-//     TPZGeoElSide gelsideB(gel, 1);
-//     TPZGeoElSide neighsideA = gelsideA.HasNeighbour(SimData->EPointHeel);
-//     TPZGeoElSide neighsideB = gelsideB.HasNeighbour(SimData->EPointHeel);
+  cmesh->Reference()->ResetReference();
+  cmesh->LoadReferences();
 
-//     if (neighsideA) {
-//       qsi[0] = -1.0;
-//     } else if (neighsideB) {
-//       qsi[0] = 1.0;
-//     } else {
-//       continue;; // We want an element that is connected to the heel point
-//     }
+  // Check whether the simulation is H1 or Hdiv
+  bool isMultiphysics = true;
+  TPZMultiphysicsCompMesh *cmeshMP = dynamic_cast<TPZMultiphysicsCompMesh *>(cmesh);
+  if (!cmeshMP) isMultiphysics = false;
 
-//     TPZMaterial* mat = cel->Material();
-//     int pind;
-//     int qind;
-//     if (isMultiphysics) {
-//       TPZNonlinearWell* wellmat = dynamic_cast<TPZNonlinearWell*>(mat);
-//       if (!wellmat) DebugStop();
-//       pind = wellmat->VariableIndex("Pressure");
-//       qind = wellmat->VariableIndex("Flux");
-//     } else {
-//       TPZNonLinearWellH1* wellmat = dynamic_cast<TPZNonLinearWellH1*>(mat);
-//       if (!wellmat) DebugStop();
-//       pind = wellmat->VariableIndex("Pressure");
-//       qind = wellmat->VariableIndex("Flux");
-//     }
+  TPZGeoMesh* gmesh = cmesh->Reference();
+  REAL totalFlux = 0.;
+  REAL pheel = 0.;
 
-//     TPZManVector<STATE, 3> output(1);
-//     cel->Solution(qsi,pind,output);
-//     pheel = output[0];
-//     cel->Solution(qsi, qind, output);
-//     totalFlux = output[0];
-//   }
+  for (TPZCompEl* cel : cmesh->ElementVec()) {
+    if (!cel) continue;
+    TPZGeoEl* gel = cel->Reference();
+    if (!gel) DebugStop();
+    if (gel->HasSubElement()) DebugStop();
+    if (gel->MaterialId() != matidWell) continue;
 
-//   REAL PI = totalFlux / (pheel - pff);
+    TPZManVector<REAL, 3> qsi(gel->Dimension(), 0.);
+    TPZGeoElSide gelsideA(gel, 0);
+    TPZGeoElSide gelsideB(gel, 1);
+    TPZGeoElSide neighsideA = gelsideA.HasNeighbour(matidPointHeel);
+    TPZGeoElSide neighsideB = gelsideB.HasNeighbour(matidPointToe);
 
-//   // Convert from m^3/s/Pa to STB/day/psi
-//   PI = PI * 6.28981 * 86400 * 6894.76;
-//   return PI;
-// }
+    if (neighsideA) {
+      qsi[0] = -1.0;
+    } else if (neighsideB) {
+      qsi[0] = 1.0;
+    } else {
+      continue;; // We want an element that is connected to the heel point
+    }
+
+    TPZMaterial* mat = cel->Material();
+    int pind;
+    int qind;
+    if (isMultiphysics) {
+      TPZWannMixedWell* wellmat = dynamic_cast<TPZWannMixedWell*>(mat);
+      if (!wellmat) DebugStop();
+      pind = wellmat->VariableIndex("Pressure");
+      qind = wellmat->VariableIndex("Flux");
+    } else {
+      TPZWannH1Well* wellmat = dynamic_cast<TPZWannH1Well*>(mat);
+      if (!wellmat) DebugStop();
+      pind = wellmat->VariableIndex("Pressure");
+      qind = wellmat->VariableIndex("Flux");
+    }
+
+    TPZManVector<STATE, 3> output(1);
+    cel->Solution(qsi,pind,output);
+    pheel = output[0];
+    cel->Solution(qsi, qind, output);
+    totalFlux = output[0];
+  }
+
+  const REAL pressureScale = SimData->m_Numerics.pressureScale;
+
+  // p_scaled = (p_Pa - refPressure) * pressureScale, so the reference
+  // cancels in the difference and deltaP_Pa = deltaP_scaled / pressureScale.
+  // Flux remains in m^3/s. Preserve the existing signed pressure difference.
+  const REAL pressureDifferencePa = (pheel - pff) / pressureScale;
+  const REAL PI = totalFlux / pressureDifferencePa;
+
+  // Convert m^3/(s Pa) to STB/(day psi), using the existing volume convention.
+  constexpr REAL barrelsPerCubicMeter = 6.28981;
+  constexpr REAL secondsPerDay = 86400.;
+  constexpr REAL pascalsPerPsi = 6894.76;
+  return PI * barrelsPerCubicMeter * secondsPerDay * pascalsPerPsi;
+}

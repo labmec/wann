@@ -1,5 +1,4 @@
-#ifndef TPZWannMixedDarcyNL_H
-#define TPZWannMixedDarcyNL_H
+#pragma once
 
 #include "TPZMixedDarcyAnisotropic.h"
 
@@ -104,5 +103,3 @@ public:
     void FillBoundaryConditionDataRequirements(int type, TPZVec<TPZMaterialDataT<STATE> > &datavec) const override;
 
 };
-
-#endif //TPZWannMixedDarcyNL_H

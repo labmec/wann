@@ -1,5 +1,4 @@
-#ifndef TPZWannDarcyNL_H
-#define TPZWannDarcyNL_H
+#pragma once
 
 #include "TPZDarcyAnisotropic.h"
 
@@ -123,5 +122,3 @@ public:
     void Solution(const TPZMaterialDataT<STATE> &data, int var, TPZVec<STATE> &solOut) override;
 
 };
-
-#endif //TPZWannDarcyNL_H

@@ -1,5 +1,4 @@
-#ifndef PROBLEMDATA_H
-#define PROBLEMDATA_H
+#pragma once
 
 #include <iostream>
 #include <unordered_map>
@@ -41,6 +40,9 @@ class ProblemData
 
   struct ReservoirData : public DomainData
   {
+    // Reservoir dimensions are not used in the simulation. 
+    // TODO: consider removing them from this struct.
+    // They shall remain in the json file for the meshing generation process.
     REAL height;
     REAL width;
     REAL length;
@@ -60,7 +62,7 @@ class ProblemData
     std::string file;
     int customRefinement;
     int NumUniformRef;
-    int NumDirRef;
+    int NumDirRef; // TODO: current version does not support directional refinement.
     int ToCylindrical;
   };
 
@@ -90,17 +92,13 @@ class ProblemData
 public:
   using json = nlohmann::json; // declaration of json class
 
-  TPZVec<WellboreData> m_Wellbore; // Data for all the wellbores in the simulation
-
-  ReservoirData m_Reservoir; // reservoir data
-
-  TPZVec<FluidData> m_Fluid; // Fluid data for all phases
-
-  MeshData m_Mesh; // mesh data
-
-  PostProcData m_PostProc; // post process data
-
-  NumericsData m_Numerics; // numerics data
+  // Core data structures
+  TPZVec<WellboreData> m_Wellbore;
+  ReservoirData m_Reservoir;
+  TPZVec<FluidData> m_Fluid;
+  MeshData m_Mesh;
+  PostProcData m_PostProc;
+  NumericsData m_Numerics;
 
   // Auxiliary material IDs for the coupling elements
   // They are initialized to -1, and will be set in the ReadJson function
@@ -110,8 +108,10 @@ public:
 
 public:
   ProblemData();
-
   ~ProblemData();
+
+  ProblemData(const ProblemData&) = default;
+  ProblemData& operator=(const ProblemData&) = default;
 
   void ReadJson(std::string jsonfile);
 
@@ -122,9 +122,4 @@ public:
   void ApplyPressureScaling();
 
   void Print(std::ostream &out = std::cout);
-
-  ProblemData(const ProblemData&) = default;
-  ProblemData& operator=(const ProblemData&) = default;
 };
-
-#endif

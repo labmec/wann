@@ -1,10 +1,10 @@
 #include "TPZWannApproxTools.h"
-#include "TPZNonlinearWell.h"
-#include "TPZNonLinearWellH1.h"
+#include "TPZWannMixedWell.h"
+#include "TPZWannH1Well.h"
 #include "TPZWannMixedDarcyNL.h"
 #include "TPZWannDarcyNL.h"
 
-TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TPZAnalyticSolution *exact, bool isDualProblem)
+TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMixedCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData)
 {
 
   const int dim = gmesh->Dimension();
@@ -12,10 +12,7 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
   TPZHDivApproxCreator hdivCreator(gmesh);
   hdivCreator.ProbType() = ProblemType::EDarcy;
   hdivCreator.SetDefaultOrder(SimData->m_Numerics.reservoirPorder);
-  hdivCreator.SetShouldCondense(false);
-
-  TLaplaceExample1* exactsol = dynamic_cast<TLaplaceExample1 *>(exact);
-  bool hasAnalyticSol = (exactsol != nullptr && exactsol->fExact != TLaplaceExample1::ENone);
+  hdivCreator.SetShouldCondense(false); // TODO: use Fast condensed elements for future implementations
 
   // Reservoir material
   auto &ReservoirData = SimData->m_Reservoir;
@@ -29,7 +26,6 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
       perm(i, i) = ReservoirData.perm[i] / FluidData[0].viscosity; // TODO: assuming single phase flow for now
     }
     reservoirMat->SetConstantPermeability(perm);
-
     hdivCreator.InsertMaterialObject(reservoirMat);
 
     for (auto &bcpair : ReservoirData.BCs)
@@ -39,14 +35,13 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
       TPZManVector<STATE> val2(1, 0);
       val2[0] = bc.value;
       TPZBndCondT<STATE> *BCond = reservoirMat->CreateBC(reservoirMat, bc.matid, bc.type, val1, val2);
-      if (hasAnalyticSol) BCond->SetForcingFunctionBC(exact->ExactSolution(), 3);
       hdivCreator.InsertMaterialObject(BCond);
     }
   }
 
   // Pressure skin material
   {
-    TPZNullMaterialCS<STATE> *matl2proj = new TPZNullMaterialCS<STATE>(SimData->EPressure2DSkin, dim - 1, 1 /*nstate*/);
+    TPZNullMaterialCS<STATE> *matl2proj = new TPZNullMaterialCS<STATE>(SimData->EPressure2DSkin, dim - 1, 1);
     hdivCreator.InsertMaterialObject(matl2proj);
   }
 
@@ -55,13 +50,9 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
     const int dimwell = 1;
     
     // TODO: assuming single phase flow for now
-    TPZNonlinearWell *wellboreMat =
-        new TPZNonlinearWell(WellboreData.matid, 2 * WellboreData.radius,
+    TPZWannMixedWell *wellboreMat =
+        new TPZWannMixedWell(WellboreData.matid, 2 * WellboreData.radius,
                              FluidData[0].viscosity, FluidData[0].density, 0.0, 0.0);
-    if (hasAnalyticSol) {
-      wellboreMat->SetExactSol(exact->ExactSolution(), 3);
-      wellboreMat->SetForcingFunction(exact->ForceFunc(), 3);
-    }
 
     // Insert material for the multiphysics mesh
     hdivCreator.InsertMaterialObject(wellboreMat);
@@ -72,7 +63,6 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
       TPZManVector<STATE> val2(1, 0);
       val2[0] = bc.value;
       TPZBndCondT<STATE> *BCond = wellboreMat->CreateBC(wellboreMat, bc.matid, bc.type, val1, val2);
-      if (hasAnalyticSol) BCond->SetForcingFunctionBC(exact->ExactSolution(), 3);
       hdivCreator.InsertMaterialObject(BCond);
     }
   }
@@ -88,7 +78,7 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
   hdivCreator.CreateAtomicMeshes(meshvec, lagmultilevel);      // This method increments the lagmultilevel
   AddPressureSkinElements(meshvec[1], SimData, lagmultilevel); // lagmultilevel is 2 here
   AddWellboreElements(meshvec, SimData, lagmultilevel);
-  EqualizePressureConnects(meshvec[1], SimData);
+  EqualizeL2PressureConnects(meshvec[1], SimData);
   AddHDivBoundInterfaceElements(meshvec[0], SimData);
   TPZMultiphysicsCompMesh *cmesh = nullptr;
   hdivCreator.CreateMultiPhysicsMesh(meshvec, lagmultilevel, cmesh);
@@ -99,115 +89,14 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
   AddInterfaceElements(cmesh, SimData, lagmultilevel);
 
   if (SimData->m_PostProc.verbosityLevel) {
-    std::ofstream out("cmesh.txt");
+    std::ofstream out("cmeshWannMixed.txt");
     cmesh->Print(out);
   }
 
   return cmesh;
 }
 
-TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TPZAnalyticSolution *exact) 
-{
-  const int dim = gmesh->Dimension();
-  auto &ReservoirData = SimData->m_Reservoir;
-  auto &WellboreData = SimData->m_Wellbore[0]; // TODO: generalize for multiple wellbores
-  auto &FluidData = SimData->m_Fluid;
-  std::set<int> reservoirMatIdSet;
-  std::set<int> wellboreMatIdSet;
-  int wellPorder = SimData->m_Numerics.wellPorder;
-
-  TLaplaceExample1* exactsol = dynamic_cast<TLaplaceExample1 *>(exact);
-  bool hasAnalyticSol = (exactsol != nullptr && exactsol->fExact != TLaplaceExample1::ENone);
-
-  TPZCompMesh *cmesh = new TPZCompMesh(gmesh);
-  cmesh->SetDimModel(dim);
-  cmesh->SetDefaultOrder(SimData->m_Numerics.reservoirPorder);
-  cmesh->SetAllCreateFunctionsContinuous();
-
-  // Pressure skin material (as null material)
-  {
-    TPZNullMaterial<STATE> *mat = new TPZNullMaterial<>(SimData->EPressure2DSkin, dim - 1);
-    cmesh->InsertMaterialObject(mat);
-  }
-
-  // Reservoir material and 3D boundary conditions
-  {
-    TPZWannDarcyNL *reservoirMat = new TPZWannDarcyNL(SimData->m_Reservoir.matid, dim);
-    TPZFMatrix<STATE> perm(3, 3, 0.);
-    for (int i = 0; i < 3; i++) {
-      perm(i, i) = ReservoirData.perm[i] / FluidData[0].viscosity; // TODO: Assuming single phase flow for now
-    }
-    reservoirMat->SetConstantPermeability(perm);
-    cmesh->InsertMaterialObject(reservoirMat);
-
-    for (auto &bcpair : ReservoirData.BCs)
-    {
-      auto &bc = bcpair.second;
-      reservoirMatIdSet.insert(bc.matid);
-      TPZFMatrix<STATE> val1(1, 1, 0.);
-      TPZManVector<STATE> val2(1, 0);
-      val2[0] = bc.value;
-      TPZBndCondT<STATE> *BCond = reservoirMat->CreateBC(reservoirMat, bc.matid, bc.type, val1, val2);
-      cmesh->InsertMaterialObject(BCond);
-    }
-  }
-
-  // Wellbore material and 1D boundary conditions
-  {
-    // TODO: generalize for multiple wellbores; assuming single phase flow for now
-    TPZNonLinearWellH1 *wellboreMat = new TPZNonLinearWellH1(SimData->m_Wellbore[0].matid, 2 * WellboreData.radius,
-                             FluidData[0].viscosity, FluidData[0].density, 0.0, 0.0);
-    if (hasAnalyticSol) {
-      wellboreMat->SetExactSol(exact->ExactSolution(), 3);
-      wellboreMat->SetForcingFunction(exact->ForceFunc(), 3);
-    }
-
-    cmesh->InsertMaterialObject(wellboreMat);
-
-    for (auto &bcpair : WellboreData.BCs)
-    {
-      auto &bc = bcpair.second;
-      wellboreMatIdSet.insert(bc.matid);
-      TPZFMatrix<STATE> val1(1, 1, 0.);
-      TPZManVector<STATE> val2(1, 0);
-      val2[0] = bc.value;
-      TPZBndCondT<STATE> *BCond = wellboreMat->CreateBC(wellboreMat, bc.matid, bc.type, val1, val2);
-      cmesh->InsertMaterialObject(BCond);
-    }
-  }
-
-  cmesh->AutoBuild();
-
-  // Ajust well polynomial order
-  // Warning: block sizes will only be ajusted after colapsing the connects in EqualizeH1Connects
-  for (int64_t iel = 0; iel < cmesh->NElements(); iel++) {
-    TPZCompEl *cel = cmesh->Element(iel);
-    if (!cel) continue;
-    if (cel->Material()->Id() != SimData->m_Wellbore[0].matid) continue; // TODO: generalize for multiple wellbores
-    if (cel->NConnects() > 3) DebugStop(); // Wellbore H1 elements should have only 3 connects
-    TPZConnect &c = cel->Connect(2);
-    c.SetOrder(wellPorder); // TODO: generalize for multiple wellbores
-    c.SetNShape(wellPorder-1);
-  }
-
-  if (SimData->m_PostProc.verbosityLevel)
-  {
-    std::ofstream out("cmeshH1Init.txt");
-    cmesh->Print(out);
-  }
-
-  // Set dependencies for surface well connects and ajust block sizes
-  EqualizeH1Connects(cmesh, SimData);
-
-  if (SimData->m_PostProc.verbosityLevel)
-  {
-    std::ofstream out("cmeshH1.txt");
-    cmesh->Print(out);
-  }
-
-  return cmesh;
-}
-
+// TODO: Improve the readability of this function. It is too long and has too many nested loops.
 void TPZWannApproxTools::AddPressureSkinElements(TPZCompMesh *cmesh, ProblemData *SimData, const int laglevel)
 {
   const int dim = cmesh->Dimension() - 1; // 2D for these pressure elements living in the boundary of the 3d well
@@ -353,7 +242,285 @@ void TPZWannApproxTools::AddPressureSkinElements(TPZCompMesh *cmesh, ProblemData
   }
 }
 
-void TPZWannApproxTools::EqualizeH1Connects(TPZCompMesh *cmesh, ProblemData *SimData) {
+void TPZWannApproxTools::AddWellboreElements(TPZVec<TPZCompMesh *> &meshvec, ProblemData *SimData, const int laglevel) {
+  const int dimwell = 1;
+  const int wellPorder = SimData->m_Numerics.wellPorder;
+
+  for (auto &WellboreData : SimData->m_Wellbore) {
+    const int matid = WellboreData.matid;
+
+    // TODO: I'm not sure if picking by names is the best approach
+    const int matidHeel = WellboreData.BCs.at("point_heel").matid;
+    const int matidToe = WellboreData.BCs.at("point_toe").matid;
+
+    if (matidHeel == -1 || matidToe == -1) {
+      std::cout << "Error finding point heel/toe material ids in AddWellboreElements."<< std::endl;
+      DebugStop();
+    }
+
+    // First create the pressure elements
+    TPZNullMaterial<STATE> *mat = new TPZNullMaterial<>(matid, dimwell);
+    meshvec[1]->SetAllCreateFunctionsContinuous();
+    meshvec[1]->ApproxSpace().CreateDisconnectedElements(true);
+    meshvec[1]->InsertMaterialObject(mat);
+    meshvec[1]->SetDefaultOrder(wellPorder);
+
+    std::set<int> matidset = {matid};
+    meshvec[1]->AutoBuild(matidset);
+
+    // Set the lagrange level for the pressure elements of the wellbore
+    const int64_t nel = meshvec[1]->NElements();
+    for (int64_t iel = 0; iel < nel; iel++) {
+      TPZCompEl *cel = meshvec[1]->Element(iel);
+      if (!cel) continue;
+      if (cel->Material()->Id() != matid) continue;
+      if (cel->Reference()->HasSubElement()) DebugStop();
+      TPZGeoEl *gel = cel->Reference();
+      if (gel->NNodes() != 2) DebugStop();
+      TPZInterpolatedElement *intEl = dynamic_cast<TPZInterpolatedElement *>(cel);
+      if (!intEl) DebugStop();
+      // I am at a wellbore element
+      for (int i = 0; i < intEl->NConnects(); i++) {
+        TPZConnect &c = cel->Connect(i);
+        c.SetLagrangeMultiplier(laglevel);
+      }
+    }
+
+    // Now create the flux elements in meshvec[0]
+    TPZNullMaterial<STATE> *matFlux = new TPZNullMaterial<>(matid, dimwell);
+    TPZNullMaterial<STATE> *matFluxBcHeel = new TPZNullMaterial<>(matidHeel, dimwell - 1);
+    TPZNullMaterial<STATE> *matFluxBcToe = new TPZNullMaterial<>(matidToe, dimwell - 1);
+    meshvec[0]->InsertMaterialObject(matFlux);
+    meshvec[0]->InsertMaterialObject(matFluxBcHeel);
+    meshvec[0]->InsertMaterialObject(matFluxBcToe);
+
+    meshvec[0]->SetDimModel(dimwell);
+    meshvec[0]->ApproxSpace().SetAllCreateFunctionsHDiv(dimwell);
+    meshvec[0]->SetDefaultOrder(wellPorder);
+
+    std::set<int> matidsetFlux = {matid, matidHeel, matidToe};
+    meshvec[0]->AutoBuild(matidsetFlux);
+  }
+}
+
+void TPZWannApproxTools::EqualizeL2PressureConnects(TPZCompMesh *cmesh, ProblemData *SimData)
+{
+  cmesh->Reference()->ResetReference();
+  cmesh->LoadReferences();
+  TPZGeoMesh *gmesh = cmesh->Reference();
+  const int dim = gmesh->Dimension();
+
+  // Getter all the curve wellbore matids
+  std::set<int> wellboreMatIds;
+  for (auto &WellboreData : SimData->m_Wellbore) {
+    wellboreMatIds.insert(WellboreData.matid);
+  }
+
+  const int64_t nel = gmesh->NElements();
+  for (auto &gel : gmesh->ElementVec()) {
+    if (!gel) continue;
+    if (wellboreMatIds.find(gel->MaterialId()) == wellboreMatIds.end()) continue;
+    if (gel->HasSubElement()) continue;
+    TPZGeoElSide gelside(gel);
+    TPZGeoElSide surfwellside = gelside.Neighbour();
+    while (surfwellside.Element()->MaterialId() != SimData->EPressure2DSkin) {
+      if (surfwellside == gelside) DebugStop();
+      if (surfwellside.Element()->HasSubElement()) DebugStop();
+      surfwellside = surfwellside.Neighbour();
+    }
+    TPZCompEl *cel = gel->Reference();
+    TPZCompEl *celneigh = surfwellside.Element()->Reference();
+
+    // Set the internal connect of the wellbore as the edge of a 2d pressure skin element
+    const int64_t cindex = celneigh->ConnectIndex(surfwellside.Side());
+    cel->SetConnectIndex(2, cindex);
+
+    // Set the nodal connect of the 1d wellbore elements equal to the 2d pressure skin element nodal connects
+    const int64_t gindex0 = gel->NodeIndex(0), gindex1 = gel->NodeIndex(1);
+    TPZGeoEl *gelsurf = surfwellside.Element();
+    const int64_t nindex0 = gelsurf->SideNodeIndex(surfwellside.Side(), 0), nindex1 = gelsurf->SideNodeIndex(surfwellside.Side(), 1);
+    const int sidenodelocindex0 = gelsurf->SideNodeLocIndex(surfwellside.Side(), 0), sidenodelocindex1 = gelsurf->SideNodeLocIndex(surfwellside.Side(), 1);
+    if (nindex0 == gindex0 && nindex1 == gindex1)
+    {
+      cel->SetConnectIndex(0, celneigh->ConnectIndex(sidenodelocindex0));
+      cel->SetConnectIndex(1, celneigh->ConnectIndex(sidenodelocindex1));
+    }
+    else if (nindex0 == gindex1 && nindex1 == gindex0)
+    {
+      cel->SetConnectIndex(0, celneigh->ConnectIndex(sidenodelocindex1));
+      cel->SetConnectIndex(1, celneigh->ConnectIndex(sidenodelocindex0));
+    }
+    else
+    {
+      DebugStop();
+    }
+  }
+  cmesh->CleanUpUnconnectedNodes();
+
+  if (SimData->m_PostProc.verbosityLevel)
+  {
+    std::ofstream out("cmesh.txt");
+    cmesh->Print(out);
+  }
+}
+
+void TPZWannApproxTools::AddHDivBoundInterfaceElements(TPZCompMesh *cmesh, ProblemData *SimData) {
+  cmesh->Reference()->ResetReference();
+  cmesh->LoadReferences();
+  const int dim = cmesh->Reference()->Dimension();
+  const int matid = SimData->EHDivBoundInterface;
+  TPZNullMaterial<STATE> *mat = new TPZNullMaterial<>(matid, dim - 1);
+  cmesh->SetDimModel(dim);
+  cmesh->SetAllCreateFunctionsHDiv();
+  cmesh->InsertMaterialObject(mat);
+  auto &ReservoirData = SimData->m_Reservoir;
+  cmesh->SetDefaultOrder(SimData->m_Numerics.reservoirPorder);
+  std::set<int> matidset = {matid};
+  cmesh->AutoBuild(matidset);
+}
+
+void TPZWannApproxTools::AddInterfaceElements(TPZMultiphysicsCompMesh *cmesh, ProblemData *SimData, const int laglevel) {
+  const int matidpressure = SimData->EPressure2DSkin;
+  const int matidinterface = SimData->EPressureInterface;
+  cmesh->Reference()->ResetReference();
+  cmesh->LoadReferences();
+  TPZGeoMesh *gmesh = cmesh->Reference();
+  const int dim = gmesh->Dimension();
+  const int64_t nel = gmesh->NElements();
+  for (int64_t iel = 0; iel < nel; iel++)
+  {
+    TPZGeoEl *gel = gmesh->Element(iel);
+    if (!gel)
+      continue;
+    if (gel->MaterialId() != matidinterface)
+      continue;
+    if (gel->HasSubElement())
+      continue;
+    if (gel->Dimension() != dim - 1)
+      DebugStop();
+    TPZCompElSide comp_pressureSide, comp_hdivSide;
+    TPZGeoElSide gelSide(gel);
+    for (auto neigh = gelSide.Neighbour(); neigh != gelSide; neigh++)
+    {
+      if (neigh.Element()->MaterialId() == matidpressure)
+      {
+        comp_pressureSide = neigh.Reference();
+      }
+      if (neigh.Element()->MaterialId() == SimData->EHDivBoundInterface)
+      {
+        comp_hdivSide = neigh.Reference();
+      }
+    }
+    if (!comp_pressureSide || !comp_hdivSide)
+      DebugStop();
+    TPZMultiphysicsInterfaceElement *interfaceel = new TPZMultiphysicsInterfaceElement(*cmesh, gel, comp_pressureSide, comp_hdivSide);
+  }
+}
+
+// TODO: H1 mesh creation is currently hardcoded for a single wellbore. Generalize for multiple wellbores.
+
+TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TPZAnalyticSolution *exact) {
+  const int dim = gmesh->Dimension();
+  auto &ReservoirData = SimData->m_Reservoir;
+  auto &WellboreData = SimData->m_Wellbore[0]; // TODO: generalize for multiple wellbores
+  auto &FluidData = SimData->m_Fluid;
+  std::set<int> reservoirMatIdSet;
+  std::set<int> wellboreMatIdSet;
+  int wellPorder = SimData->m_Numerics.wellPorder;
+
+  TLaplaceExample1* exactsol = dynamic_cast<TLaplaceExample1 *>(exact);
+  bool hasAnalyticSol = (exactsol != nullptr && exactsol->fExact != TLaplaceExample1::ENone);
+
+  TPZCompMesh *cmesh = new TPZCompMesh(gmesh);
+  cmesh->SetDimModel(dim);
+  cmesh->SetDefaultOrder(SimData->m_Numerics.reservoirPorder);
+  cmesh->SetAllCreateFunctionsContinuous();
+
+  // Pressure skin material (as null material)
+  {
+    TPZNullMaterial<STATE> *mat = new TPZNullMaterial<>(SimData->EPressure2DSkin, dim - 1);
+    cmesh->InsertMaterialObject(mat);
+  }
+
+  // Reservoir material and 3D boundary conditions
+  {
+    TPZWannDarcyNL *reservoirMat = new TPZWannDarcyNL(SimData->m_Reservoir.matid, dim);
+    TPZFMatrix<STATE> perm(3, 3, 0.);
+    for (int i = 0; i < 3; i++) {
+      perm(i, i) = ReservoirData.perm[i] / FluidData[0].viscosity; // TODO: Assuming single phase flow for now
+    }
+    reservoirMat->SetConstantPermeability(perm);
+    cmesh->InsertMaterialObject(reservoirMat);
+
+    for (auto &bcpair : ReservoirData.BCs)
+    {
+      auto &bc = bcpair.second;
+      reservoirMatIdSet.insert(bc.matid);
+      TPZFMatrix<STATE> val1(1, 1, 0.);
+      TPZManVector<STATE> val2(1, 0);
+      val2[0] = bc.value;
+      TPZBndCondT<STATE> *BCond = reservoirMat->CreateBC(reservoirMat, bc.matid, bc.type, val1, val2);
+      cmesh->InsertMaterialObject(BCond);
+    }
+  }
+
+  // Wellbore material and 1D boundary conditions
+  {
+    // TODO: generalize for multiple wellbores; assuming single phase flow for now
+    TPZWannH1Well *wellboreMat = new TPZWannH1Well(SimData->m_Wellbore[0].matid, 2 * WellboreData.radius,
+                             FluidData[0].viscosity, FluidData[0].density, 0.0, 0.0);
+    if (hasAnalyticSol) {
+      wellboreMat->SetExactSol(exact->ExactSolution(), 3);
+      wellboreMat->SetForcingFunction(exact->ForceFunc(), 3);
+    }
+
+    cmesh->InsertMaterialObject(wellboreMat);
+
+    for (auto &bcpair : WellboreData.BCs)
+    {
+      auto &bc = bcpair.second;
+      wellboreMatIdSet.insert(bc.matid);
+      TPZFMatrix<STATE> val1(1, 1, 0.);
+      TPZManVector<STATE> val2(1, 0);
+      val2[0] = bc.value;
+      TPZBndCondT<STATE> *BCond = wellboreMat->CreateBC(wellboreMat, bc.matid, bc.type, val1, val2);
+      cmesh->InsertMaterialObject(BCond);
+    }
+  }
+
+  cmesh->AutoBuild();
+
+  // Ajust well polynomial order
+  // Warning: block sizes will only be ajusted after colapsing the connects in EqualizeH1Connects
+  for (int64_t iel = 0; iel < cmesh->NElements(); iel++) {
+    TPZCompEl *cel = cmesh->Element(iel);
+    if (!cel) continue;
+    if (cel->Material()->Id() != SimData->m_Wellbore[0].matid) continue; // TODO: generalize for multiple wellbores
+    if (cel->NConnects() > 3) DebugStop(); // Wellbore H1 elements should have only 3 connects
+    TPZConnect &c = cel->Connect(2);
+    c.SetOrder(wellPorder); // TODO: generalize for multiple wellbores
+    c.SetNShape(wellPorder-1);
+  }
+
+  if (SimData->m_PostProc.verbosityLevel)
+  {
+    std::ofstream out("cmeshH1Init.txt");
+    cmesh->Print(out);
+  }
+
+  // Set dependencies for surface well connects and ajust block sizes
+  EqualizeH1PressureConnects(cmesh, SimData);
+
+  if (SimData->m_PostProc.verbosityLevel)
+  {
+    std::ofstream out("cmeshH1.txt");
+    cmesh->Print(out);
+  }
+
+  return cmesh;
+}
+
+void TPZWannApproxTools::EqualizeH1PressureConnects(TPZCompMesh *cmesh, ProblemData *SimData) {
   std::set<REAL> nodeCoordsX;
   std::map<REAL,std::set<int64_t>> xToNodes;
   std::set<int64_t> pressure2Dels;
@@ -483,179 +650,4 @@ void TPZWannApproxTools::EqualizeH1Connects(TPZCompMesh *cmesh, ProblemData *Sim
     cmesh->Block().Set(c.SequenceNumber(), c.NShape() * c.NState());
   }
   cmesh->InitializeBlock();
-}
-
-void TPZWannApproxTools::AddWellboreElements(TPZVec<TPZCompMesh *> &meshvec, ProblemData *SimData, const int laglevel) {
-  const int dimwell = 1;
-  const int wellPorder = SimData->m_Numerics.wellPorder;
-
-  for (auto &WellboreData : SimData->m_Wellbore) {
-    const int matid = WellboreData.matid;
-
-    // TODO: I'm not sure if picking by names is the best approach
-    const int matidHeel = WellboreData.BCs.at("point_heel").matid;
-    const int matidToe = WellboreData.BCs.at("point_toe").matid;
-
-    if (matidHeel == -1 || matidToe == -1) {
-      std::cout << "Error finding point heel/toe material ids in AddWellboreElements."<< std::endl;
-      DebugStop();
-    }
-
-    // First create the pressure elements
-    TPZNullMaterial<STATE> *mat = new TPZNullMaterial<>(matid, dimwell);
-    meshvec[1]->SetAllCreateFunctionsContinuous();
-    meshvec[1]->ApproxSpace().CreateDisconnectedElements(true);
-    meshvec[1]->InsertMaterialObject(mat);
-    meshvec[1]->SetDefaultOrder(wellPorder);
-
-    std::set<int> matidset = {matid};
-    meshvec[1]->AutoBuild(matidset);
-
-    // Set the lagrange level for the pressure elements of the wellbore
-    const int64_t nel = meshvec[1]->NElements();
-    for (int64_t iel = 0; iel < nel; iel++) {
-      TPZCompEl *cel = meshvec[1]->Element(iel);
-      if (!cel) continue;
-      if (cel->Material()->Id() != matid) continue;
-      if (cel->Reference()->HasSubElement()) DebugStop();
-      TPZGeoEl *gel = cel->Reference();
-      if (gel->NNodes() != 2) DebugStop();
-      TPZInterpolatedElement *intEl = dynamic_cast<TPZInterpolatedElement *>(cel);
-      if (!intEl) DebugStop();
-      // I am at a wellbore element
-      for (int i = 0; i < intEl->NConnects(); i++) {
-        TPZConnect &c = cel->Connect(i);
-        c.SetLagrangeMultiplier(laglevel);
-      }
-    }
-
-    // Now create the flux elements in meshvec[0]
-    TPZNullMaterial<STATE> *matFlux = new TPZNullMaterial<>(matid, dimwell);
-    TPZNullMaterial<STATE> *matFluxBcHeel = new TPZNullMaterial<>(matidHeel, dimwell - 1);
-    TPZNullMaterial<STATE> *matFluxBcToe = new TPZNullMaterial<>(matidToe, dimwell - 1);
-    meshvec[0]->InsertMaterialObject(matFlux);
-    meshvec[0]->InsertMaterialObject(matFluxBcHeel);
-    meshvec[0]->InsertMaterialObject(matFluxBcToe);
-
-    meshvec[0]->SetDimModel(dimwell);
-    meshvec[0]->ApproxSpace().SetAllCreateFunctionsHDiv(dimwell);
-    meshvec[0]->SetDefaultOrder(wellPorder);
-
-    std::set<int> matidsetFlux = {matid, matidHeel, matidToe};
-    meshvec[0]->AutoBuild(matidsetFlux);
-  }
-}
-
-void TPZWannApproxTools::EqualizePressureConnects(TPZCompMesh *cmesh, ProblemData *SimData)
-{
-  cmesh->Reference()->ResetReference();
-  cmesh->LoadReferences();
-  TPZGeoMesh *gmesh = cmesh->Reference();
-  const int dim = gmesh->Dimension();
-
-  // Getter all the curve wellbore matids
-  std::set<int> wellboreMatIds;
-  for (auto &WellboreData : SimData->m_Wellbore) {
-    wellboreMatIds.insert(WellboreData.matid);
-  }
-
-  const int64_t nel = gmesh->NElements();
-  for (auto &gel : gmesh->ElementVec()) {
-    if (!gel) continue;
-    if (wellboreMatIds.find(gel->MaterialId()) == wellboreMatIds.end()) continue;
-    if (gel->HasSubElement()) continue;
-    TPZGeoElSide gelside(gel);
-    TPZGeoElSide surfwellside = gelside.Neighbour();
-    while (surfwellside.Element()->MaterialId() != SimData->EPressure2DSkin) {
-      if (surfwellside == gelside) DebugStop();
-      if (surfwellside.Element()->HasSubElement()) DebugStop();
-      surfwellside = surfwellside.Neighbour();
-    }
-    TPZCompEl *cel = gel->Reference();
-    TPZCompEl *celneigh = surfwellside.Element()->Reference();
-
-    // Set the internal connect of the wellbore as the edge of a 2d pressure skin element
-    const int64_t cindex = celneigh->ConnectIndex(surfwellside.Side());
-    cel->SetConnectIndex(2, cindex);
-
-    // Set the nodal connect of the 1d wellbore elements equal to the 2d pressure skin element nodal connects
-    const int64_t gindex0 = gel->NodeIndex(0), gindex1 = gel->NodeIndex(1);
-    TPZGeoEl *gelsurf = surfwellside.Element();
-    const int64_t nindex0 = gelsurf->SideNodeIndex(surfwellside.Side(), 0), nindex1 = gelsurf->SideNodeIndex(surfwellside.Side(), 1);
-    const int sidenodelocindex0 = gelsurf->SideNodeLocIndex(surfwellside.Side(), 0), sidenodelocindex1 = gelsurf->SideNodeLocIndex(surfwellside.Side(), 1);
-    if (nindex0 == gindex0 && nindex1 == gindex1)
-    {
-      cel->SetConnectIndex(0, celneigh->ConnectIndex(sidenodelocindex0));
-      cel->SetConnectIndex(1, celneigh->ConnectIndex(sidenodelocindex1));
-    }
-    else if (nindex0 == gindex1 && nindex1 == gindex0)
-    {
-      cel->SetConnectIndex(0, celneigh->ConnectIndex(sidenodelocindex1));
-      cel->SetConnectIndex(1, celneigh->ConnectIndex(sidenodelocindex0));
-    }
-    else
-    {
-      DebugStop();
-    }
-  }
-  cmesh->CleanUpUnconnectedNodes();
-
-  if (SimData->m_PostProc.verbosityLevel)
-  {
-    std::ofstream out("cmesh.txt");
-    cmesh->Print(out);
-  }
-}
-
-void TPZWannApproxTools::AddHDivBoundInterfaceElements(TPZCompMesh *cmesh, ProblemData *SimData) {
-  cmesh->Reference()->ResetReference();
-  cmesh->LoadReferences();
-  const int dim = cmesh->Reference()->Dimension();
-  const int matid = SimData->EHDivBoundInterface;
-  TPZNullMaterial<STATE> *mat = new TPZNullMaterial<>(matid, dim - 1);
-  cmesh->SetDimModel(dim);
-  cmesh->SetAllCreateFunctionsHDiv();
-  cmesh->InsertMaterialObject(mat);
-  auto &ReservoirData = SimData->m_Reservoir;
-  cmesh->SetDefaultOrder(SimData->m_Numerics.reservoirPorder);
-  std::set<int> matidset = {matid};
-  cmesh->AutoBuild(matidset);
-}
-
-void TPZWannApproxTools::AddInterfaceElements(TPZMultiphysicsCompMesh *cmesh, ProblemData *SimData, const int laglevel) {
-  const int matidpressure = SimData->EPressure2DSkin;
-  const int matidinterface = SimData->EPressureInterface;
-  cmesh->Reference()->ResetReference();
-  cmesh->LoadReferences();
-  TPZGeoMesh *gmesh = cmesh->Reference();
-  const int dim = gmesh->Dimension();
-  const int64_t nel = gmesh->NElements();
-  for (int64_t iel = 0; iel < nel; iel++)
-  {
-    TPZGeoEl *gel = gmesh->Element(iel);
-    if (!gel)
-      continue;
-    if (gel->MaterialId() != matidinterface)
-      continue;
-    if (gel->HasSubElement())
-      continue;
-    if (gel->Dimension() != dim - 1)
-      DebugStop();
-    TPZCompElSide comp_pressureSide, comp_hdivSide;
-    TPZGeoElSide gelSide(gel);
-    for (auto neigh = gelSide.Neighbour(); neigh != gelSide; neigh++)
-    {
-      if (neigh.Element()->MaterialId() == matidpressure)
-      {
-        comp_pressureSide = neigh.Reference();
-      }
-      if (neigh.Element()->MaterialId() == SimData->EHDivBoundInterface)
-      {
-        comp_hdivSide = neigh.Reference();
-      }
-    }
-    if (!comp_pressureSide || !comp_hdivSide)
-      DebugStop();
-    TPZMultiphysicsInterfaceElement *interfaceel = new TPZMultiphysicsInterfaceElement(*cmesh, gel, comp_pressureSide, comp_hdivSide);
-  }
 }

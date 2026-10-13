@@ -1,9 +1,4 @@
-//
-// Created by Gustavo Batistela on 5/13/21.
-//
-
-#ifndef TPZMIXEDDARCYANISOTROPIC_H
-#define TPZMIXEDDARCYANISOTROPIC_H
+#pragma once
 
 #include "TPZMatBase.h"
 #include "TPZMatCombinedSpaces.h"
@@ -53,5 +48,3 @@ public:
 protected:
     int fDim;
 };
-
-#endif //TPZMIXEDDARCYANISOTROPIC_H

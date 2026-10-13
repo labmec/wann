@@ -35,8 +35,8 @@ TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
   // Such auxiliary elements live in the wellbore cylindrical surface
   CreateCouplingEls(gmesh, simData);
 
-  // Order nodes Id in the well according to the x-coordinate
-  OrderIds(gmesh, simData);
+  // Guarantee that nodes in the wellbore surfaces are in a increasing order along the wellbore axis
+  OrderWellIds(gmesh, simData);
 
   if (simData->m_PostProc.verbosityLevel > 0) {
     std::ofstream out("gmeshWannFinal.vtk");
@@ -183,7 +183,7 @@ void TPZWannGeometryTools::CreateCouplingEls(TPZGeoMesh* gmesh, ProblemData* Sim
   }
 }
 
-void TPZWannGeometryTools::OrderIds(TPZGeoMesh* gmesh, ProblemData* SimData) {
+void TPZWannGeometryTools::OrderWellIds(TPZGeoMesh* gmesh, ProblemData* SimData) {
   for (int i = 0; i < SimData->m_Wellbore.size(); i++) {
     const int matid = SimData->m_Wellbore[i].matidSurf;
     // TODO: we are still picking bc matids by names. Should we change that?

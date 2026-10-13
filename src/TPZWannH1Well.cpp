@@ -1,44 +1,40 @@
-//
-// Created by Gustavo Batistela on 5/13/21.
-//
-
-#include "TPZNonLinearWellH1.h"
+#include "TPZWannH1Well.h"
 #include "pzaxestools.h"
 
-bool TPZNonLinearWellH1::fAssembleRHSOnly = false;
-bool TPZNonLinearWellH1::fIsFirstIteration = true;
+bool TPZWannH1Well::fAssembleRHSOnly = false;
+bool TPZWannH1Well::fIsFirstIteration = true;
 
-TPZNonLinearWellH1::TPZNonLinearWellH1() : TPZRegisterClassId(&TPZNonLinearWellH1::ClassId),
+TPZWannH1Well::TPZWannH1Well() : TPZRegisterClassId(&TPZWannH1Well::ClassId),
                                TBase(), fDim(-1) {}
 
-TPZNonLinearWellH1::TPZNonLinearWellH1(int id, int dim) : TPZRegisterClassId(&TPZNonLinearWellH1::ClassId),
+TPZWannH1Well::TPZWannH1Well(int id, int dim) : TPZRegisterClassId(&TPZWannH1Well::ClassId),
                                               TBase(id), fDim(dim) {
                                               }
 
-[[maybe_unused]] TPZNonLinearWellH1::TPZNonLinearWellH1(int id, REAL Dw, REAL mu, REAL rho, REAL pres, REAL Kvw) : TPZRegisterClassId(&TPZNonLinearWellH1::ClassId),
+[[maybe_unused]] TPZWannH1Well::TPZWannH1Well(int id, REAL Dw, REAL mu, REAL rho, REAL pres, REAL Kvw) : TPZRegisterClassId(&TPZWannH1Well::ClassId),
                                                                                                                TBase(id), fDim(1), fDw(Dw), fMu(mu), fRho(rho), fPres(pres), fKvw(Kvw)
 {
     fC = (2.252610888 * pow(fDw, 19. / 7.)) / (pow(fMu, 1. / 7.) * pow(fRho, 3. / 7.));
     fCLin = (M_PI * pow(fDw, 4)) / (128. * fMu);
 }
 
-TPZNonLinearWellH1::TPZNonLinearWellH1(const TPZNonLinearWellH1 &copy) : TPZMatBase(copy), fDim(copy.fDim)
+TPZWannH1Well::TPZWannH1Well(const TPZWannH1Well &copy) : TPZMatBase(copy), fDim(copy.fDim)
 {
     *this = copy;
 }
 
-TPZNonLinearWellH1& TPZNonLinearWellH1::operator=(const TPZNonLinearWellH1 &copy) {
+TPZWannH1Well& TPZWannH1Well::operator=(const TPZWannH1Well &copy) {
     TPZMatBase::operator=(copy);
     fDim = copy.fDim;
     return *this;
 }
 
-void TPZNonLinearWellH1::SetDimension(int dim) {
+void TPZWannH1Well::SetDimension(int dim) {
     if (dim > 3 || dim < 1) DebugStop();
     fDim = dim;
 }
 
-void TPZNonLinearWellH1::Contribute(const TPZMaterialDataT<STATE> &data, STATE weight, TPZFMatrix<STATE> &ek,
+void TPZWannH1Well::Contribute(const TPZMaterialDataT<STATE> &data, STATE weight, TPZFMatrix<STATE> &ek,
                               TPZFMatrix<STATE> &ef) {
     
     if (fAssembleRHSOnly)
@@ -81,7 +77,7 @@ void TPZNonLinearWellH1::Contribute(const TPZMaterialDataT<STATE> &data, STATE w
     ef.AddContribution(0, 0, phi, 0, Aux, 0, fKvw * weight * (fPres - psol)); // Pseudo-resistivity
 }
 
-void TPZNonLinearWellH1::ContributeBC(const TPZMaterialDataT<STATE> &data, STATE weight, TPZFMatrix<STATE> &ek,
+void TPZWannH1Well::ContributeBC(const TPZMaterialDataT<STATE> &data, STATE weight, TPZFMatrix<STATE> &ek,
                                 TPZFMatrix<STATE> &ef, TPZBndCondT<STATE> &bc) {
 
     const TPZFMatrix<REAL> &phi = data.phi;
@@ -117,7 +113,7 @@ void TPZNonLinearWellH1::ContributeBC(const TPZMaterialDataT<STATE> &data, STATE
     }
 }
 
-void TPZNonLinearWellH1::ContributeResidual(const TPZMaterialDataT<STATE> &data, REAL weight, TPZFMatrix<STATE> &ef)
+void TPZWannH1Well::ContributeResidual(const TPZMaterialDataT<STATE> &data, REAL weight, TPZFMatrix<STATE> &ef)
 {
     const TPZFMatrix<STATE> &dphix = data.dphix;
     const TPZFMatrix<STATE> &phi = data.phi;
@@ -163,7 +159,7 @@ void TPZNonLinearWellH1::ContributeResidual(const TPZMaterialDataT<STATE> &data,
     ef.AddContribution(0, 0, phi, 0, Aux, 0, fKvw * weight * (fPres - psol)); // Pseudo-resistivity
 }
 
-int TPZNonLinearWellH1::VariableIndex(const std::string &name) const {
+int TPZWannH1Well::VariableIndex(const std::string &name) const {
 
     if (!strcmp("Solution", name.c_str())) return 1;
     if (!strcmp("Pressure", name.c_str())) return 1;
@@ -192,7 +188,7 @@ int TPZNonLinearWellH1::VariableIndex(const std::string &name) const {
     return TPZMatBase::VariableIndex(name);
 }
 
-int TPZNonLinearWellH1::NSolutionVariables(int var) const {
+int TPZWannH1Well::NSolutionVariables(int var) const {
 
     if (var == 1) return 1;      // Solution/Pressure
     if (var == 2) return fDim;   // Derivative/GradU
@@ -216,7 +212,7 @@ int TPZNonLinearWellH1::NSolutionVariables(int var) const {
     return TPZMatBase::NSolutionVariables(var);
 }
 
-void TPZNonLinearWellH1::Solution(const TPZMaterialDataT<STATE> &data, int var, TPZVec<STATE> &solOut) {
+void TPZWannH1Well::Solution(const TPZMaterialDataT<STATE> &data, int var, TPZVec<STATE> &solOut) {
 
     if(data.fShapeType == TPZMaterialData::EEmpty) {
         solOut.Resize(NSolutionVariables(var));
@@ -355,13 +351,13 @@ void TPZNonLinearWellH1::Solution(const TPZMaterialDataT<STATE> &data, int var, 
     }
 }
 
-void TPZNonLinearWellH1::GetSolDimensions(uint64_t &u_len, uint64_t &du_row, uint64_t &du_col) const {
+void TPZWannH1Well::GetSolDimensions(uint64_t &u_len, uint64_t &du_row, uint64_t &du_col) const {
     u_len=1;
     du_row=fDim;
     du_col=1;
 }
 
-void TPZNonLinearWellH1::ErrorNames(TPZVec<std::string> &names) const {
+void TPZWannH1Well::ErrorNames(TPZVec<std::string> &names) const {
     int nerr = NEvalErrors();
     names.Resize(nerr);
     names[0] = "H1_Norm";
@@ -369,7 +365,7 @@ void TPZNonLinearWellH1::ErrorNames(TPZVec<std::string> &names) const {
     names[2] = "H1_Semi_Norm";
 }
 
-void TPZNonLinearWellH1::Errors(const TPZMaterialDataT<STATE> &data,
+void TPZWannH1Well::Errors(const TPZMaterialDataT<STATE> &data,
                           TPZVec<REAL> &errors) {
     const TPZVec<REAL> &x = data.x;
     const TPZVec<STATE> &sol = data.sol[0];
@@ -431,27 +427,27 @@ void TPZNonLinearWellH1::Errors(const TPZMaterialDataT<STATE> &data,
     }
 }
 
-int TPZNonLinearWellH1::ClassId() const {
-    return Hash("TPZNonLinearWellH1") ^ TBase::ClassId() << 1;
+int TPZWannH1Well::ClassId() const {
+    return Hash("TPZWannH1Well") ^ TBase::ClassId() << 1;
 }
 
-TPZMaterial *TPZNonLinearWellH1::NewMaterial() const {
-    return new TPZNonLinearWellH1(*this);
+TPZMaterial *TPZWannH1Well::NewMaterial() const {
+    return new TPZWannH1Well(*this);
 }
 
-void TPZNonLinearWellH1::Print(std::ostream &out) const {
+void TPZWannH1Well::Print(std::ostream &out) const {
     out << "Material Name: " << this->Name() << "\n";
     out << "Material Id: " << this->Id() << "\n";
     out << "Dimension: " << this->Dimension() << "\n\n";
 }
 
-void TPZNonLinearWellH1::FillDataRequirements(TPZMaterialData &data) const {
+void TPZWannH1Well::FillDataRequirements(TPZMaterialData &data) const {
     data.SetAllRequirements(false);
     data.fNeedsSol = true;
 }
 
 
-void TPZNonLinearWellH1::FillBoundaryConditionDataRequirements(int type, TPZMaterialData &data) const {
+void TPZWannH1Well::FillBoundaryConditionDataRequirements(int type, TPZMaterialData &data) const {
 
     data.SetAllRequirements(false);
     if (type == 50) {

@@ -1,5 +1,7 @@
 //
 // Created by Gi Taraschi 27/05/26
+// The current version is hard-coded to work with 3D problems. 
+// Future iterations should be generalized to work with 2D and 1D problems as well.
 //
 
 #include "TPZAnisotropicPermeability.h"

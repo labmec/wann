@@ -15,16 +15,15 @@
 class TPZWannApproxTools {
 
 public:
-  static TPZMultiphysicsCompMesh* CreateMultiphysicsCompMesh(TPZGeoMesh* gmesh, ProblemData* SimData, TPZAnalyticSolution* exactsol, bool isDualProblem = false);
+  static TPZMultiphysicsCompMesh* CreateMixedCompMesh(TPZGeoMesh* gmesh, ProblemData* SimData);
   static TPZCompMesh* CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TPZAnalyticSolution *exact);
 
 private:
   static void ComputeTotalMobility(TPZCompMesh* cmesh, ProblemData* SimData);
   static void AddPressureSkinElements(TPZCompMesh* cmesh, ProblemData* SimData, const int laglevel);
-  static void EqualizePressureSkinConnects(TPZCompMesh* cmesh, ProblemData* SimData);
-  static void EqualizeH1Connects(TPZCompMesh *cmesh, ProblemData *SimData);
+  static void EqualizeH1PressureConnects(TPZCompMesh *cmesh, ProblemData *SimData);
   static void AddWellboreElements(TPZVec<TPZCompMesh*>& meshvec, ProblemData* SimData, const int laglevel);
-  static void EqualizePressureConnects(TPZCompMesh* cmesh, ProblemData* SimData);
+  static void EqualizeL2PressureConnects(TPZCompMesh* cmesh, ProblemData* SimData);
   static void AddHDivBoundInterfaceElements(TPZCompMesh* cmesh, ProblemData* SimData);
   static void AddInterfaceElements(TPZMultiphysicsCompMesh* cmesh, ProblemData* SimData, const int laglevel);
 };

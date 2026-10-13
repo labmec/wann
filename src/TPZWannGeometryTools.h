@@ -25,7 +25,7 @@ public:
   static void InsertXCoorInSet(const REAL x, std::set<REAL>& nodeCoordsX, const REAL tol);
   static REAL FindClosestX(const REAL x, const std::set<REAL>& nodeCoordsX, const REAL tol);
   static bool CheckXInSet(const REAL x, const std::set<REAL>& nodeCoordsX, const REAL tol);
-  static void OrderIds(TPZGeoMesh *gmesh, ProblemData *SimData);
+  static void OrderWellIds(TPZGeoMesh *gmesh, ProblemData *SimData);
   static void OrderIdsSingleWell(TPZGeoMesh *gmesh, int wellid, const TPZManVector<REAL,3>& axisPoint, const TPZManVector<REAL,3>& axis);
   static REAL ComputeAxialCoordinate(const TPZManVector<REAL,3>& point, const TPZManVector<REAL,3>& axisPoint, const TPZManVector<REAL,3>& axis);
 

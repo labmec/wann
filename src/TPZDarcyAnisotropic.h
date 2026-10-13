@@ -1,9 +1,4 @@
-//
-// Created by Gustavo Batistela on 5/13/21.
-//
-
-#ifndef TPZDarcyAnisotropic_H
-#define TPZDarcyAnisotropic_H
+#pragma once
 
 #include "TPZMatBase.h"
 #include "TPZMatSingleSpace.h"
@@ -165,5 +160,3 @@ protected:
      */
     int fDim;
 };
-
-#endif //TPZDarcyAnisotropic_H

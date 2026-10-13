@@ -3,8 +3,8 @@
 //
 
 #include "TPZWannAnalysis.h"
-#include "TPZNonlinearWell.h"
-#include "TPZNonLinearWellH1.h"
+#include "TPZWannMixedWell.h"
+#include "TPZWannH1Well.h"
 
 using namespace std;
 
@@ -12,14 +12,14 @@ TPZWannAnalysis::TPZWannAnalysis() : TPZLinearAnalysis() {}
 
 TPZWannAnalysis::TPZWannAnalysis(TPZCompMesh *cmesh,
                                  const RenumType &renumtype)
-    : TPZLinearAnalysis(cmesh, renumtype) {
-    
+    : TPZLinearAnalysis(cmesh, renumtype)
+{
+
     // Check whether the computational mesh is multiphysics
     fIsMultiphysics = true;
-    TPZMultiphysicsCompMesh *cmeshMP =
-        dynamic_cast<TPZMultiphysicsCompMesh *>(Mesh());
+    TPZMultiphysicsCompMesh *cmeshMP = dynamic_cast<TPZMultiphysicsCompMesh *>(Mesh());
     if (!cmeshMP) fIsMultiphysics = false;
-    }
+}
 
 TPZWannAnalysis::~TPZWannAnalysis() {}
 
@@ -44,14 +44,13 @@ void TPZWannAnalysis::Initialize()
     SetStructuralMatrix(matrix);
 
     // We want to filter bc equations that use big number.
-    // For mixed approximation (MultiPhysics mesh) we filter Neumann BCs (type 1)
-    // For H1 approximation we filter Dirichlet BCs (type 0)
+    // For mixed approximations (MultiPhysics mesh) we filter Neumann BCs (type 1)
+    // For H1 approximations we filter Dirichlet BCs (type 0)
     int type = fIsMultiphysics ? 1 : 0;
     std::set<int> bcMatids;
     FillBCMatids(bcMatids, type);
     SetInitialSolution(bcMatids);
     ApplyEquationFilter(bcMatids);
-    int nreducedeq = fStructMatrix->NReducedEquations();
 
     DecomposeType solverType = fIsMultiphysics ? ELDLt : ECholesky;
     TPZStepSolver<STATE> step;
@@ -71,22 +70,14 @@ void TPZWannAnalysis::NewtonIteration()
     REAL res_tol = fSimData->m_Numerics.res_tol;
     REAL corr_tol = fSimData->m_Numerics.corr_tol;
     bool converged = false;
-    TPZNonLinearWellH1::fIsFirstIteration = true;
-    TPZNonlinearWell::fIsFirstIteration = true;
+    TPZWannH1Well::fIsFirstIteration = true;
+    TPZWannMixedWell::fIsFirstIteration = true;
 
     TPZVec<REAL> scaleFactors;
 
     TPZFMatrix<STATE> sol = Solution(); // Initial solution
-    for (fKiteration = 0; fKiteration < matIter; fKiteration++)
-    {
+    for (fKiteration = 0; fKiteration < matIter; fKiteration++) {
         Assemble();
-
-        if (fRescaling) {
-            if (fKiteration >= 0) {
-                FillScalingFactors(scaleFactors);
-            }
-            RescaleSystem(scaleFactors);
-        }
 
         // Check residual convergence
         if (fKiteration > 0)
@@ -112,28 +103,14 @@ void TPZWannAnalysis::NewtonIteration()
         Solve();
         TPZFMatrix<STATE> dsol = Solution();
 
-        if (fRescaling) { 
-            TPZFMatrix<STATE> scaledDsol(scaleFactors.size(), 1, 0.0);
-
-            // Rescale the solution increment
-            fStructMatrix->EquationFilter().Gather(dsol, scaledDsol);
-            for (int i = 0; i < scaledDsol.Rows(); i++) {
-                scaledDsol(i, 0) *= scaleFactors[i];
-            }
-            fStructMatrix->EquationFilter().Scatter(scaledDsol, dsol);
-        }
-
+        // Perform a line search in the eta direction. Default is ENONe (eta = 1)
         REAL eta;
-        if (fKiteration == 0)
-        {
+        if (fKiteration == 0) {
             eta = 1.0;
         }
-        else
-        {
-            eta = LineSearchStep(sol, dsol, ENONE);
+        else {
+            eta = LineSearchStep(sol, dsol, fLineSearchMethod);
         }
-
-        std::cout << "---------Line search step eta: " << eta << std::endl;
 
         // Perform Taylor test (for debugging purposes)
         // Only works if no line search is performed
@@ -147,43 +124,47 @@ void TPZWannAnalysis::NewtonIteration()
         Mesh()->LoadSolution(sol);
         if (fIsMultiphysics) Mesh()->TransferMultiphysicsSolution();
 
-        //PostProcessIteration(Mesh()->Dimension(), fKiteration);
-        TPZNonLinearWellH1::fIsFirstIteration = false;
-        TPZNonlinearWell::fIsFirstIteration = false;
+        // Post-process the current iteration (for debugging purposes)
+        // PostProcessIteration(Mesh()->Dimension(), fKiteration);
+
+        TPZWannH1Well::fIsFirstIteration = false;
+        TPZWannMixedWell::fIsFirstIteration = false;
     }
 
     if (!converged)
     {
-        std::cout << "------Iterative method did not converge. res_norm: "
+        std::cout << "------Newton method did not converge. res_norm: "
                   << res_norm << " corr_norm: " << corr_norm << std::endl;
     }
 }
 
-REAL TPZWannAnalysis::LineSearchStep(TPZFMatrix<STATE> &sol, TPZFMatrix<STATE> &dsol, LineSearchMethod method)
-{
+REAL TPZWannAnalysis::LineSearchStep(TPZFMatrix<STATE> &sol, TPZFMatrix<STATE> &dsol, LineSearchMethod method) {
     REAL eta = 1.0;
     switch (method)
     {
     case ENONE:
         eta = 1.0;
         break;
-    case EBISSECT:
+    case EBISSECTION:
         eta = BissectionMethod(sol, dsol);
         break;
-    case EGOLDEN:
+    case EGOLDENRATIO:
         eta = GoldenRatioMethod(sol, dsol);
         break;
     case ESECANT:
-        // To be implemented
+        std::cout << "Secant method not implemented yet." << std::endl;
         DebugStop();
         break;
+    }
+    if (method != ENONE) {
+        std::cout << "Line search step: " << eta << std::endl;
     }
     return eta;
 }
 
 REAL TPZWannAnalysis::BissectionMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STATE> &dsol)
 {
-    TPZNonlinearWell::fAssembleRHSOnly = true;
+    TPZWannMixedWell::fAssembleRHSOnly = true;
 
     TPZFMatrix<STATE> &res_L = Rhs(); // lower point
     TPZFMatrix<STATE> aux(1, 1, 0.0);
@@ -237,13 +218,12 @@ REAL TPZWannAnalysis::BissectionMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STAT
 
         deta *= 0.5;
     }
-    TPZNonlinearWell::fAssembleRHSOnly = false;
+    TPZWannMixedWell::fAssembleRHSOnly = false;
     return eta;
 }
 
-REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STATE> &dsol)
-{
-    TPZNonlinearWell::fAssembleRHSOnly = true;
+REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STATE> &dsol) {
+    TPZWannMixedWell::fAssembleRHSOnly = true;
     TPZFMatrix<STATE> ones = TPZFMatrix<STATE>(dsol.Rows(), dsol.Cols(), 1.0);
 
     REAL a = 0;
@@ -365,14 +345,19 @@ REAL TPZWannAnalysis::GoldenRatioMethod(TPZFMatrix<STATE> &sol_n, TPZFMatrix<STA
         // std::cout << "it: " << it << std::endl;
         it++;
     }
-    TPZNonlinearWell::fAssembleRHSOnly = false;
+    TPZWannMixedWell::fAssembleRHSOnly = false;
     return eta;
 }
 
 void TPZWannAnalysis::TaylorTest(TPZFMatrix<STATE> &sol, REAL step) {
 
+    if (fLineSearchMethod != ENONE) {
+        std::cout << "Taylor test is not compatible with line search methods. Skipping test." << std::endl;
+        return;
+    }
+
     // From now on we only need to re-assemble the RHS (residual)
-    TPZNonlinearWell::fAssembleRHSOnly = true;
+    TPZWannMixedWell::fAssembleRHSOnly = true;
 
     REAL a1 = step;
     REAL a2 = 2 * step;
@@ -417,7 +402,7 @@ void TPZWannAnalysis::TaylorTest(TPZFMatrix<STATE> &sol, REAL step) {
     std::cout << "Approximated convergence order: " << log(b1/b2)/log(a1/a2) << std::endl;
 
     // Restore normal assembly
-    TPZNonlinearWell::fAssembleRHSOnly = false;
+    TPZWannMixedWell::fAssembleRHSOnly = false;
 }
 
 void TPZWannAnalysis::Assemble()
@@ -558,8 +543,8 @@ void TPZWannAnalysis::SetInitialSolution(std::set<int> &bcMatids)
     if (fIsMultiphysics) fCompMesh->TransferMultiphysicsSolution();
 
     // When the internal dofs are condensed, the analysis solution size is
-    // different from the cmesh solution size Analysis only holds the independent
-    // equations, while cmesh holds all equations The independent equations are
+    // different from the cmesh solution size. Analysis only holds the independent
+    // equations, while cmesh holds all equations. The independent equations are
     // stored first in the cmesh solution vector, so we just need to copy them to
     // the analysis solution
     int cmesh_neq = fCompMesh->NEquations();
@@ -638,94 +623,4 @@ void TPZWannAnalysis::PostProcessIteration(int dimToPost, int it)
 
     auto total_time_pp = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time_pp).count() / 1000.;
     cout << "Total time post process = " << total_time_pp << " seconds" << endl;
-}
-
-void TPZWannAnalysis::RescaleMatrix(TPZVec<REAL> &scaleFactors)
-{
-  auto mat = this->MatrixSolver<STATE>().Matrix();
-  scaleFactors.Resize(mat->Rows());
-
-  // Fill scaleFactors with the inverse of the diagonal entries of the matrix
-  for (int i = 0; i < mat->Rows(); i++) {
-    REAL diag = mat->GetVal(i, i);
-    if (std::abs(diag) > 1e-12) {
-      scaleFactors[i] = 1.0 / std::sqrt(std::abs(diag));
-    } else {
-      scaleFactors[i] = 1.0; // If diagonal entry is zero, do not scale
-    }
-  }
-
-  // Scale the RHS vector
-  TPZFMatrix<STATE> scaledRHS(mat->Rows(), 1, 0.0);
-  fStructMatrix->EquationFilter().Gather(fRhs, scaledRHS);
-  for (int i = 0; i < scaledRHS.Rows(); i++) {
-    scaledRHS(i, 0) *= scaleFactors[i];
-  }
-  fStructMatrix->EquationFilter().Scatter(scaledRHS, fRhs);
-
-  // Scale the matrix entries
-  auto *smp = dynamic_cast<TPZSYsmpMatrix<STATE>*>(&mat.operator*());
-  if(!smp){
-    std::cerr << "Matrix is not a TPZSYsmpMatrix" << std::endl;
-    DebugStop();
-  }
-  // use 'smp' from here
-  TPZVec<int64_t> &IA = smp->IA();
-  TPZVec<int64_t> &JA = smp->JA();
-  TPZVec<STATE> &A = smp->A();
-  int64_t n_nnz = A.NElements();
-
-  for (int64_t i = 0; i < IA.NElements() - 1; i++) {
-    for (int64_t j = IA[i]; j < IA[i + 1]; j++) {
-      A[j] *= scaleFactors[i] * scaleFactors[JA[j]];
-    }
-  }
-}
-
-void TPZWannAnalysis::FillScalingFactors(TPZVec<REAL> &scaleFactors)
-{
-  auto mat = this->MatrixSolver<STATE>().Matrix();
-  int64_t Neq = mat->Rows();
-  scaleFactors.Resize(Neq);
-
-  // Fill scaleFactors with the inverse of the diagonal entries of the matrix
-  for (int i = 0; i < Neq; i++) {
-    REAL diag = mat->GetVal(i, i);
-    if (std::abs(diag) > 1e-12) {
-      scaleFactors[i] = 1.0 / std::sqrt(std::abs(diag));
-    } else {
-      scaleFactors[i] = 1.0; // If diagonal entry is zero, do not scale
-    }
-  }
-}
-
-void TPZWannAnalysis::RescaleSystem(TPZVec<REAL> &scaleFactors)
-{
-  auto mat = this->MatrixSolver<STATE>().Matrix();
-
-  // Scale the RHS vector
-  TPZFMatrix<STATE> scaledRHS(mat->Rows(), 1, 0.0);
-  fStructMatrix->EquationFilter().Gather(fRhs, scaledRHS);
-  for (int i = 0; i < scaledRHS.Rows(); i++) {
-    scaledRHS(i, 0) *= scaleFactors[i];
-  }
-  fStructMatrix->EquationFilter().Scatter(scaledRHS, fRhs);
-
-  // Scale the matrix entries
-  auto *smp = dynamic_cast<TPZSYsmpMatrix<STATE>*>(&mat.operator*());
-  if(!smp){
-    std::cerr << "Matrix is not a TPZSYsmpMatrix" << std::endl;
-    DebugStop();
-  }
-  // use 'smp' from here
-  TPZVec<int64_t> &IA = smp->IA();
-  TPZVec<int64_t> &JA = smp->JA();
-  TPZVec<STATE> &A = smp->A();
-  int64_t n_nnz = A.NElements();
-
-  for (int64_t i = 0; i < IA.NElements() - 1; i++) {
-    for (int64_t j = IA[i]; j < IA[i + 1]; j++) {
-      A[j] *= scaleFactors[i] * scaleFactors[JA[j]];
-    }
-  }
 }

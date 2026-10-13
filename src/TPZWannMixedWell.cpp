@@ -2,7 +2,7 @@
 // Created by Giovane and Giovanni on 17/09/25
 //
 
-#include "TPZNonlinearWell.h"
+#include "TPZWannMixedWell.h"
 #include "TPZMaterialDataT.h"
 #include "pzaxestools.h"
 #include "pzlog.h"
@@ -13,13 +13,13 @@ static TPZLogger logger("pz.material.darcy");
 
 #define USEBLAS
 
-bool TPZNonlinearWell::fAssembleRHSOnly = false;
-bool TPZNonlinearWell::fIsFirstIteration = true;
+bool TPZWannMixedWell::fAssembleRHSOnly = false;
+bool TPZWannMixedWell::fIsFirstIteration = true;
 
-TPZNonlinearWell::TPZNonlinearWell() : TPZRegisterClassId(&TPZNonlinearWell::ClassId),
+TPZWannMixedWell::TPZWannMixedWell() : TPZRegisterClassId(&TPZWannMixedWell::ClassId),
                                        TBase(), fDim(-1) {}
 
-[[maybe_unused]] TPZNonlinearWell::TPZNonlinearWell(int id, REAL Dw, REAL mu, REAL rho, REAL pres, REAL Kvw) : TPZRegisterClassId(&TPZNonlinearWell::ClassId),
+[[maybe_unused]] TPZWannMixedWell::TPZWannMixedWell(int id, REAL Dw, REAL mu, REAL rho, REAL pres, REAL Kvw) : TPZRegisterClassId(&TPZWannMixedWell::ClassId),
                                                                                                                TBase(id), fDim(1), fDw(Dw), fMu(mu), fRho(rho), fPres(pres), fKvw(Kvw)
 {
     REAL c = (2.252610888 * pow(fDw, 19. / 7.)) / (pow(fMu, 1. / 7.) * pow(fRho, 3. / 7.));
@@ -30,14 +30,14 @@ TPZNonlinearWell::TPZNonlinearWell() : TPZRegisterClassId(&TPZNonlinearWell::Cla
 /**
          copy constructor
  */
-TPZNonlinearWell::TPZNonlinearWell(const TPZNonlinearWell &copy) : TBase(copy), fDim(copy.fDim)
+TPZWannMixedWell::TPZWannMixedWell(const TPZWannMixedWell &copy) : TBase(copy), fDim(copy.fDim)
 {
     *this = copy;
 }
 /**
          copy constructor
  */
-TPZNonlinearWell &TPZNonlinearWell::operator=(const TPZNonlinearWell &copy)
+TPZWannMixedWell &TPZWannMixedWell::operator=(const TPZWannMixedWell &copy)
 {
     TBase::operator=(copy);
     fDim = copy.fDim;
@@ -50,7 +50,7 @@ TPZNonlinearWell &TPZNonlinearWell::operator=(const TPZNonlinearWell &copy)
     return *this;
 }
 
-void TPZNonlinearWell::Contribute(const TPZVec<TPZMaterialDataT<STATE>> &datavec, REAL weight, TPZFMatrix<STATE> &ek,
+void TPZWannMixedWell::Contribute(const TPZVec<TPZMaterialDataT<STATE>> &datavec, REAL weight, TPZFMatrix<STATE> &ek,
                                   TPZFMatrix<STATE> &ef)
 {
     if (fAssembleRHSOnly)
@@ -115,7 +115,7 @@ void TPZNonlinearWell::Contribute(const TPZVec<TPZMaterialDataT<STATE>> &datavec
     }
 }
 
-void TPZNonlinearWell::ContributeBC(const TPZVec<TPZMaterialDataT<STATE>> &datavec, REAL weight, TPZFMatrix<STATE> &ek,
+void TPZWannMixedWell::ContributeBC(const TPZVec<TPZMaterialDataT<STATE>> &datavec, REAL weight, TPZFMatrix<STATE> &ek,
                                     TPZFMatrix<STATE> &ef, TPZBndCondT<STATE> &bc)
 {
 
@@ -151,7 +151,7 @@ void TPZNonlinearWell::ContributeBC(const TPZVec<TPZMaterialDataT<STATE>> &datav
     }
 }
 
-void TPZNonlinearWell::ContributeResidual(const TPZVec<TPZMaterialDataT<STATE>> &datavec, REAL weight, TPZFMatrix<STATE> &ef)
+void TPZWannMixedWell::ContributeResidual(const TPZVec<TPZMaterialDataT<STATE>> &datavec, REAL weight, TPZFMatrix<STATE> &ef)
 {
     TPZFMatrix<REAL> &HDivphiQ = datavec[0].fDeformedDirections;
     TPZFMatrix<REAL> &phiP = datavec[1].phi;
@@ -199,7 +199,7 @@ void TPZNonlinearWell::ContributeResidual(const TPZVec<TPZMaterialDataT<STATE>> 
     }
 }
 
-void TPZNonlinearWell::Solution(const TPZVec<TPZMaterialDataT<STATE>> &datavec, int var, TPZVec<STATE> &solOut)
+void TPZWannMixedWell::Solution(const TPZVec<TPZMaterialDataT<STATE>> &datavec, int var, TPZVec<STATE> &solOut)
 {
     solOut.Resize(this->NSolutionVariables(var));
     solOut.Fill(0.);
@@ -246,13 +246,13 @@ void TPZNonlinearWell::Solution(const TPZVec<TPZMaterialDataT<STATE>> &datavec, 
     }
 }
 
-void TPZNonlinearWell::Errors(const TPZVec<TPZMaterialDataT<STATE>> &data, TPZVec<REAL> &errors)
+void TPZWannMixedWell::Errors(const TPZVec<TPZMaterialDataT<STATE>> &data, TPZVec<REAL> &errors)
 {
 
     DebugStop();
 }
 
-int TPZNonlinearWell::VariableIndex(const std::string &name) const
+int TPZWannMixedWell::VariableIndex(const std::string &name) const
 {
     if (!strcmp("Flux", name.c_str()))
         return 1;
@@ -268,7 +268,7 @@ int TPZNonlinearWell::VariableIndex(const std::string &name) const
     return -1;
 }
 
-int TPZNonlinearWell::NSolutionVariables(int var) const
+int TPZWannMixedWell::NSolutionVariables(int var) const
 {
     if (var == 1)
         return 1;
@@ -283,17 +283,17 @@ int TPZNonlinearWell::NSolutionVariables(int var) const
     return -1;
 }
 
-int TPZNonlinearWell::ClassId() const
+int TPZWannMixedWell::ClassId() const
 {
-    return Hash("TPZNonlinearWell") ^ TBase::ClassId() << 1;
+    return Hash("TPZWannMixedWell") ^ TBase::ClassId() << 1;
 }
 
-TPZMaterial *TPZNonlinearWell::NewMaterial() const
+TPZMaterial *TPZWannMixedWell::NewMaterial() const
 {
-    return new TPZNonlinearWell(*this);
+    return new TPZWannMixedWell(*this);
 }
 
-void TPZNonlinearWell::Print(std::ostream &out) const
+void TPZWannMixedWell::Print(std::ostream &out) const
 {
     out << "Material Name: " << this->Name() << "\n";
     out << "Material Id: " << this->Id() << "\n";
@@ -305,7 +305,7 @@ void TPZNonlinearWell::Print(std::ostream &out) const
     out << "Pseudo Resistivity: " << fKvw << "\n";
 }
 
-void TPZNonlinearWell::FillDataRequirements(TPZVec<TPZMaterialDataT<STATE>> &datavec) const
+void TPZWannMixedWell::FillDataRequirements(TPZVec<TPZMaterialDataT<STATE>> &datavec) const
 {
     int nref = datavec.size();
     for (int i = 0; i < nref; i++)
@@ -315,7 +315,7 @@ void TPZNonlinearWell::FillDataRequirements(TPZVec<TPZMaterialDataT<STATE>> &dat
     }
 }
 
-void TPZNonlinearWell::FillBoundaryConditionDataRequirements(int type, TPZVec<TPZMaterialDataT<STATE>> &datavec) const
+void TPZWannMixedWell::FillBoundaryConditionDataRequirements(int type, TPZVec<TPZMaterialDataT<STATE>> &datavec) const
 {
     // default is no specific data requirements
     int nref = datavec.size();

@@ -1,7 +1,3 @@
-//
-// Created by Gustavo Batistela on 5/13/21.
-//
-
 #pragma once
 
 #include "TPZMatBase.h"
@@ -13,7 +9,7 @@
  * @brief This class implements an H1-conforming approximation for the Poiseulli flow.
  */
 
-class TPZNonLinearWellH1 : public TPZMatBase<STATE, TPZMatSingleSpaceT<STATE>,
+class TPZWannH1Well : public TPZMatBase<STATE, TPZMatSingleSpaceT<STATE>,
         TPZMatErrorSingleSpace<STATE>> {
 
     // type alias to improve constructor readability
@@ -23,7 +19,7 @@ public:
     /**
      * @brief Default constructor
      */
-    TPZNonLinearWellH1();
+    TPZWannH1Well();
     
     /**
      * @brief Class constructor
@@ -34,7 +30,7 @@ public:
      * @param [in] pres Reservoir pressure
      * @param [in] Kvw Pseudo resistivity
      */
-    [[maybe_unused]] TPZNonLinearWellH1(int id, REAL Dw, REAL mu, REAL rho, REAL pres, REAL Kvw);
+    [[maybe_unused]] TPZWannH1Well(int id, REAL Dw, REAL mu, REAL rho, REAL pres, REAL Kvw);
 
 
     /**
@@ -42,16 +38,16 @@ public:
 	 * @param [in] id material id
 	 * @param [in] dim problem dimension
 	 */
-    TPZNonLinearWellH1(int id, int dim);
+    TPZWannH1Well(int id, int dim);
 
-            TPZNonLinearWellH1(const TPZNonLinearWellH1 &copy);
+            TPZWannH1Well(const TPZWannH1Well &copy);
 
-            TPZNonLinearWellH1& operator=(const TPZNonLinearWellH1 &copy);
+            TPZWannH1Well& operator=(const TPZWannH1Well &copy);
 
     /**
 	 * @brief Returns a 'std::string' with the name of the material
 	 */
-    [[nodiscard]] std::string Name() const override { return "TPZNonLinearWellH1"; }
+    [[nodiscard]] std::string Name() const override { return "TPZWannH1Well"; }
 
     /**
 	 * @brief Returns the problem dimension

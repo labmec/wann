@@ -6,10 +6,6 @@
 #include "TPZWannGeometryTools.h"
 #include "TPZWannApproxTools.h"
 #include "TPZWannPostProcTools.h"
-#include <TPZLinearAnalysis.h>
-#include <TPZSSpStructMatrix.h>
-#include <pzskylstrmatrix.h>
-#include <pzstepsolver.h>
 #include <TPZAnalyticSolution.h>
 #include "TPZWannAnalysis.h"
 
@@ -34,8 +30,8 @@ int main(int argc, char *argv[]) {
     jsonfile += ".json";
   }
 
-  std::cout << "Using json file: " << jsonfile << std::endl;
   std::cout << "\n--------- Starting simulation ---------" << std::endl;
+  std::cout << "Using json file: " << jsonfile << std::endl;
 
 #ifdef PZ_LOG
   TPZLogger::InitializePZLOG();
@@ -55,17 +51,15 @@ int main(int argc, char *argv[]) {
 
   // For some reason we have to change the sign of boundary condition when using cylindrical map. 
   // TODO: fix it
-  // TODO: If unable to fix it, adapt the workaround to multiple wellbores
   for (auto &Wellbore : SimData.m_Wellbore) {
     for (auto &BC : Wellbore.BCs) {
       BC.second.value *= -1.0;
     }
   }
 
-  TPZMultiphysicsCompMesh* cmeshMixed = TPZWannApproxTools::CreateMultiphysicsCompMesh(gmesh, &SimData, &exact);
+  TPZMultiphysicsCompMesh* cmeshMixed = TPZWannApproxTools::CreateMixedCompMesh(gmesh, &SimData);
   TPZWannAnalysis anMixed(cmeshMixed, RenumType::EMetis);
   anMixed.SetProblemData(&SimData);
-  anMixed.SetRescaling(false); // Enable matrix rescaling to improve conditioning
   anMixed.Initialize();
   anMixed.NewtonIteration();
 

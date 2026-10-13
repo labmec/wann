@@ -2,8 +2,7 @@
 // Created by Gi Taraschi 27/05/26
 //
 
-#ifndef TPZANISOTROPICPERMEABILITY_H
-#define TPZANISOTROPICPERMEABILITY_H
+#pragma once
 
 #include <functional>
 #include "pzreal.h"
@@ -104,5 +103,3 @@ protected:
     // it is called in the method SetMaterial of class TPZBndCondBase
     static void SetMaterialImpl(TPZMaterial *) {}
 };
-
-#endif //TPZANISOTROPICPERMEABILITY_H

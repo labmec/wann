@@ -20,7 +20,7 @@
  * @see TPZIsotropicPermeability For setting the permeability field.
  */
 
-class TPZNonlinearWell : public TPZMatBase<STATE, TPZMatCombinedSpacesT<STATE>,
+class TPZWannMixedWell : public TPZMatBase<STATE, TPZMatCombinedSpacesT<STATE>,
                                            TPZMatErrorCombinedSpaces<STATE>>
 {
 
@@ -32,7 +32,7 @@ public:
     /**
      * @brief Default constructor
      */
-    TPZNonlinearWell();
+    TPZWannMixedWell();
 
     /**
      * @brief Class constructor
@@ -43,20 +43,20 @@ public:
      * @param [in] pres Reservoir pressure
      * @param [in] Kvw Pseudo resistivity
      */
-    [[maybe_unused]] TPZNonlinearWell(int id, REAL Dw, REAL mu, REAL rho, REAL pres, REAL Kvw);
+    [[maybe_unused]] TPZWannMixedWell(int id, REAL Dw, REAL mu, REAL rho, REAL pres, REAL Kvw);
 
     /**
              copy constructor
      */
-    TPZNonlinearWell(const TPZNonlinearWell &copy);
+    TPZWannMixedWell(const TPZWannMixedWell &copy);
     /**
              copy constructor
      */
-    TPZNonlinearWell &operator=(const TPZNonlinearWell &copy);
+    TPZWannMixedWell &operator=(const TPZWannMixedWell &copy);
     /**
      * @brief Returns a 'std::string' with the name of the material
      */
-    [[nodiscard]] std::string Name() const override { return "TPZNonlinearWell"; }
+    [[nodiscard]] std::string Name() const override { return "TPZWannMixedWell"; }
 
     /**
      * @brief Returns the problem dimension

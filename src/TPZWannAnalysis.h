@@ -21,11 +21,12 @@ public:
     enum LineSearchMethod
     {
         ENONE,
-        EBISSECT,
-        EGOLDEN,
+        EBISSECTION,
+        EGOLDENRATIO,
         ESECANT
     };
 
+protected:
     /// Data transfer object
     ProblemData *fSimData;
 
@@ -35,6 +36,10 @@ public:
     bool fIsFirstAssemble = true;
 
     bool fIsMultiphysics = true;
+
+    LineSearchMethod fLineSearchMethod = ENONE;
+
+public:
 
     /// Default constructor
     TPZWannAnalysis();
@@ -93,19 +98,5 @@ public:
     /// Render a vtk file with requested variables for a time step
     void PostProcessIteration(int dimToPost = -1, int it = -1);
 
-    ///
-    void SetRescaling(bool rescaling) { fRescaling = rescaling; }
-
-protected:
-    /// Flag to indicate whether to perform matrix rescaling during newton iterations
-    bool fRescaling = false;
-
-    // Rescale the linear system to improve the conditioning of the matrix 
-    void RescaleMatrix(TPZVec<REAL> &scaleFactors);
-
-    // Fill vector to rescale the system
-    void FillScalingFactors(TPZVec<REAL> &scaleFactors);
-
-    // Rescale the stiff matrix and the Rhs vector based on the provided scaling factors
-    void RescaleSystem(TPZVec<REAL> &scaleFactors);
+    void SetLineSearchMethod(LineSearchMethod method) { fLineSearchMethod = method; }
 };
