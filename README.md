@@ -1,5 +1,13 @@
 Repository to analyze Wellbore flow using Neural Networks
 
+## C++ Documentation
+
+Read the [documentation index](docs/README.md) for the class architecture,
+configuration and mesh workflow, Darcy and well formulations, output conventions,
+and current limitations. Core headers include Doxygen API comments; an optional
+[Doxygen configuration](docs/Doxyfile) generates a browsable reference without
+changing the simulation build.
+
 ## Repository Structure
 
 The repository is organized as follows:

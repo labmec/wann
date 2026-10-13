@@ -1,3 +1,8 @@
+/**
+ * @file
+ * @brief Class and method contracts for TPZDarcyAnisotropic.
+ */
+
 #pragma once
 
 #include "TPZMatBase.h"
@@ -6,16 +11,13 @@
 #include "TPZAnisotropicPermeability.h"
 
 /**
- * @ingroup material
- * @brief This class implements an H1-conforming approximation for the Darcy flow equation for anisotropic materials.
- *
- * The Darcy flow equation is given by: \f[- \nabla \cdot K \nabla u = f,\f] where \f$u\f$ is the pressure field
- * to be solved, \f$K\f$ is the permeability tensor and \f$f\f$ is the source term.
- *
- * @see TPZMixedDarcyFlow For an approximation using the mixed method.
- * @see TPZAnisotropicPermeability For setting the permeability field.
+ * @brief Pressure-only H1 Darcy material with tensor-valued permeability.
+ * Assembles the linear weak form of -div(K grad(p)) = f. Flux is reconstructed
+ * as -K grad(p). Assembly multiplies the 3x3 tensor directly by data.dphix;
+ * the supplied derivative matrix must have compatible rows and coordinates.
+ * @see TPZAnisotropicPermeability
+ * @see TPZWannDarcyNL
  */
-
 class TPZDarcyAnisotropic : public TPZMatBase<STATE, TPZMatSingleSpaceT<STATE>,
         TPZMatErrorSingleSpace<STATE>, TPZAnisotropicPermeability> {
 
@@ -23,140 +25,134 @@ class TPZDarcyAnisotropic : public TPZMatBase<STATE, TPZMatSingleSpaceT<STATE>,
     using TBase = TPZMatBase<STATE, TPZMatSingleSpaceT<STATE>, TPZMatErrorSingleSpace<STATE>, TPZAnisotropicPermeability>;
 
 public:
+
     /**
-     * @brief Default constructor
+     * @brief Construct an object; configure simulation/material data before use.
      */
     TPZDarcyAnisotropic();
 
     /**
-	 * @brief Class constructor
-	 * @param [in] id material id
-	 * @param [in] dim problem dimension
-	 */
+     * @brief Construct a material with the given identifier and dimension.
+     */
     TPZDarcyAnisotropic(int id, int dim);
 
+            /**
+             * @brief Construct a copy using the existing base/member copy semantics.
+             */
             TPZDarcyAnisotropic(const TPZDarcyAnisotropic &copy);
 
+            /**
+             * @brief Assign configuration using the existing base/member copy semantics.
+             */
             TPZDarcyAnisotropic& operator=(const TPZDarcyAnisotropic &copy);
 
     /**
-	 * @brief Returns a 'std::string' with the name of the material
-	 */
+     * @brief Return the concrete material name used in diagnostics.
+     */
     [[nodiscard]] std::string Name() const override { return "TPZDarcyAnisotropic"; }
 
     /**
-	 * @brief Returns the problem dimension
-	 */
+     * @brief Return the configured topological problem dimension.
+     */
     [[nodiscard]] int Dimension() const override { return this->fDim; }
 
     /**
-	 * @brief Returns the number of state variables
-	 */
+     * @brief Return one scalar state per approximation space.
+     */
     [[nodiscard]] int NStateVariables() const override { return 1; }
 
     /**
-	 * @brief Returns the number of errors to be evaluated
-     *
-     * Returns the number of errors to be evaluated, that is, the number of error norms associated
-     * with the problem.
+     * @brief Return the number of error slots declared by this material.
      */
     int NEvalErrors() const override { return 3; }
 
     /**
-     * @brief Sets problem dimension
+     * @brief Set the problem dimension; values outside 1 through 3 trigger DebugStop().
      */
     virtual void SetDimension(int dim);
 
     /**
-     * @brief It computes a contribution to the stiffness matrix and load vector at one integration point
-     * @param[in] data stores all input data
-     * @param[in] weight is the weight of the integration rule
-     * @param[out] ek is the element matrix
-     * @param[out] ef is the rhs vector
+     * @brief Add the linear pressure stiffness and source load at one quadrature point.
+     * @param[in] data Scalar pressure shape values and compatible derivatives.
+     * @param[in] weight Physical integration weight supplied by NeoPZ.
+     * @param[in,out] ek Accumulates grad(phi_i)^T K grad(phi_j) contributions.
+     * @param[in,out] ef Accumulates the forcing-function load; zero if absent.
      */
     void Contribute(const TPZMaterialDataT<STATE> &data, STATE weight, TPZFMatrix<STATE> &ek,
                     TPZFMatrix<STATE> &ef) override;
 
     /**
-     * @brief It computes a contribution to the stiffness matrix and load vector at one BC integration point
-     * @param[in] data stores all input data
-     * @param[in] weight is the weight of the integration rule
-     * @param[out] ek is the element matrix
-     * @param[out] ef is the rhs vector
-     * @param[in] bc is the boundary condition material
+     * @brief Add type-0 pressure penalty, type-1 load, or type-2 Robin terms.
+     * BC callbacks supply pressure and derivatives used to form the boundary value.
+     * ek and ef are accumulated, not cleared.
      */
     void ContributeBC(const TPZMaterialDataT<STATE> &data, STATE weight, TPZFMatrix<STATE> &ek, TPZFMatrix<STATE> &ef,
                       TPZBndCondT<STATE> &bc) override;
 
     /**
-     * @brief Returns an integer associated with a post-processing variable name
-     * @param [in] name string containing the name of the post-processing variable. Ex: "Pressure".
+     * @brief Map a post-processing field name to its numeric variable index.
+     * See docs/materials.md for supported fields and current implementation limits.
      */
     [[nodiscard]] int VariableIndex(const std::string &name) const override;
 
     /**
-     * @brief Returns an integer with the dimension of a post-processing variable
-     * @param [in] var index of the post-processing variable, according to TPZDarcyAnisotropic::VariableIndex method.
+     * @brief Return the output component count for a numeric post-processing variable.
      */
     [[nodiscard]] int NSolutionVariables(int var) const override;
 
     /**
-     * @brief Returns the solution associated with the var index based on the
-     * finite element approximation at a point
-     * @param [in] data material data associated with a given integration point
-     * @param [in] var index of the variable to be calculated
-     * @param [out] solOut vector to store the solution
+     * @brief Evaluate a requested post-processing field from the current point data.
+     * Exact fields require an installed exact-solution callback. Registered names
+     * do not all have a corresponding implemented output; see docs/materials.md.
      */
     void Solution(const TPZMaterialDataT<STATE> &data, int var, TPZVec<STATE> &solOut) override;
 
     /**
-     * @brief Get the dimensions of the solution for each state variable
-     *
-     * This will be used for initializing the corresponding TPZMaterialData
-     * @param [out] u_len solution dimension
-     * @param [out] du_row number of rows of the derivative
-     * @param [out] du_col number of columns of the derivative
+     * @brief Set u_len = 1, du_row = fDim, and du_col = 1 for pressure data.
      */
     void GetSolDimensions(uint64_t &u_len, uint64_t &du_row, uint64_t &du_col) const override;
 
     /**
-     * @brief Calculates the approximation error at a point
-     * @param [in] data material data of the integration point
-     * @param [out] errors calculated errors
+     * @brief Fill three pointwise squared errors: pressure-plus-energy, pressure L2,
+     * and permeability-weighted gradient error. Requires an exact callback and an
+     * errors vector already sized to NEvalErrors(); integration is done by NeoPZ.
      */
     void Errors(const TPZMaterialDataT<STATE> &data, TPZVec<REAL> &errors) override;
 
-    /** @brief Fills in the name of the errors that are computed */
+    /**
+     * @brief Resize names and label the three H1/L2/gradient error slots.
+     */
     virtual void ErrorNames(TPZVec<std::string> &names) const override;
 
-    /*
-     * @brief fill requirements for volumetric contribute
+    /**
+     * @brief Clear optional volume data requirements for linear stiffness/load assembly.
      */
     void FillDataRequirements(TPZMaterialData &data) const override;
 
-    /*
-     * @brief fill requirements for boundary contribute
+    /**
+     * @brief Set optional boundary requirements: solution for type 50, normals for
+     * types 1/3 or when a volume forcing function is installed.
      */
     void FillBoundaryConditionDataRequirements(int type, TPZMaterialData &data) const override;
 
     /**
-     * @brief Returns an unique class identifier
+     * @brief Return the NeoPZ runtime class identifier.
      */
     [[nodiscard]] int ClassId() const override;
 
     /**
-     * @brief Creates another material of the same type
+     * @brief Allocate a material copy using the concrete copy constructor.
+     * @return A new material pointer for ownership by the caller/NeoPZ mesh.
      */
     [[nodiscard]] TPZMaterial *NewMaterial() const override;
 
     /**
-     * @brief Prints data associated with the material.
+     * @brief Write the stored configuration or material summary to out.
      */
     void Print(std::ostream & out) const override;
 
 protected:
-    /**
-     * @brief Problem dimension
-     */
+
+    /// Topological dimension, independent of 3x3 tensor storage.
     int fDim;
 };

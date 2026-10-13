@@ -45,3 +45,6 @@ src/dirs_config.h
 
 #training data
 training/training_data.txt
+
+# Generated Doxygen documentation
+/docs/api/

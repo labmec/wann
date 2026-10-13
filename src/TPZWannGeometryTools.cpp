@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Geometry import, coupling surfaces, axial ordering, and refinement helpers.
+ * See the matching header for function contracts and docs/ for the architecture.
+ */
+
 #include "TPZWannGeometryTools.h"
 #include "TPZRefPatternTools.h"
 #include <cmath>

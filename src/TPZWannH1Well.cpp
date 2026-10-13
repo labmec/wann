@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Pressure-based laminar/turbulent well tangent and residual paths.
+ * See the matching header for function contracts and docs/ for the architecture.
+ */
+
 #include "TPZWannH1Well.h"
 #include "pzaxestools.h"
 

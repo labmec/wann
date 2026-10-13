@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Atomic/multiphysics mesh construction and pressure-connect coupling.
+ * See the matching header for function contracts and docs/ for the architecture.
+ */
+
 #include "TPZWannApproxTools.h"
 #include "TPZWannMixedWell.h"
 #include "TPZWannH1Well.h"
@@ -23,6 +29,7 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMixedCompMesh(TPZGeoMesh *gme
     TPZWannMixedDarcyNL *reservoirMat = new TPZWannMixedDarcyNL(ReservoirData.matid, dim);
     TPZFMatrix<STATE> perm(3, 3, 0.);
     for (int i = 0; i < 3; i++) {
+      // The tensor supplied to Darcy is hydraulic mobility K/mu here.
       perm(i, i) = ReservoirData.perm[i] / FluidData[0].viscosity; // TODO: assuming single phase flow for now
     }
     reservoirMat->SetConstantPermeability(perm);
@@ -169,6 +176,8 @@ void TPZWannApproxTools::AddPressureSkinElements(TPZCompMesh *cmesh, ProblemData
     };
 
     // Sharing is circumferential within one axial segment of one well only.
+    // A skin represents the axial well pressure, constant around its circumference;
+    // sharing must not cross axial segments or wells.
     std::set<REAL> axialCenters;
     std::map<REAL, TPZManVector<int64_t, 3>> centerToConnects;
     for (auto iel : skinElements[iw]) {

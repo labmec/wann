@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Flow/pressure well tangent, residual paths, and scalar outputs.
+ * See the matching header for function contracts and docs/ for the architecture.
+ */
+
 //
 // Created by Giovane and Giovanni on 17/09/25
 //
@@ -174,6 +180,8 @@ void TPZWannMixedWell::ContributeResidual(const TPZVec<TPZMaterialDataT<STATE>> 
     REAL reynolds = (fRho * std::abs(Qsol) * fDw) / fMu;
     bool turbulent = reynolds > 1187.38;
 
+    // This assignment forces laminar residual-only assembly, overriding
+    // the computed regime and potentially differing from full assembly.
     turbulent = false;
 
     // Residual vector constitutive equation (negative)

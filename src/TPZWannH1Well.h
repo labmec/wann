@@ -1,3 +1,8 @@
+/**
+ * @file
+ * @brief Class and method contracts for TPZWannH1Well.
+ */
+
 #pragma once
 
 #include "TPZMatBase.h"
@@ -5,10 +10,15 @@
 #include "TPZMatErrorSingleSpace.h"
 
 /**
- * @ingroup material
- * @brief This class implements an H1-conforming approximation for the Poiseulli flow.
+ * @brief Pressure-only one-dimensional well material with laminar/turbulent friction.
+ * Uses pressure derivatives for the axial flow rate, a laminar first Newton
+ * iteration, and a transition criterion based on Reynolds number 1187.38.
+ * Optional pseudo-resistivity contributes Kvw*(pres-p). Physical assembly needs
+ * the diameter/viscosity/density constructor; the dimension-only constructor
+ * does not initialize those coefficients. Current flux output uses global x.
+ * @see TPZWannMixedWell
+ * @see TPZWannAnalysis
  */
-
 class TPZWannH1Well : public TPZMatBase<STATE, TPZMatSingleSpaceT<STATE>,
         TPZMatErrorSingleSpace<STATE>> {
 
@@ -16,174 +26,210 @@ class TPZWannH1Well : public TPZMatBase<STATE, TPZMatSingleSpaceT<STATE>,
     using TBase = TPZMatBase<STATE, TPZMatSingleSpaceT<STATE>, TPZMatErrorSingleSpace<STATE>>;
 
 public:
+
     /**
-     * @brief Default constructor
+     * @brief Construct an object; configure simulation/material data before use.
      */
     TPZWannH1Well();
-    
+
     /**
-     * @brief Class constructor
-     * @param [in] id material id
-     * @param [in] Dw Well diameter
-     * @param [in] mu Fluid viscosity
-     * @param [in] rho Fluid density
-     * @param [in] pres Reservoir pressure
-     * @param [in] Kvw Pseudo resistivity
+     * @brief Configure a 1D well and compute laminar/turbulent coefficients.
+     * @param[in] id Material identifier.
+     * @param[in] Dw Positive well diameter.
+     * @param[in] mu Positive fluid viscosity.
+     * @param[in] rho Positive fluid density.
+     * @param[in] pres Reference reservoir pressure for the pseudo-resistivity term.
+     * @param[in] Kvw Pseudo-resistivity coefficient; zero disables that term.
      */
     [[maybe_unused]] TPZWannH1Well(int id, REAL Dw, REAL mu, REAL rho, REAL pres, REAL Kvw);
 
-
     /**
-	 * @brief Class constructor
-	 * @param [in] id material id
-	 * @param [in] dim problem dimension
-	 */
+     * @brief Construct a material with the given identifier and dimension.
+     */
     TPZWannH1Well(int id, int dim);
 
+            /**
+             * @brief Construct using the current copy implementation.
+             * See docs/nonlinear-wells.md for well-coefficient copy limitations.
+             */
             TPZWannH1Well(const TPZWannH1Well &copy);
 
+            /**
+             * @brief Assign using the current base/member copy implementation.
+             * See docs/nonlinear-wells.md for well-coefficient copy limitations.
+             */
             TPZWannH1Well& operator=(const TPZWannH1Well &copy);
 
     /**
-	 * @brief Returns a 'std::string' with the name of the material
-	 */
+     * @brief Return the concrete material name used in diagnostics.
+     */
     [[nodiscard]] std::string Name() const override { return "TPZWannH1Well"; }
 
     /**
-	 * @brief Returns the problem dimension
-	 */
+     * @brief Return the configured topological problem dimension.
+     */
     [[nodiscard]] int Dimension() const override { return this->fDim; }
 
     /**
-	 * @brief Returns the number of state variables
-	 */
+     * @brief Return one scalar state per approximation space.
+     */
     [[nodiscard]] int NStateVariables() const override { return 1; }
 
     /**
-	 * @brief Returns the number of errors to be evaluated
-     *
-     * Returns the number of errors to be evaluated, that is, the number of error norms associated
-     * with the problem.
+     * @brief Return the number of error slots declared by this material.
      */
     int NEvalErrors() const override { return 3; }
 
     /**
-     * @brief Sets problem dimension
+     * @brief Set the problem dimension; values outside 1 through 3 trigger DebugStop().
      */
     virtual void SetDimension(int dim);
 
     /**
-     * @brief It computes a contribution to the stiffness matrix and load vector at one integration point
-     * @param[in] data stores all input data
-     * @param[in] weight is the weight of the integration rule
-     * @param[out] ek is the element matrix
-     * @param[out] ef is the rhs vector
+     * @brief Add the axial well tangent and negative residual at the current pressure.
+     * Uses fCLin in the first iteration and switches to the turbulent power law
+     * above the critical pressure gradient. Includes pseudo-resistivity terms.
+     * Delegates to ContributeResidual() when fAssembleRHSOnly is set.
+     * @param[in] data Pressure shape/solution data at the integration point.
+     * @param[in] weight Physical integration weight supplied by NeoPZ.
+     * @param[in,out] ek Element tangent matrix receiving additive contributions.
+     * @param[in,out] ef Element negative-residual vector receiving additive contributions.
      */
     void Contribute(const TPZMaterialDataT<STATE> &data, STATE weight, TPZFMatrix<STATE> &ek,
                     TPZFMatrix<STATE> &ef) override;
 
+    /**
+     * @brief Accumulate only the well residual; choose the regime from the laminar
+     * flow estimate and recheck turbulent Reynolds consistency. Does not add a matrix.
+     * @param[in] data Pressure shape/solution data at the integration point.
+     * @param[in] weight Physical integration weight supplied by NeoPZ.
+     * @param[in,out] ef Element negative-residual vector receiving additive contributions.
+     */
     void ContributeResidual(const TPZMaterialDataT<STATE> &data, REAL weight,
                             TPZFMatrix<STATE> &ef);
 
     /**
-     * @brief It computes a contribution to the stiffness matrix and load vector at one BC integration point
-     * @param[in] data stores all input data
-     * @param[in] weight is the weight of the integration rule
-     * @param[out] ek is the element matrix
-     * @param[out] ef is the rhs vector
-     * @param[in] bc is the boundary condition material
+     * @brief Leave type-0 pressure to analysis filtering; add type-1 flow loads or
+     * type-2 Robin terms. Other types trigger DebugStop().
+     * @param[in] data Pressure shape/solution data at the integration point.
+     * @param[in] weight Physical integration weight supplied by NeoPZ.
+     * @param[in,out] ek Element tangent matrix receiving additive contributions.
+     * @param[in,out] ef Element negative-residual vector receiving additive contributions.
+     * @param[in] bc Boundary type and prescribed values.
      */
     void ContributeBC(const TPZMaterialDataT<STATE> &data, STATE weight, TPZFMatrix<STATE> &ek, TPZFMatrix<STATE> &ef,
                       TPZBndCondT<STATE> &bc) override;
 
     /**
-     * @brief Returns an integer associated with a post-processing variable name
-     * @param [in] name string containing the name of the post-processing variable. Ex: "Pressure".
+     * @brief Map a post-processing field name to its numeric variable index.
+     * See docs/materials.md for supported fields and current implementation limits.
      */
     [[nodiscard]] int VariableIndex(const std::string &name) const override;
 
     /**
-     * @brief Returns an integer with the dimension of a post-processing variable
-     * @param [in] var index of the post-processing variable, according to TPZDarcyFlow::VariableIndex method.
+     * @brief Return the output component count for a numeric post-processing variable.
      */
     [[nodiscard]] int NSolutionVariables(int var) const override;
 
     /**
-     * @brief Returns the solution associated with the var index based on the
-     * finite element approximation at a point
-     * @param [in] data material data associated with a given integration point
-     * @param [in] var index of the variable to be calculated
-     * @param [out] solOut vector to store the solution
+     * @brief Evaluate a requested post-processing field from the current point data.
+     * Exact fields require an installed exact-solution callback. Registered names
+     * do not all have a corresponding implemented output; see docs/materials.md.
      */
     void Solution(const TPZMaterialDataT<STATE> &data, int var, TPZVec<STATE> &solOut) override;
 
     /**
-     * @brief Get the dimensions of the solution for each state variable
-     *
-     * This will be used for initializing the corresponding TPZMaterialData
-     * @param [out] u_len solution dimension
-     * @param [out] du_row number of rows of the derivative
-     * @param [out] du_col number of columns of the derivative
+     * @brief Set u_len = 1, du_row = fDim, and du_col = 1 for pressure data.
      */
     void GetSolDimensions(uint64_t &u_len, uint64_t &du_row, uint64_t &du_col) const override;
 
     /**
-     * @brief Calculates the approximation error at a point
-     * @param [in] data material data of the integration point
-     * @param [out] errors calculated errors
+     * @brief Fill three pointwise squared pressure/gradient errors against an exact
+     * callback, using unit gradient weighting rather than the well friction law.
+     * Requires errors to be pre-sized to three.
      */
     void Errors(const TPZMaterialDataT<STATE> &data, TPZVec<REAL> &errors) override;
 
-    /** @brief Fills in the name of the errors that are computed */
+    /**
+     * @brief Resize names and label the three H1/L2/gradient error slots.
+     */
     virtual void ErrorNames(TPZVec<std::string> &names) const override;
 
-    /*
-     * @brief fill requirements for volumetric contribute
+    /**
+     * @brief Request pressure and derivative solution data for nonlinear assembly.
      */
     void FillDataRequirements(TPZMaterialData &data) const override;
 
-    /*
-     * @brief fill requirements for boundary contribute
+    /**
+     * @brief Clear optional solution data; request normals for boundary types 1/3
+     * or when a volume forcing function is installed.
      */
     void FillBoundaryConditionDataRequirements(int type, TPZMaterialData &data) const override;
 
     /**
-     * @brief Returns an unique class identifier
+     * @brief Return the NeoPZ runtime class identifier.
      */
     [[nodiscard]] int ClassId() const override;
 
     /**
-     * @brief Creates another material of the same type
+     * @brief Allocate a material copy using the concrete copy constructor.
+     * @return A new material pointer for ownership by the caller/NeoPZ mesh.
      */
     [[nodiscard]] TPZMaterial *NewMaterial() const override;
 
     /**
-     * @brief Prints data associated with the material.
+     * @brief Write the stored configuration or material summary to out.
      */
     void Print(std::ostream & out) const override;
 
+    /**
+     * @brief Shared switch selecting residual-only assembly for every instance.
+     */
     static bool fAssembleRHSOnly;
 
+    /**
+     * @brief Shared switch forcing laminar assembly in the first Newton iteration.
+     */
     static bool fIsFirstIteration;
 
 protected:
-    /**
-     * @brief Problem dimension
-     */
+
+    /// Topological dimension; well physical constructors set this to one.
     int fDim;
 
+    /**
+     * @brief Well diameter.
+     */
     REAL fDw;
 
+    /**
+     * @brief Fluid viscosity (in the pressure-scaled units supplied by the builder).
+     */
     REAL fMu;
 
+    /**
+     * @brief Fluid density (in the pressure-scaled units supplied by the builder).
+     */
     REAL fRho;
 
+    /**
+     * @brief Reference pressure in the pseudo-resistivity source.
+     */
     REAL fPres;
 
+    /**
+     * @brief Pseudo-resistivity coupling coefficient.
+     */
     REAL fKvw;
 
+    /**
+     * @brief Turbulent coefficient; maps pressure-gradient magnitude to flow.
+     */
     REAL fC; // this stores c = (2.252610888 Dw^(19/7))/(mu^(1/7) rho^(3/7))
 
+    /**
+     * @brief Laminar conductance pi*Dw^4/(128*mu).
+     */
     REAL fCLin; // this stores (pi Dw^4) / (128 mu)
 };
 

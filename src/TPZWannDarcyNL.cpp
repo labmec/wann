@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Pressure Darcy tangent and negative-residual assembly for Newton solves.
+ * See the matching header for function contracts and docs/ for the architecture.
+ */
+
 //
 // Created by Gi Taraschi 23/02/2026.
 //

@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Mixed Darcy tangent and negative-residual assembly for Newton solves.
+ * See the matching header for function contracts and docs/ for the architecture.
+ */
+
 //
 // Created by Gustavo Batistela on 5/13/21.
 //
@@ -68,6 +74,7 @@ void TPZWannMixedDarcyNL::Contribute(const TPZVec<TPZMaterialDataT<STATE>> &data
     ek.AddContribution(nphiQ, 0, phiP, 0, divQ, 1, -weight); // B^T
     ek.AddContribution(0, nphiQ, divQ, 0, phiP, 1, -weight); // B
 
+    // Newton solves J * delta = -R; ef therefore stores the negative residual.
     // Residual vector constitutive equation (negative)
     ef.AddContribution(0, 0, KappaInv_dot_tau, 1, QsolMat, 0, -weight); // A * Qsol
     REAL factor = psol * weight;

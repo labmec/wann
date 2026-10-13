@@ -1,3 +1,8 @@
+/**
+ * @file
+ * @brief Class and method contracts for TPZWannAnalysis.
+ */
+
 //
 //  Created by Giovane Avancini and Giovanni Taraschi on 17/11/25.
 //
@@ -14,10 +19,21 @@
 #include "TPZVTKGenerator.h"
 #include "TPZSYSMPMatrix.h"
 
+/**
+ * @brief Newton driver and boundary-equation filtering for WANN computational meshes.
+ * Requires a mesh and a borrowed ProblemData pointer before Initialize().
+ * Mixed meshes filter prescribed normal-flux equations; H1 meshes filter
+ * prescribed pressure equations. NewtonIteration() runs the entire iteration
+ * loop, loading corrections into the mesh and transferring atomic solutions.
+ * Line-search routines change mesh/RHS state and use shared well-material flags.
+ */
 class TPZWannAnalysis : public TPZLinearAnalysis
 {
 
 public:
+    /**
+     * @brief Correction scaling methods; ESECANT is declared but unimplemented.
+     */
     enum LineSearchMethod
     {
         ENONE,
@@ -27,76 +43,144 @@ public:
     };
 
 protected:
-    /// Data transfer object
+    /**
+     * @brief Borrowed configuration pointer set by SetProblemData().
+     */
     ProblemData *fSimData;
 
-    /// Number of iterations
+    /**
+     * @brief Current Newton loop index, or iteration limit on exhaustion.
+     */
     int fKiteration = 0;
 
+    /**
+     * @brief Reserved flag; currently not consulted by the implementation.
+     */
     bool fIsFirstAssemble = true;
 
+    /**
+     * @brief Whether the attached mesh is TPZMultiphysicsCompMesh.
+     */
     bool fIsMultiphysics = true;
 
+    /**
+     * @brief Method used to scale Newton corrections after the first step.
+     */
     LineSearchMethod fLineSearchMethod = ENONE;
 
 public:
 
-    /// Default constructor
+    /**
+     * @brief Construct an object; configure simulation/material data before use.
+     */
     TPZWannAnalysis();
 
-    /// Constructor based on a cmesh and optimization band directive
+    /**
+     * @brief Attach the computational mesh and detect mixed versus H1 operation.
+     * @param[in] cmesh Mesh used by the NeoPZ analysis.
+     * @param[in] renumtype Equation renumbering strategy.
+     */
     TPZWannAnalysis(TPZCompMesh *cmesh,
                     const RenumType &renumtype = RenumType::EDefault);
 
-    /// Default destructor
+    /**
+     * @brief Destroy this object; borrowed simulation pointers are not deleted.
+     */
     ~TPZWannAnalysis();
 
-    /// Configurates iternal members
+    /**
+     * @brief Configure threaded assembly, initialize prescribed BC values, filter their
+     * equations, and choose LDLt (mixed) or Cholesky (H1) direct solution.
+     * Requires SetProblemData() and a valid computational mesh beforehand.
+     */
     void Initialize();
 
-    /// Set data transfer object
+    /**
+     * @brief Store a borrowed simulation-data pointer; the object must outlive this analysis.
+     */
     void SetProblemData(ProblemData *simData);
 
-    /// Get data transfer object
+    /**
+     * @brief Return the borrowed simulation-data pointer without transferring ownership.
+     */
     ProblemData *GetProblemData();
 
-    /// Get the number of iterations
+    /**
+     * @brief Return the Newton loop counter, rather than an independently counted solve total.
+     */
     int GetNumberOfIterations();
 
-    /// Perform a Newton iteration
+    /**
+     * @brief Run the full Newton loop up to maxIterations, testing residual and
+     * scaled-correction norms against configured tolerances after the first step.
+     * Loads each update into the mesh; reports nonconvergence without returning status.
+     */
     void NewtonIteration();
 
+    /**
+     * @brief Choose a correction scale for sol + eta*dsol. ENONE returns 1;
+     * bisection and golden ratio evaluate trial solutions; ESECANT triggers DebugStop().
+     */
     REAL LineSearchStep(TPZFMatrix<STATE> &sol, TPZFMatrix<STATE> &dsol, LineSearchMethod method = ENONE);
 
+    /**
+     * @brief Search for a zero of dsol^T RHS along eta in [0,1].
+     * Assumes a multiphysics mesh and changes mesh/RHS state. The early-return
+     * branch leaves the mixed-well residual-only flag enabled.
+     */
     REAL BissectionMethod(TPZFMatrix<STATE> &sol, TPZFMatrix<STATE> &dsol);
 
+    /**
+     * @brief Search eta in [0,1] to reduce the residual norm using golden sections.
+     * Changes mesh/RHS state and toggles the mixed-well residual-only flag;
+     * the H1 well residual-only flag is not toggled here.
+     */
     REAL GoldenRatioMethod(TPZFMatrix<STATE> &sol, TPZFMatrix<STATE> &dsol);
 
-    /// Perform a Taylor test in the current Newton iteration
-    /// Used only for debugging purposes (check correctness of Jacobian implementation)
-    /// To get correct results, no line search must be performed
+    /**
+     * @brief Print a finite-difference Jacobian consistency estimate using step and 2*step.
+     * Requires current assembled Jacobian/RHS and no line search. Equation filtering
+     * is not supported by this diagnostic; trial mesh solutions are not restored.
+     */
     void TaylorTest(TPZFMatrix<STATE> &sol, REAL step = 1e-5);
 
-    /// override assemble to have timers
+    /**
+     * @brief Delegate to NeoPZ assembly and measure elapsed time (printing is disabled).
+     */
     void Assemble() override;
 
-    /// override solve to have timers
+    /**
+     * @brief Delegate to NeoPZ linear solution and print elapsed solve time.
+     */
     void Solve() override;
 
-    /// Fill the set of material ids related to BCs of given type
-    /// This method is used to apply BCs without using BigNumbers
+    /**
+     * @brief Insert reservoir/well boundary material IDs of the requested type into
+     * bcMatids; existing entries are retained.
+     */
     void FillBCMatids(std::set<int> &bcMatids, int type);
 
-    /// Set the initial solution based on the boundary conditions
-    /// This method is used to apply BCs without using BigNumbers
+    /**
+     * @brief Load prescribed values into boundary connects and copy independent
+     * equations into the analysis solution. H1 initializes corner values; mixed
+     * boundary coefficients include the boundary-measure/ncorner factor.
+     */
     void SetInitialSolution(std::set<int> &bcMatids);
 
-    /// Remove equations related to specified BCs from the system
-    /// This method is used to apply BCs without using BigNumbers
+    /**
+     * @brief Exclude all connect equations on the specified boundary material IDs
+     * from the structural matrix, preserving the initialized values during corrections.
+     */
     void ApplyEquationFilter(std::set<int> &bcMatids);
 
-    /// Render a vtk file with requested variables for a time step
+    /**
+     * @brief Write Pressure/Flux to solution_itN VTK output (N = it) using configured
+     * resolution/threads. Negative dimToPost selects the geometric mesh dimension.
+     */
     void PostProcessIteration(int dimToPost = -1, int it = -1);
 
+    /**
+     * @brief Select the line-search method for Newton steps after the first iteration.
+     */
     void SetLineSearchMethod(LineSearchMethod method) { fLineSearchMethod = method; }
 };

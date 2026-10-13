@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Historical estimators/refinement code excluded from the current library build.
+ * See the matching header for function contracts and docs/ for the architecture.
+ */
+
 #include <iostream>
 #include <random>
 #include <thread>

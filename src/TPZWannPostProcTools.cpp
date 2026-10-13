@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Solution export, surface-flux integration, and productivity calculations.
+ * See the matching header for function contracts and docs/ for the architecture.
+ */
+
 #include "TPZWannPostProcTools.h"
 #include "TPZWannGeometryTools.h"
 
@@ -241,6 +247,7 @@ TPZVec<REAL> TPZWannPostProcTools::ComputeWellFluxes(TPZCompMesh *cmesh, Problem
       DebugStop();
     }
     const REAL boundedCoord = std::clamp(axialCoord, REAL(0), length);
+    // This bins whole-face integrals; a face crossing a bin boundary is not split.
     const int segment = std::min(nSegments - 1, static_cast<int>(std::floor((boundedCoord / length) * nSegments)));
 
     // Compute contributions

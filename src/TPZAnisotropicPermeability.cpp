@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Global-coordinate tensor normalization and permeability evaluation/inversion.
+ * See the matching header for function contracts and docs/ for the architecture.
+ */
+
 //
 // Created by Gi Taraschi 27/05/26
 // Tensors are stored in global 3D coordinates; 1D/2D inputs use the x-axis/xy-plane.
@@ -8,6 +14,11 @@
 
 namespace {
 // Preserve three-component flux multiplication while accepting lower-dimensional tensors.
+/**
+ * @brief Embed a square 1D/2D tensor into global 3D storage, or retain 3D input.
+ * Only shape and lower-dimensional positivity/determinant checks are performed;
+ * this helper does not validate general symmetry or positive definiteness.
+ */
 TPZFMatrix<STATE> NormalizePermeability(TPZFMatrix<STATE> tensor) {
     const auto size = tensor.Rows();
     if (tensor.Cols() != size || (size < 1 || size > 3)) {

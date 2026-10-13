@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Boundary filtering, Newton updates, and diagnostic line searches.
+ * See the matching header for function contracts and docs/ for the architecture.
+ */
+
 //
 //  Created by Giovane Avancini and Giovanni Taraschi on 17/11/25.
 //
@@ -46,6 +52,8 @@ void TPZWannAnalysis::Initialize()
     // We want to filter bc equations that use big number.
     // For mixed approximations (MultiPhysics mesh) we filter Neumann BCs (type 1)
     // For H1 approximations we filter Dirichlet BCs (type 0)
+    // Essential data differ by formulation: normal flux in mixed, pressure in H1.
+    // Initialize these values once, then solve only unconstrained corrections.
     int type = fIsMultiphysics ? 1 : 0;
     std::set<int> bcMatids;
     FillBCMatids(bcMatids, type);

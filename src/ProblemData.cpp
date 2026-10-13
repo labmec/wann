@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief JSON input loading, derived coupling IDs/BCs, and pressure scaling.
+ * See the matching header for function contracts and docs/ for the architecture.
+ */
+
 
 #include <iostream>
 #include <string>
