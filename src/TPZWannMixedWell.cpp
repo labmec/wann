@@ -10,7 +10,6 @@
 
 #include "TPZWannMixedWell.h"
 #include "TPZMaterialDataT.h"
-#include "pzaxestools.h"
 #include "pzlog.h"
 
 #ifdef PZ_LOG
@@ -69,19 +68,22 @@ void TPZWannMixedWell::Contribute(const TPZVec<TPZMaterialDataT<STATE>> &datavec
     TPZFMatrix<REAL> &phiP = datavec[1].phi;
     TPZFMatrix<REAL> &divQ = datavec[0].divphi;
     TPZFNMatrix<1, REAL> Aux(1, 1, 1.);
-    TPZFNMatrix<20, REAL> phiQ(HDivphiQ.Cols(), 1);
+    const auto &axes = datavec[0].axes;
+    TPZFNMatrix<3, REAL> Aux3(HDivphiQ.Rows(), 1, 0.);
+    for (int d = 0; d < HDivphiQ.Rows(); d++) {
+        Aux3(d, 0) = axes(0, d);
+    }
 
     int nphiQ, nphiP;
     nphiP = phiP.Rows();
     nphiQ = datavec[0].fDeformedDirections.Cols();
-    for (int iq = 0; iq < nphiQ; iq++)
-    {
-        phiQ(iq, 0) = HDivphiQ(0, iq);
-    }
 
-    REAL Qsol = datavec[0].sol[0][0];
     REAL psol = datavec[1].sol[0][0];
     REAL divQsol = datavec[0].divsol[0][0];
+    REAL Qsol = 0.;
+    for (int d = 0; d < 3; d++) {
+        Qsol += datavec[0].sol[0][d] * axes(0, d);
+    }
 
     bool turbulent = false;
     if (!fIsFirstIteration) {
@@ -92,7 +94,7 @@ void TPZWannMixedWell::Contribute(const TPZVec<TPZMaterialDataT<STATE>> &datavec
     
     // Tangent matrix
     REAL factor = turbulent ? fC * weight * (pow(std::abs(Qsol), 3. / 4.) + 3. / 4. * pow(std::abs(Qsol), 3. / 4.)) : fCLin * weight;
-    ek.AddContribution(0, 0, phiQ, 0, phiQ, 1, factor);      // A
+    ek.AddContribution(0, 0, HDivphiQ, 1, HDivphiQ, 0, factor);      // A
     ek.AddContribution(nphiQ, 0, phiP, 0, divQ, 1, -weight); // B^T
     ek.AddContribution(0, nphiQ, divQ, 0, phiP, 1, -weight); // B
     factor = -fKvw * weight;
@@ -100,7 +102,7 @@ void TPZWannMixedWell::Contribute(const TPZVec<TPZMaterialDataT<STATE>> &datavec
 
     // Residual vector constitutive equation (negative)
     factor = turbulent ? fC * weight * Qsol * pow(std::abs(Qsol), 3. / 4.) : fCLin * Qsol * weight;
-    ef.AddContribution(0, 0, phiQ, 0, Aux, 0, -factor);
+    ef.AddContribution(0, 0, HDivphiQ, 1, Aux3, 0, -factor);
     factor = -psol * weight;
     ef.AddContribution(0, 0, divQ, 0, Aux, 1, -factor);
 
@@ -163,30 +165,33 @@ void TPZWannMixedWell::ContributeResidual(const TPZVec<TPZMaterialDataT<STATE>> 
     TPZFMatrix<REAL> &phiP = datavec[1].phi;
     TPZFMatrix<REAL> &divQ = datavec[0].divphi;
     TPZFNMatrix<1, REAL> Aux(1, 1, 1.);
-    TPZFNMatrix<20, REAL> phiQ(HDivphiQ.Cols(), 1);
+    const auto &axes = datavec[0].axes;
+    TPZFNMatrix<3, REAL> Aux3(HDivphiQ.Rows(), 1, 0.);
+    for (int d = 0; d < HDivphiQ.Rows(); d++) {
+        Aux3(d, 0) = axes(0, d);
+    }
 
     int nphiQ, nphiP;
     nphiP = phiP.Rows();
     nphiQ = datavec[0].fDeformedDirections.Cols();
-    for (int iq = 0; iq < nphiQ; iq++)
-    {
-        phiQ(iq, 0) = HDivphiQ(0, iq);
-    }
 
-    REAL Qsol = datavec[0].sol[0][0];
     REAL psol = datavec[1].sol[0][0];
     REAL divQsol = datavec[0].divsol[0][0];
+    REAL Qsol = 0.;
+    for (int d = 0; d < 3; d++) {
+        Qsol += datavec[0].sol[0][d] * axes(0, d);
+    }
 
-    REAL reynolds = (fRho * std::abs(Qsol) * fDw) / fMu;
-    bool turbulent = reynolds > 1187.38;
-
-    // This assignment forces laminar residual-only assembly, overriding
-    // the computed regime and potentially differing from full assembly.
-    turbulent = false;
+    bool turbulent = false;
+    if (!fIsFirstIteration) {
+        REAL velocity = 4. * Qsol / (M_PI * fDw * fDw);
+        REAL reynolds = (fRho * std::abs(velocity) * fDw) / fMu;
+        turbulent = reynolds > 1187.38;
+    }
 
     // Residual vector constitutive equation (negative)
     REAL factor = turbulent ? fC * weight * Qsol * pow(std::abs(Qsol), 3. / 4.) : fCLin * Qsol * weight;
-    ef.AddContribution(0, 0, phiQ, 0, Aux, 0, -factor);
+    ef.AddContribution(0, 0, HDivphiQ, 1, Aux3, 0, -factor);
     factor = -psol * weight;
     ef.AddContribution(0, 0, divQ, 0, Aux, 1, -factor);
 
@@ -212,8 +217,13 @@ void TPZWannMixedWell::Solution(const TPZVec<TPZMaterialDataT<STATE>> &datavec, 
     solOut.Resize(this->NSolutionVariables(var));
     solOut.Fill(0.);
     REAL SolP, SolQ;
+    const auto &axes = datavec[0].axes;
 
-    SolQ = datavec[0].sol[0][0];
+    SolQ = 0.;
+    for (int d = 0; d < 3; d++) {
+        SolQ += datavec[0].sol[0][d] * axes(0, d);
+    }
+
     SolP = datavec[1].sol[0][0];
 
     if (var == 1)
@@ -231,25 +241,6 @@ void TPZWannMixedWell::Solution(const TPZVec<TPZMaterialDataT<STATE>> &datavec, 
     if (var == 3)
     {
         solOut[0] = datavec[0].divsol[0][0];
-        return;
-    }
-
-    if (var == 4)
-    {
-
-        if (datavec[1].fShapeType == TPZMaterialData::EEmpty)
-            return;
-        TPZFNMatrix<9, REAL> dsoldx(3, 1., 0.);
-        TPZFNMatrix<9, REAL> dsoldaxes(fDim, 1, 0.);
-
-        dsoldaxes = datavec[1].dsol[0];
-        TPZAxesTools<REAL>::Axes2XYZ(dsoldaxes, dsoldx, datavec[1].axes);
-
-        for (int i = 0; i < fDim; i++)
-        {
-            solOut[i] = dsoldx(i, 0);
-        }
-
         return;
     }
 }
@@ -270,8 +261,6 @@ int TPZWannMixedWell::VariableIndex(const std::string &name) const
         return 3;
     if (!strcmp("Divergence", name.c_str()))
         return 3;
-    if (!strcmp("GradPressure", name.c_str()))
-        return 4;
     DebugStop();
     return -1;
 }
@@ -283,8 +272,6 @@ int TPZWannMixedWell::NSolutionVariables(int var) const
     if (var == 2)
         return 1;
     if (var == 3)
-        return 1;
-    if (var == 4)
         return 1;
 
     DebugStop();

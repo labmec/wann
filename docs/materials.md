@@ -125,7 +125,7 @@ are not interchangeable between H1, mixed Darcy, and well materials.
 | H1 Darcy | `Pressure`/`Solution`: 1; `Derivative`/`GradU`: fDim; `Flux`/`MinusKGradU`: 3; `POrder`: 1 |
 | Mixed Darcy | `Flux`: 3; `Pressure`: 1; `GradPressure`: 3; `DivFlux`/`Divergence`: 1; `POrder`: 1 |
 | H1 well | `Pressure`: 1; `GradPressure`: fDim; `Flux`: fDim (normally 1); `POrder`: 1 |
-| Mixed well | `Flux`, `Pressure`, `DivFlux`/`Divergence`, `GradPressure`: 1 each |
+| Mixed well | `Flux`, `Pressure`, `DivFlux`/`Divergence`: 1 each |
 
 For H1 Darcy, `KDuDx/y/z` are components of `K grad(p)` and `Flux` has the opposite
 sign. H1 Darcy `Errors()` fills three squared pointwise quantities: pressure plus

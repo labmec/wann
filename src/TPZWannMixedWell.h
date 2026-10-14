@@ -96,8 +96,8 @@ public:
 
     /**
      * @brief Add the flow/pressure negative residual without a matrix.
-     * @note This implementation explicitly forces the laminar branch; it is not
-     * the turbulent residual used by the full Contribute() path.
+     * @note Uses the same regime selection as Contribute(): laminar on the first
+     * iteration, then selected by the Reynolds number.
      * @param[in] datavec Flux data at index 0 and pressure data at index 1.
      * @param[in] weight Physical integration weight supplied by NeoPZ.
      * @param[in,out] ef Element negative-residual vector receiving additive contributions.

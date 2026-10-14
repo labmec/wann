@@ -81,8 +81,6 @@ void TPZWannAnalysis::NewtonIteration()
     TPZWannH1Well::fIsFirstIteration = true;
     TPZWannMixedWell::fIsFirstIteration = true;
 
-    TPZVec<REAL> scaleFactors;
-
     TPZFMatrix<STATE> sol = Solution(); // Initial solution
     for (fKiteration = 0; fKiteration < matIter; fKiteration++) {
         Assemble();
