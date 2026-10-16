@@ -32,7 +32,7 @@ public:
    * @brief Import, verify, add coupling surfaces, and order well node IDs.
    * @param[in] simData Populated simulation configuration.
    * @return Newly allocated geometry mesh; caller manages its lifetime.
-   * Cylindrical conversion and refinement are not invoked by this factory.
+   * Cylindrical conversion is optional; refinement is not invoked by this factory.
    */
   static TPZGeoMesh* CreateGeoMesh(ProblemData* simData);
   /**
@@ -41,11 +41,11 @@ public:
    */
   static TPZGeoMesh* ReadMeshFromGmsh(ProblemData* simData);
   /**
-   * @brief Project selected surface nodes to an x-aligned cylinder and change their
+   * @brief Project selected surface nodes to the well's heel-to-toe cylinder and change their
    * elements to cylindrical maps; convert adjoining elements to GeoBlend.
    * Requires unrefined selected elements; modifies geometry/connectivity in place.
    */
-  static void ModifyGeometricMeshToCylWell(TPZGeoMesh *gmesh, int matid, REAL cylradius, TPZManVector<REAL,3> &cylcenter);
+  static void ModifyGeometricMeshToCylWell(TPZGeoMesh *gmesh, const ProblemData &simData, int wellIndex);
   /**
    * @brief Divide leaf elements listed by geometric index; skip already divided
    * elements and trigger DebugStop() for a missing element.

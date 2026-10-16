@@ -26,16 +26,13 @@ TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
     DebugStop();
   }
 
-  // TODO: implement a more robust way to do the cylindrical surfaces.
-  // It should account for multiple wellbores and well axis orientation and height.
-
-  // if (simData->m_Mesh.ToCylindrical) {
-  //   TPZManVector<REAL,3> cylcenter = {0.,0.,0.};
-  //   REAL hr = simData->m_Reservoir.height;
-  //   REAL lr = simData->m_Wellbore[0].height; // TODO: generalize for multiple wellbores
-  //   cylcenter[2] = lr - hr/2.;
-  //   ModifyGeometricMeshToCylWell(gmesh, simData->ESurfWellCyl, simData->m_Wellbore[0].radius, cylcenter);
-  // }
+  // This flag set all wellbore surfaces to be cylindrical
+  // Should we define a well-wise flag?
+  if (simData->m_Mesh.ToCylindrical) {
+    for (int iw = 0; iw < simData->m_Wellbore.size(); iw++) {
+      ModifyGeometricMeshToCylWell(gmesh, *simData, iw);
+    }
+  }
 
   // Create geo elements for wellbore-reservoir coupling
   // Such auxiliary elements live in the wellbore cylindrical surface
@@ -82,8 +79,97 @@ TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
   return gmesh;
 }
 
-void TPZWannGeometryTools::ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh, int matid, REAL cylradius, TPZManVector<REAL,3> &cylcenter) {
-  const TPZManVector<REAL,3> cylaxis = {1.,0.,0.};
+void TPZWannGeometryTools::ModifyGeometricMeshToCylWell(TPZGeoMesh *gmesh, const ProblemData &simData, int wellIndex) {
+  if (wellIndex < 0 || wellIndex >= simData.m_Wellbore.size()) DebugStop();
+  const auto &well = simData.m_Wellbore[wellIndex];
+  TPZManVector<REAL,3> heelCoord(3, 0.), toeCoord(3, 0.);
+  const int heelMatid = well.BCs.at("point_heel").matid;
+  const int toeMatid = well.BCs.at("point_toe").matid;
+  int heelCount = 0, toeCount = 0;
+  for (auto gel : gmesh->ElementVec()) {
+    if (!gel || gel->HasSubElement() || gel->Dimension() != 0) continue;
+    if (gel->MaterialId() == heelMatid) {
+      gel->NodePtr(0)->GetCoordinates(heelCoord);
+      heelCount++;
+    }
+    if (gel->MaterialId() == toeMatid) {
+      gel->NodePtr(0)->GetCoordinates(toeCoord);
+      toeCount++;
+    }
+  }
+  if (heelCount != 1 || toeCount != 1) DebugStop();
+
+  TPZManVector<REAL,3> cylaxis = toeCoord - heelCoord;
+  const REAL axisNorm = Norm(cylaxis);
+  if (!(axisNorm > 0.) || !std::isfinite(axisNorm)) DebugStop();
+  for (int d = 0; d < 3; d++) cylaxis[d] /= axisNorm;
+  const int matid = well.matidSurf;
+  const REAL cylradius = well.radius;
+  if (!(cylradius > 0.) || !std::isfinite(cylradius)) DebugStop();
+
+  // The tagged well curve lies on the wall. Find the actual heel circle center
+  // from nodes shared by the heel cap and cylindrical surface.
+  std::set<int64_t> capNodes, cylinderNodes;
+  for (auto gel : gmesh->ElementVec()) {
+    if (!gel || gel->HasSubElement() || gel->Dimension() != 2) continue;
+    if (gel->MaterialId() != well.matidHeelSurf && gel->MaterialId() != matid) continue;
+    auto &nodes = gel->MaterialId() == matid ? cylinderNodes : capNodes;
+    for (int in = 0; in < gel->NCornerNodes(); in++) nodes.insert(gel->NodeIndex(in));
+  }
+  std::vector<TPZManVector<REAL,3>> rim;
+  for (auto node : capNodes) {
+    if (!cylinderNodes.count(node)) continue;
+    TPZManVector<REAL,3> x(3, 0.);
+    gmesh->NodeVec()[node].GetCoordinates(x);
+    rim.push_back(x);
+  }
+  if (rim.size() < 3) DebugStop();
+
+  const auto &origin = rim[0];
+  TPZManVector<REAL,3> chord(3, 0.), transverse(3, 0.);
+  REAL chordLength = 0.;
+  for (const auto &x : rim) {
+    TPZManVector<REAL,3> delta = x - origin;
+    if (Norm(delta) > chordLength) {
+      chord = delta;
+      chordLength = Norm(delta);
+    }
+  }
+  if (!(chordLength > 0.)) DebugStop();
+  TPZManVector<REAL,3> chordDirection = chord;
+  for (int d = 0; d < 3; d++) chordDirection[d] /= chordLength;
+  REAL transverseLength = 0., centerOffset = 0.;
+  for (const auto &x : rim) {
+    TPZManVector<REAL,3> delta = x - origin;
+    const REAL along = Dot(delta, chordDirection);
+    TPZManVector<REAL,3> perpendicular = delta;
+    for (int d = 0; d < 3; d++) perpendicular[d] -= along * chordDirection[d];
+    const REAL distance = Norm(perpendicular);
+    if (distance > transverseLength) {
+      transverse = perpendicular;
+      transverseLength = distance;
+      centerOffset = (Dot(delta, delta) - chordLength * along) / (2. * distance);
+    }
+  }
+  if (!(transverseLength > 1.e-10 * chordLength)) DebugStop();
+  TPZManVector<REAL,3> cylCenter = origin;
+  for (int d = 0; d < 3; d++) {
+    cylCenter[d] += 0.5 * chord[d] + centerOffset * transverse[d] / transverseLength;
+  }
+
+  // Validate before changing any nodes: the rim must be a circle normal to the axis.
+  const REAL tolerance = 1.e-10 + 1.e-8 * cylradius;
+  for (const auto &x : rim) {
+    TPZManVector<REAL,3> radial = x - cylCenter;
+    const REAL radius = Norm(radial);
+    if (!std::isfinite(radius) || std::abs(radius - cylradius) > tolerance ||
+        std::abs(Dot(radial, cylaxis)) > tolerance) {
+      PZError << "Inconsistent heel circle for well " << wellIndex
+              << ": computed radius " << radius << ", expected " << cylradius << std::endl;
+      DebugStop();
+    }
+  }
+
   int64_t nel = gmesh->NElements();
   for(int64_t iel = 0; iel < nel ; iel++) {
     TPZGeoEl* gel = gmesh->Element(iel);
@@ -100,7 +186,7 @@ void TPZWannGeometryTools::ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh, int m
     {
       gel->NodePtr(in)->GetCoordinates(xnode);
       // component of xnode that is orthogonal to cyl axis
-      TPZManVector<REAL, 3> x_orth = xnode - cylcenter;
+      TPZManVector<REAL, 3> x_orth = xnode - cylCenter;
       const REAL dax = Dot(x_orth, cylaxis);
       for (int ix = 0; ix < 3; ix++)
       {
@@ -111,11 +197,12 @@ void TPZWannGeometryTools::ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh, int m
       {
         // Moving the node to the cylinder shell
         REAL computed_radius = Norm(x_orth);
+        if (!(computed_radius > 0.) || !std::isfinite(computed_radius)) DebugStop();
         for (int ix = 0; ix < 3; ix++)
         {
-          xnode[ix] = cylcenter[ix] + (x_orth[ix] / computed_radius) * cylradius + dax * cylaxis[ix];
+          xnode[ix] = cylCenter[ix] + (x_orth[ix] / computed_radius) * cylradius + dax * cylaxis[ix];
         }
-        x_orth = xnode - cylcenter;
+        x_orth = xnode - cylCenter;
         for (int ix = 0; ix < 3; ix++)
         {
           x_orth[ix] -= dax * cylaxis[ix];
@@ -134,7 +221,7 @@ void TPZWannGeometryTools::ModifyGeometricMeshToCylWell(TPZGeoMesh* gmesh, int m
       }
     }
 
-    TPZChangeEl::ChangeToCylinder(gmesh, iel, cylcenter, cylaxis, cylradius);
+    TPZChangeEl::ChangeToCylinder(gmesh, iel, cylCenter, cylaxis, cylradius);
   }
 
   gmesh->BuildConnectivity();

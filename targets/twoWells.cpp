@@ -49,14 +49,6 @@ int main(int argc, char *argv[]) {
 
   // --- H(div) Simulation ---
 
-  // For some reason we have to change the sign of boundary condition when using cylindrical map. 
-  // TODO: fix it
-  // for (auto &Wellbore : SimData.m_Wellbore) {
-  //   for (auto &BC : Wellbore.BCs) {
-  //     BC.second.value *= -1.0;
-  //   }
-  // }
-
   // Mixed and H1 comp meshes
   TPZMultiphysicsCompMesh* cmeshMixed = TPZWannApproxTools::CreateMixedCompMesh(gmesh, &SimData);
   TPZCompMesh* cmeshH1 = TPZWannApproxTools::CreateH1CompMesh(gmesh, &SimData);
@@ -72,13 +64,6 @@ int main(int argc, char *argv[]) {
   anH1.SetProblemData(&SimData);
   anH1.Initialize();
   anH1.NewtonIteration();
-
-  // // Revert sign changes
-  // for (auto &Wellbore : SimData.m_Wellbore) {
-  //   for (auto &BC : Wellbore.BCs) {
-  //     BC.second.value *= -1.0;
-  //   }
-  // }
 
   // --- Post-processing ----
   TPZWannPostProcTools::WriteVTKs(cmeshMixed, &SimData);
