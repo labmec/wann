@@ -113,14 +113,17 @@ helper. `AddInterfaceElements()` does not use its `laglevel` argument.
 ## H1 approximation
 
 `CreateH1CompMesh()` creates continuous pressure spaces with the Newton H1 reservoir
-and first-well material. It optionally attaches a `TLaplaceExample1` exact solution
+and a well material for each configured well. It optionally attaches a `TLaplaceExample1` exact solution
 and forcing function to the well. It then updates line-interior order and calls
 `EqualizeH1PressureConnects()`.
 
-That helper groups skin connects by **global x**, disables circumferential/face
-modes, applies identity dependencies within coordinate groups, and rebuilds
-solution blocks. This path currently assumes a single x-aligned well; the mixed
-builder's multiple-well ownership logic does not extend to it.
+That helper identifies each skin's well through the neighboring cylinder material
+ID and projects coordinates onto that well's straight heel-to-toe axis. It groups
+vertex and axial-edge connects separately within each well, disables
+circumferential/face modes, applies identity dependencies within coordinate
+groups, and rebuilds solution blocks. Wells can have arbitrary straight axes;
+sharing never crosses well ownership. Curved wells require a path coordinate
+rather than this endpoint projection.
 
 ## Analysis lifecycle
 

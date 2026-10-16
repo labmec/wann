@@ -51,28 +51,47 @@ int main(int argc, char *argv[]) {
 
   // For some reason we have to change the sign of boundary condition when using cylindrical map. 
   // TODO: fix it
-  for (auto &Wellbore : SimData.m_Wellbore) {
-    for (auto &BC : Wellbore.BCs) {
-      BC.second.value *= -1.0;
-    }
-  }
+  // for (auto &Wellbore : SimData.m_Wellbore) {
+  //   for (auto &BC : Wellbore.BCs) {
+  //     BC.second.value *= -1.0;
+  //   }
+  // }
 
+  // Mixed and H1 comp meshes
   TPZMultiphysicsCompMesh* cmeshMixed = TPZWannApproxTools::CreateMixedCompMesh(gmesh, &SimData);
+  TPZCompMesh* cmeshH1 = TPZWannApproxTools::CreateH1CompMesh(gmesh, &SimData);
+
+  // Mixed analysis
   TPZWannAnalysis anMixed(cmeshMixed, RenumType::EMetis);
   anMixed.SetProblemData(&SimData);
   anMixed.Initialize();
   anMixed.NewtonIteration();
 
-  // Revert sign changes
-  for (auto &Wellbore : SimData.m_Wellbore) {
-    for (auto &BC : Wellbore.BCs) {
-      BC.second.value *= -1.0;
-    }
-  }
+  // H1 analysis
+  TPZWannAnalysis anH1(cmeshH1, RenumType::EMetis);
+  anH1.SetProblemData(&SimData);
+  anH1.Initialize();
+  anH1.NewtonIteration();
+
+  // // Revert sign changes
+  // for (auto &Wellbore : SimData.m_Wellbore) {
+  //   for (auto &BC : Wellbore.BCs) {
+  //     BC.second.value *= -1.0;
+  //   }
+  // }
 
   // --- Post-processing ----
   TPZWannPostProcTools::WriteVTKs(cmeshMixed, &SimData);
+  TPZWannPostProcTools::WriteVTKs(cmeshH1, &SimData);
+
+  // ---- Clean up ----
+
+  // To avoid pesky messages, delete all dependencies in the H1 mesh before deleting it.
+  for (int64_t ic = 0; ic < cmeshH1->NConnects(); ic++) {
+    cmeshH1->ConnectVec()[ic].RemoveDepend();
+  }
 
   delete cmeshMixed;
+  delete cmeshH1;
   delete gmesh;
 }

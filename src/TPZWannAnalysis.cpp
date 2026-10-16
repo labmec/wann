@@ -11,6 +11,8 @@
 #include "TPZWannAnalysis.h"
 #include "TPZWannMixedWell.h"
 #include "TPZWannH1Well.h"
+#include "pzmultiphysicscompel.h"
+#include "pzinterpolationspace.h"
 
 using namespace std;
 
@@ -508,6 +510,7 @@ void TPZWannAnalysis::SetInitialSolution(std::set<int> &bcMatids)
           // We could also collect all BCs in a single map at the beginning of the simulation to avoid searching through multiple structures.
 
           std::string bc_name;
+          int owningWell = -1;
           REAL val;
           bool found = false;
           for (auto it = fSimData->m_Reservoir.BCs.begin();
@@ -520,10 +523,11 @@ void TPZWannAnalysis::SetInitialSolution(std::set<int> &bcMatids)
             }
           }
           if (!found) {
-            for (int iwell = 0; iwell < fSimData->m_Wellbore.size(); iwell++) {
+            for (int iwell = 0; iwell < fSimData->m_Wellbore.size() && !found; iwell++) {
               for (auto it = fSimData->m_Wellbore[iwell].BCs.begin();
                    it != fSimData->m_Wellbore[iwell].BCs.end(); ++it) {
                 if (it->second.matid == elMatID) {
+                  owningWell = iwell;
                   bc_name = it->first;
                   val = fSimData->m_Wellbore[iwell].BCs[bc_name].value;
                   found = true;
@@ -537,6 +541,41 @@ void TPZWannAnalysis::SetInitialSolution(std::set<int> &bcMatids)
 
           if (fIsMultiphysics) {
             val *= volume / ncorner;
+          }
+
+          // Convert axial well flux to the adjacent line's H(div) coefficient.
+          if (fIsMultiphysics && el->Dimension() == 0 &&
+              (bc_name == "point_heel" || bc_name == "point_toe")) {
+            if (owningWell < 0) DebugStop();
+            auto *mp = dynamic_cast<TPZMultiphysicsElement *>(compEl);
+            if (!mp) DebugStop();
+            auto *flux = dynamic_cast<TPZInterpolationSpace *>(mp->Element(0));
+            if (!flux) DebugStop();
+
+            TPZGeoElSide pointSide(el, 0);
+            TPZInterpolationSpace *lineFlux = nullptr;
+            int endpointSide = -1;
+            const int wellMatid = fSimData->m_Wellbore[owningWell].matid;
+            for (auto neighbor = pointSide.Neighbour(); neighbor != pointSide;
+                 neighbor = neighbor.Neighbour()) {
+              auto *line = neighbor.Element();
+              if (line->Dimension() != 1 || line->HasSubElement() ||
+                  line->MaterialId() != wellMatid) continue;
+              if (lineFlux) DebugStop(); // An endpoint must belong to exactly one active well line.
+              auto *lineMp = dynamic_cast<TPZMultiphysicsElement *>(line->Reference());
+              if (!lineMp) DebugStop();
+              lineFlux = dynamic_cast<TPZInterpolationSpace *>(lineMp->Element(0));
+              if (!lineFlux) DebugStop();
+              endpointSide = neighbor.Side();
+            }
+            if (!lineFlux) DebugStop();
+            const int localConnect = lineFlux->SideConnectLocId(0, endpointSide);
+            if (localConnect < 0 || lineFlux->Mesh() != flux->Mesh() ||
+                lineFlux->ConnectIndex(localConnect) != flux->ConnectIndex(0)) DebugStop();
+
+            // Input Q is positive heel to toe; outward flux is -Q at heel, +Q at toe.
+            const REAL outwardFlux = (bc_name == "point_heel") ? -val : val;
+            val = lineFlux->GetSideOrient(endpointSide) * outwardFlux;
           }
 
           for (int64_t eq = firstEq; eq < firstEq + blockSize; eq++) {

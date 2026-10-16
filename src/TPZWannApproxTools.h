@@ -34,11 +34,11 @@ public:
    */
   static TPZMultiphysicsCompMesh* CreateMixedCompMesh(TPZGeoMesh* gmesh, ProblemData* SimData);
   /**
-   * @brief Build the pressure-only coupled mesh for the first well with shared
-   * x-coordinate pressure dependencies. An optional TLaplaceExample1 exact
-   * solution/forcing is attached to the well material. Returns a new mesh.
+   * @brief Build the pressure-only coupled mesh for all configured straight wells
+   * with pressure dependencies grouped by each well's axial coordinate. 
+   * Returns a newly allocated mesh.
    */
-  static TPZCompMesh* CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TPZAnalyticSolution *exact);
+  static TPZCompMesh* CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData *SimData);
 
 private:
   /**
@@ -53,8 +53,9 @@ private:
   static void AddPressureSkinElements(TPZCompMesh* cmesh, ProblemData* SimData, const int laglevel);
   /**
    * @brief Collapse circumferential skin pressure modes through identity connect
-   * dependencies grouped by global x; remove circumferential/face interior modes
-   * and rebuild blocks. Current implementation assumes a single x-aligned well.
+   * dependencies grouped independently by each straight well's axial coordinate;
+   * remove circumferential/face interior modes and rebuild blocks. Skin ownership
+   * comes from the neighboring cylinder material ID.
    */
   static void EqualizeH1PressureConnects(TPZCompMesh *cmesh, ProblemData *SimData);
   /**

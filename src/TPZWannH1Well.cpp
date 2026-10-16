@@ -68,7 +68,7 @@ void TPZWannH1Well::Contribute(const TPZMaterialDataT<STATE> &data, STATE weight
     REAL signal = (dpsol >= 0.) ? 1. : -1.;
     REAL factor = fCLin * weight;
     if (turbulent) {
-        factor = fC * (4./7.) * signal * (1.0/ std::pow(std::abs(dpsol), 3./7.)) * weight;
+        factor = fC * (4./7.) * (1.0/ std::pow(std::abs(dpsol), 3./7.)) * weight;
     }
 
     ek.AddContribution(0, 0, dphix, 1, dphix, 0, factor);
@@ -76,7 +76,7 @@ void TPZWannH1Well::Contribute(const TPZMaterialDataT<STATE> &data, STATE weight
     
     factor = -fCLin * weight * dpsol;
     if (turbulent) {
-        factor = -fC * weight * std::pow(std::abs(dpsol), 4./7.);
+        factor = -fC * weight * signal * std::pow(std::abs(dpsol), 4./7.);
     }
 
     ef.AddContribution(0, 0, dphix, 1, Aux, 0, factor);
@@ -128,9 +128,8 @@ void TPZWannH1Well::ContributeResidual(const TPZMaterialDataT<STATE> &data, REAL
     REAL psol = data.sol[0][0];
     REAL dpsol = data.dsol[0][0];
 
-    // At this point, how should we compute flow rate? Linear or turbulent?
-    // REAL Qsol = - fC * std::pow(std::abs(dpsol), 4./7.); // Non-linear case
-    REAL Qsol = - dpsol * fCLin; // Linear case
+    const REAL signal = (dpsol >= 0.) ? 1. : -1.;
+    REAL Qsol = -dpsol * fCLin; // Laminar estimate for regime selection
 
     bool turbulent = false;
     REAL reynolds = 0.0;
@@ -145,7 +144,7 @@ void TPZWannH1Well::ContributeResidual(const TPZMaterialDataT<STATE> &data, REAL
 
     // Check if we are definitely in the turbulent regime
     if (turbulent) {
-      Qsol = -fC * std::pow(std::abs(dpsol), 4. / 7.);
+      Qsol = -signal * fC * std::pow(std::abs(dpsol), 4. / 7.);
       REAL velocity = 4. * Qsol / (M_PI * fDw * fDw);
       reynolds = (fRho * std::abs(velocity) * fDw) / fMu;
       if (reynolds < 1187.38) {
@@ -158,7 +157,7 @@ void TPZWannH1Well::ContributeResidual(const TPZMaterialDataT<STATE> &data, REAL
     
     REAL factor = -fCLin * weight * dpsol;
     if (turbulent) {
-        factor = -fC * weight * std::pow(std::abs(dpsol), 4./7.);
+        factor = -fC * weight * signal * std::pow(std::abs(dpsol), 4./7.);
     }
 
     ef.AddContribution(0, 0, dphix, 1, Aux, 0, factor);
@@ -166,194 +165,53 @@ void TPZWannH1Well::ContributeResidual(const TPZMaterialDataT<STATE> &data, REAL
 }
 
 int TPZWannH1Well::VariableIndex(const std::string &name) const {
-
-    if (!strcmp("Solution", name.c_str())) return 1;
-    if (!strcmp("Pressure", name.c_str())) return 1;
-    if (!strcmp("Derivative", name.c_str())) return 2;
-    if (!strcmp("GradPressure", name.c_str())) return 2;
-    if (!strcmp("KDuDx", name.c_str())) return 3;
-    if (!strcmp("KDuDy", name.c_str())) return 4;
-    if (!strcmp("KDuDz", name.c_str())) return 5;
-    if (!strcmp("NormKDu", name.c_str())) return 6;
-    if (!strcmp("MinusKGradU", name.c_str())) return 7;
-    if (!strcmp("Flux", name.c_str())) return 7;
-    if (!strcmp("POrder", name.c_str())) return 8;
-    if (!strcmp("ExactPressure", name.c_str())) return 9;
-    if (!strcmp("ExactSolution", name.c_str())) return 9;
-    if (!strcmp("ExactFlux", name.c_str())) return 10;
-    if (!strcmp("Div", name.c_str())) return 11;
-    if (!strcmp("Divergence", name.c_str())) return 11;
-    if (!strcmp("ExactDiv", name.c_str())) return 12;
-    if (!strcmp("ExactDivergence", name.c_str())) return 12;
-    if (!strcmp("FluxL2", name.c_str())) return 13;
-    if (!strcmp("EstimatedError", name.c_str())) return 100;
-    if (!strcmp("TrueError", name.c_str())) return 101;
-    if (!strcmp("EffectivityIndex", name.c_str())) return 102;
-    if (!strcmp("ResidualError", name.c_str())) return 103;
-
-    return TPZMatBase::VariableIndex(name);
+    if (name == "Pressure") return 1;
+    if (name == "Flux") return 2;
+    PZError << __PRETTY_FUNCTION__ << "\nUnsupported field: " << name << "\n";
+    DebugStop();
+    return -1;
 }
 
 int TPZWannH1Well::NSolutionVariables(int var) const {
-
-    if (var == 1) return 1;      // Solution/Pressure
-    if (var == 2) return fDim;   // Derivative/GradU
-    if (var == 3) return 1;      // KDuDx;
-    if (var == 4) return 1;      // KDuDy;
-    if (var == 5) return 1;      // KDuDz;
-    if (var == 6) return 1;      // NormKDu;
-    if (var == 7) return fDim;   // MinusKGradU/Flux;
-    if (var == 8) return 1;      // POrder
-    if (var == 9) return 1;      // ExactPressure/ExactSolution
-    if (var == 10) return fDim;  // ExactFlux
-    if (var == 11) return 1;     // Div/Divergence
-    if (var == 12) return 1;     // ExactDiv/ExactDivergence
-    if (var == 13) return fDim;  // FluxL2
-    if (var == 100) return 1;  // EstimatedError
-    if (var == 101) return 1;  // TrueError
-    if (var == 102) return 1;  // EffectivityIndex
-    if (var == 103) return 1;  // ResidualError
-
-
-    return TPZMatBase::NSolutionVariables(var);
+    if (var == 1 || var == 2) return 1;
+    DebugStop();
+    return -1;
 }
 
 void TPZWannH1Well::Solution(const TPZMaterialDataT<STATE> &data, int var, TPZVec<STATE> &solOut) {
+    solOut.Resize(NSolutionVariables(var));
+    solOut.Fill(0.);
+    if (data.fShapeType == TPZMaterialData::EEmpty) return;
 
-    if(data.fShapeType == TPZMaterialData::EEmpty) {
-        solOut.Resize(NSolutionVariables(var));
-        solOut.Fill(0.);
-        return;
-    }
     switch (var) {
-        case 1: {
-            // Solution/Pressure
+        case 1:
             solOut[0] = data.sol[0][0];
             return;
-        }
         case 2: {
-            // Derivative/GradU
-            TPZFNMatrix<9, STATE> dsoldx;
-            TPZAxesTools<STATE>::Axes2XYZ(data.dsol[0], dsoldx, data.axes);
-            for (int id = 0; id < fDim; id++) {
-                solOut[id] = dsoldx(id, 0);
-            }
-            return;
-        }
-        case 3: {
-            // KDuDx;
-            TPZFNMatrix<9, STATE> dsoldx;
-            TPZAxesTools<STATE>::Axes2XYZ(data.dsol[0], dsoldx, data.axes);
-            const STATE perm = 1.0;
-            solOut[0] = perm * dsoldx(0, 0);
-            return;
-        }
-        case 4: {
-            // KDuDy;
-            TPZFNMatrix<9, STATE> dsoldx;
-            TPZAxesTools<STATE>::Axes2XYZ(data.dsol[0], dsoldx, data.axes);
-            const STATE perm = 1.0;
-            solOut[0] = perm * dsoldx(1, 0);
-            return;
-        }
-        case 5: {
-            // KDuDz;
-            TPZFNMatrix<9, STATE> dsoldx;
-            TPZAxesTools<STATE>::Axes2XYZ(data.dsol[0], dsoldx, data.axes);
-            const STATE perm = 1.0;
-            solOut[0] = perm * dsoldx(2, 0);
-            return;
-        }
-        case 6: {
-            // NormKDu;
-            TPZFNMatrix<9, STATE> dsoldx;
-            TPZAxesTools<STATE>::Axes2XYZ(data.dsol[0], dsoldx, data.axes);
+            // Signed axial flux in the local element direction.
+            const REAL dpsol = data.dsol[0](0, 0);
 
-            const STATE perm = 1.0;
-            STATE res = 0;
-            for (int id = 0; id < fDim; id++) {
-                res += perm * dsoldx(id, 0) * perm * dsoldx(id, 0);
-            }
-            solOut[0] = sqrt(res);
-            return;
-        }
-        case 7: {
-            // Flux 
-            TPZFNMatrix<9, STATE> dsoldx;
-            TPZAxesTools<STATE>::Axes2XYZ(data.dsol[0], dsoldx, data.axes);
+            REAL signal = (dpsol >= 0.) ? 1. : -1.;
 
-            REAL signal = (dsoldx(0,0) >= 0.) ? 1. : -1.;
-
-            // Compute the Q and dp/dx in which the flow changes from laminar to turbulent
+            // Compute the Q and dp/ds in which the flow changes from laminar to turbulent
             REAL Qcrit = (1187.38 * fMu * M_PI * fDw) / (4 * fRho);
             REAL DeltaPcrit = Qcrit/fCLin;
 
             bool turbulent = false;
-            if (!fIsFirstIteration && std::abs(dsoldx(0, 0)) > DeltaPcrit) {
+            if (!fIsFirstIteration && std::abs(dpsol) > DeltaPcrit) {
               turbulent = true;
             }
 
             if (turbulent) {
-                solOut[0] = - signal * fC * std::pow(std::abs(dsoldx(0, 0)), 4./7.);
+                solOut[0] = - signal * fC * std::pow(std::abs(dpsol), 4./7.);
             } else {
-                solOut[0] = - fCLin * dsoldx(0, 0);
+                solOut[0] = - fCLin * dpsol;
             }
 
             return;
         }
-        case 8: {
-            // POrder
-            solOut[0] = data.p;
-            return;
-        }
-        case 9: {
-            // ExactPressure/ExactSolution
-            TPZVec<STATE> exact_pressure(1);
-            TPZFMatrix<STATE> exact_flux(fDim, 1);
-            fExactSol(data.x, exact_pressure, exact_flux);
-            solOut[0] = exact_pressure[0];
-            return;
-        }
-        case 10: {
-            // ExactFlux
-            TPZVec<STATE> exact_pressure(1);
-            TPZFMatrix<STATE> exact_flux(fDim, 1);
-            fExactSol(data.x, exact_pressure, exact_flux);
-            for (int id = 0; id < fDim; id++) {
-                solOut[id] = exact_flux[id];
-            }
-            return;
-        }
-        case 11: {
-            // Div/Divergence
-            TPZFNMatrix<9, STATE> dsoldx;
-            TPZAxesTools<STATE>::Axes2XYZ(data.dsol[0], dsoldx, data.axes);
-            const STATE perm = 1.0;
-            STATE res = 0;
-            for (int id = 0; id < fDim; id++) {
-                res += - perm * dsoldx(id, 0);
-            }
-            solOut[0] = res;
-            return;
-        }
-        case 12: {
-            // ExactDiv/ExactDivergence
-            TPZVec<STATE> exact_pressure(1);
-            TPZFMatrix<STATE> exact_flux(fDim, 1);
-            fExactSol(data.x, exact_pressure, exact_flux);
-            STATE res = 0;
-            for (int id = 0; id < fDim; id++) {
-                res += exact_flux(id, 0);
-            }
-            solOut[0] = res;
-
-            return;
-        }
-
-    default: {
-            PZError << __PRETTY_FUNCTION__ << "\n Post-processing variable index not implemented!\n";
+        default:
             DebugStop();
-        }
     }
 }
 

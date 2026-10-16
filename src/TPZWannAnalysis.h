@@ -163,7 +163,8 @@ public:
     /**
      * @brief Load prescribed values into boundary connects and copy independent
      * equations into the analysis solution. H1 initializes corner values; mixed
-     * boundary coefficients include the boundary-measure/ncorner factor.
+     * boundary coefficients include the boundary-measure/ncorner factor. Well
+     * endpoints convert heel-to-toe flux using the adjacent line side orientation.
      */
     void SetInitialSolution(std::set<int> &bcMatids);
 

@@ -124,7 +124,7 @@ are not interchangeable between H1, mixed Darcy, and well materials.
 |---|---|
 | H1 Darcy | `Pressure`/`Solution`: 1; `Derivative`/`GradU`: fDim; `Flux`/`MinusKGradU`: 3; `POrder`: 1 |
 | Mixed Darcy | `Flux`: 3; `Pressure`: 1; `GradPressure`: 3; `DivFlux`/`Divergence`: 1; `POrder`: 1 |
-| H1 well | `Pressure`: 1; `GradPressure`: fDim; `Flux`: fDim (normally 1); `POrder`: 1 |
+| H1 well | `Pressure`: 1; signed axial `Flux`: 1 |
 | Mixed well | `Flux`, `Pressure`, `DivFlux`/`Divergence`: 1 each |
 
 For H1 Darcy, `KDuDx/y/z` are components of `K grad(p)` and `Flux` has the opposite
@@ -140,13 +140,13 @@ with `-K grad(p)` and obtains exact divergence from the forcing callback.
 
 Several historical output names are misleading or incomplete:
 
-- H1 Darcy and H1 well `Divergence` currently sum components of a reconstructed
+- H1 Darcy `Divergence` currently sum components of a reconstructed
   flux/gradient quantity; they do not differentiate flux to obtain its divergence.
-- H1 Darcy and H1 well `ExactFlux` copy the derivative matrix of the exact callback
+- H1 Darcy `ExactFlux` copy the derivative matrix of the exact callback
   directly, while mixed Darcy transforms an exact gradient with `-K`.
 - `TPZWannDarcyNL::Solution()` implements only IDs 1, 2, 7, 8, 9, and 10, despite
   inheriting a broader name registry.
-- Linear H1 Darcy and H1 well register error/`FluxL2` fields without corresponding
+- Linear H1 Darcy registers error/`FluxL2` fields without corresponding
   branches in their current `Solution()` implementations.
 - Mixed Darcy's `Permeability` field currently returns numerical flux divergence;
   `normalFlux` returns the first flux component. `ExactDiv` reads derivative entry

@@ -15,7 +15,7 @@
  * iteration, and a transition criterion based on Reynolds number 1187.38.
  * Optional pseudo-resistivity contributes Kvw*(pres-p). Physical assembly needs
  * the diameter/viscosity/density constructor; the dimension-only constructor
- * does not initialize those coefficients. Current flux output uses global x.
+ * does not initialize those coefficients.
  * @see TPZWannMixedWell
  * @see TPZWannAnalysis
  */
@@ -85,6 +85,7 @@ public:
      */
     virtual void SetDimension(int dim);
 
+
     /**
      * @brief Add the axial well tangent and negative residual at the current pressure.
      * Uses fCLin in the first iteration and switches to the turbulent power law
@@ -121,8 +122,7 @@ public:
                       TPZBndCondT<STATE> &bc) override;
 
     /**
-     * @brief Map a post-processing field name to its numeric variable index.
-     * See docs/materials.md for supported fields and current implementation limits.
+     * @brief Map Pressure (1) and signed axial Flux (2) to their variable indices.
      */
     [[nodiscard]] int VariableIndex(const std::string &name) const override;
 
@@ -132,9 +132,7 @@ public:
     [[nodiscard]] int NSolutionVariables(int var) const override;
 
     /**
-     * @brief Evaluate a requested post-processing field from the current point data.
-     * Exact fields require an installed exact-solution callback. Registered names
-     * do not all have a corresponding implemented output; see docs/materials.md.
+     * @brief Evaluate scalar pressure or signed axial flux from the current point data.
      */
     void Solution(const TPZMaterialDataT<STATE> &data, int var, TPZVec<STATE> &solOut) override;
 

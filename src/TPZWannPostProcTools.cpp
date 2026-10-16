@@ -100,7 +100,7 @@ void TPZWannPostProcTools::WriteWellboreVTK(TPZCompMesh* cmesh, ProblemData* Sim
   TPZStack<std::string> fieldnames; 
   fieldnames.Push("Pressure");
   fieldnames.Push("Flux");
-  fieldnames.Push("Divergence");
+  if (isMultiphysics) fieldnames.Push("Divergence");
 
   for (size_t wellIndex = 0; wellIndex < SimData->m_Wellbore.size(); wellIndex++) {
     const auto& well = SimData->m_Wellbore[wellIndex];

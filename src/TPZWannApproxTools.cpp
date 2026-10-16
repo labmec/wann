@@ -428,17 +428,13 @@ void TPZWannApproxTools::AddInterfaceElements(TPZMultiphysicsCompMesh *cmesh, Pr
 
 // TODO: H1 mesh creation is currently hardcoded for a single wellbore. Generalize for multiple wellbores.
 
-TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TPZAnalyticSolution *exact) {
+TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData *SimData) {
   const int dim = gmesh->Dimension();
   auto &ReservoirData = SimData->m_Reservoir;
-  auto &WellboreData = SimData->m_Wellbore[0]; // TODO: generalize for multiple wellbores
   auto &FluidData = SimData->m_Fluid;
   std::set<int> reservoirMatIdSet;
   std::set<int> wellboreMatIdSet;
   int wellPorder = SimData->m_Numerics.wellPorder;
-
-  TLaplaceExample1* exactsol = dynamic_cast<TLaplaceExample1 *>(exact);
-  bool hasAnalyticSol = (exactsol != nullptr && exactsol->fExact != TLaplaceExample1::ENone);
 
   TPZCompMesh *cmesh = new TPZCompMesh(gmesh);
   cmesh->SetDimModel(dim);
@@ -474,14 +470,10 @@ TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData
   }
 
   // Wellbore material and 1D boundary conditions
-  {
+  for (auto &WellboreData : SimData->m_Wellbore) {
     // TODO: generalize for multiple wellbores; assuming single phase flow for now
-    TPZWannH1Well *wellboreMat = new TPZWannH1Well(SimData->m_Wellbore[0].matid, 2 * WellboreData.radius,
+    TPZWannH1Well *wellboreMat = new TPZWannH1Well(WellboreData.matid, 2 * WellboreData.radius,
                              FluidData[0].viscosity, FluidData[0].density, 0.0, 0.0);
-    if (hasAnalyticSol) {
-      wellboreMat->SetExactSol(exact->ExactSolution(), 3);
-      wellboreMat->SetForcingFunction(exact->ForceFunc(), 3);
-    }
 
     cmesh->InsertMaterialObject(wellboreMat);
 
@@ -492,6 +484,10 @@ TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData
       TPZFMatrix<STATE> val1(1, 1, 0.);
       TPZManVector<STATE> val2(1, 0);
       val2[0] = bc.value;
+      // H1 Neumann data is minus the outward flux; input Q is positive heel to toe.
+      if (bc.type == 1 && bcpair.first == "point_toe") {
+        val2[0] = -val2[0];
+      }
       TPZBndCondT<STATE> *BCond = wellboreMat->CreateBC(wellboreMat, bc.matid, bc.type, val1, val2);
       cmesh->InsertMaterialObject(BCond);
     }
@@ -501,13 +497,20 @@ TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData
 
   // Ajust well polynomial order
   // Warning: block sizes will only be ajusted after colapsing the connects in EqualizeH1Connects
+
+  // First group all the well matids
+  std::set<int> wellMatIds;
+  for (auto &WellboreData : SimData->m_Wellbore) {
+    wellMatIds.insert(WellboreData.matid);
+  }
+
   for (int64_t iel = 0; iel < cmesh->NElements(); iel++) {
     TPZCompEl *cel = cmesh->Element(iel);
     if (!cel) continue;
-    if (cel->Material()->Id() != SimData->m_Wellbore[0].matid) continue; // TODO: generalize for multiple wellbores
+    if (wellMatIds.find(cel->Material()->Id()) == wellMatIds.end()) continue;
     if (cel->NConnects() > 3) DebugStop(); // Wellbore H1 elements should have only 3 connects
     TPZConnect &c = cel->Connect(2);
-    c.SetOrder(wellPorder); // TODO: generalize for multiple wellbores
+    c.SetOrder(wellPorder);
     c.SetNShape(wellPorder-1);
   }
 
@@ -530,122 +533,129 @@ TPZCompMesh *TPZWannApproxTools::CreateH1CompMesh(TPZGeoMesh *gmesh, ProblemData
 }
 
 void TPZWannApproxTools::EqualizeH1PressureConnects(TPZCompMesh *cmesh, ProblemData *SimData) {
-  std::set<REAL> nodeCoordsX;
-  std::map<REAL,std::set<int64_t>> xToNodes;
-  std::set<int64_t> pressure2Dels;
-  REAL tol = 1e-6; // Tolerance for rounding
-  int wellPorder = SimData->m_Numerics.wellPorder;
+  const REAL tol = 1.e-6;
+  const int wellPorder = SimData->m_Numerics.wellPorder;
+  if (wellPorder < 1) DebugStop();
 
-  // Ensure that references are updated
-  cmesh->Reference()->ResetReference();
+  TPZGeoMesh *gmesh = cmesh->Reference();
+  gmesh->ResetReference();
   cmesh->LoadReferences();
 
-  const int dim = cmesh->Dimension();
+  const size_t nWells = SimData->m_Wellbore.size();
+  std::map<int, size_t> surfaceToWell;
+  std::vector<std::vector<int64_t>> skinElements(nWells);
+  std::vector<TPZManVector<REAL, 3>> heels(nWells), toes(nWells);
 
-  // Get x-coordinates of pressure skin nodes (fill pressure2Dels and nodeCoordsX)
+  // Fill the heel and toe coordinates for each wellbore. 
+  // These are used to compute the axial coordinate of each skin element.
+  for (size_t iw = 0; iw < nWells; iw++) {
+    const auto& well = SimData->m_Wellbore[iw];
+    if (!surfaceToWell.emplace(well.matidSurf, iw).second) DebugStop();
+    heels[iw].Resize(3);
+    toes[iw].Resize(3);
+    int heelCount = 0, toeCount = 0;
+    for (auto gel : gmesh->ElementVec()) {
+      if (!gel || gel->HasSubElement() || gel->Dimension() != 0) continue;
+      if (gel->MaterialId() == well.BCs.at("point_heel").matid) {
+        gel->NodePtr(0)->GetCoordinates(heels[iw]);
+        heelCount++;
+      }
+      if (gel->MaterialId() == well.BCs.at("point_toe").matid) {
+        gel->NodePtr(0)->GetCoordinates(toes[iw]);
+        toeCount++;
+      }
+    }
+    if (heelCount != 1 || toeCount != 1) DebugStop();
+    // Validate the axis even before processing the skin elements.
+    TPZWannGeometryTools::ComputeAxialCoordinate(heels[iw], heels[iw], toes[iw] - heels[iw]);
+  }
+
+  // The shared skin material ID does not identify its well. Resolve ownership
+  // through the coincident cylinder's material ID in the geometric neighbor ring.
   for (auto cel : cmesh->ElementVec()) {
-    if (!cel) DebugStop();
-    if (cel->Material()->Id() != SimData->EPressure2DSkin) continue;
-
+    if (!cel || cel->Material()->Id() != SimData->EPressure2DSkin) continue;
     TPZGeoEl *gel = cel->Reference();
-    if (!gel || gel->Dimension() != dim-1) DebugStop();
+    if (!gel || gel->Dimension() != 2 || gel->NCornerNodes() != 4) DebugStop();
     if (gel->HasSubElement()) continue;
-
-    pressure2Dels.insert(cel->Index());
-
-    for (int inodes = 0; inodes < gel->NCornerNodes(); ++inodes) {
-      // Get x-coord of corner connects
-      REAL x0 = gel->NodePtr(inodes)->Coord(0);
-      TPZWannGeometryTools::InsertXCoorInSet(x0, nodeCoordsX, tol);
-
-      // Get x-coord of edge connects
-      REAL x1 = gel->NodePtr((inodes + 1) % 4)->Coord(0);
-      TPZWannGeometryTools::InsertXCoorInSet((x0 + x1) / 2., nodeCoordsX, tol);
+    TPZGeoElSide side(gel);
+    TPZGeoElSide neighbor = side.Neighbour();
+    std::set<size_t> owners;
+    while (neighbor != side) {
+      auto it = surfaceToWell.find(neighbor.Element()->MaterialId());
+      if (it != surfaceToWell.end()) owners.insert(it->second);
+      neighbor = neighbor.Neighbour();
     }
+    if (owners.size() != 1) DebugStop();
+    skinElements[*owners.begin()].push_back(cel->Index());
   }
 
-  // Group connects by x-coordinate (fill xToNodes)
-  for (int64_t iel : pressure2Dels) {
-    TPZCompEl *cel = cmesh->Element(iel);
-    if (!cel || cel->Material()->Id() != SimData->EPressure2DSkin) DebugStop();
+  for (size_t iw = 0; iw < nWells; iw++) {
+    if (skinElements[iw].empty()) DebugStop();
+    const TPZManVector<REAL, 3> axis = toes[iw] - heels[iw];
+    auto axialNode = [&](TPZGeoEl *gel, int node) {
+      TPZManVector<REAL, 3> point(3);
+      gel->NodePtr(node)->GetCoordinates(point);
+      return TPZWannGeometryTools::ComputeAxialCoordinate(point, heels[iw], axis);
+    };
 
-    TPZGeoEl *gel = cel->Reference();
-    if (!gel || gel->Dimension() != dim-1 || gel->HasSubElement()) DebugStop();
-
-    // Corner connects
-    for (int inodes = 0; inodes < gel->NCornerNodes(); inodes++) {
-      REAL x0 = gel->NodePtr(inodes)->Coord(0);
-      REAL closestX = TPZWannGeometryTools::FindClosestX(x0, nodeCoordsX, tol);
-      xToNodes[closestX].insert(cel->ConnectIndex(inodes));
-    }
-
-    // Edge connects
-    for (int inodes = 4; inodes < 8; inodes++) {
-      REAL x0 = gel->NodePtr(inodes % 4)->Coord(0);
-      REAL x1 = gel->NodePtr((inodes + 1) % 4)->Coord(0);
-      TPZConnect &c = cel->Connect(inodes);
-      if (fabs(x0 - x1) < tol) {
-        // Remove edge connect if x-coordinates are equal
-        c.SetOrder(1);
-        c.SetNShape(0);
-      } else {
-        REAL closestX = TPZWannGeometryTools::FindClosestX((x0 + x1) / 2., nodeCoordsX, tol);
-        xToNodes[closestX].insert(cel->ConnectIndex(inodes));
-        c.SetOrder(wellPorder);
-        c.SetNShape(wellPorder - 1); 
+    // Keep vertex and axial-edge modes separate even when an edge midpoint
+    // happens to coincide with another vertex's axial coordinate.
+    std::set<REAL> vertexCoordinates, edgeCoordinates;
+    std::map<REAL, std::set<int64_t>> vertexConnects, edgeConnects;
+    for (auto iel : skinElements[iw]) {
+      TPZGeoEl *gel = cmesh->Element(iel)->Reference();
+      for (int node = 0; node < 4; node++) {
+        const REAL a0 = axialNode(gel, node);
+        const REAL a1 = axialNode(gel, (node + 1) % 4);
+        TPZWannGeometryTools::InsertXCoorInSet(a0, vertexCoordinates, tol);
+        if (fabs(a0 - a1) >= tol)
+          TPZWannGeometryTools::InsertXCoorInSet((a0 + a1)/2., edgeCoordinates, tol);
       }
     }
 
-    // Remove face connect
-    TPZConnect &c = cel->Connect(8);
-    c.SetOrder(1);
-    c.SetNShape(0);
-  }
-
-  // Print xToNodes and nodeCoordsX in a file
-  if (SimData->m_PostProc.verbosityLevel) {
-    std::ofstream out("xToNodes.txt");
-    for (const auto& pair : xToNodes) {
-      out << "x: " << pair.first << " -> nodes: ";
-      for (const auto& node : pair.second) {
-        out << node << " ";
+    for (auto iel : skinElements[iw]) {
+      TPZCompEl *cel = cmesh->Element(iel);
+      TPZGeoEl *gel = cel->Reference();
+      if (cel->NConnects() != 9) DebugStop();
+      for (int node = 0; node < 4; node++) {
+        const REAL a0 = axialNode(gel, node);
+        const REAL a1 = axialNode(gel, (node + 1) % 4);
+        const REAL vertex = TPZWannGeometryTools::FindClosestX(a0, vertexCoordinates, tol);
+        vertexConnects[vertex].insert(cel->ConnectIndex(node));
+        TPZConnect &edge = cel->Connect(node + 4);
+        if (fabs(a0 - a1) < tol) {
+          edge.SetOrder(1);
+          edge.SetNShape(0);
+        } else {
+          const REAL midpoint = TPZWannGeometryTools::FindClosestX((a0 + a1)/2., edgeCoordinates, tol);
+          edgeConnects[midpoint].insert(cel->ConnectIndex(node + 4));
+          edge.SetOrder(wellPorder);
+          edge.SetNShape(wellPorder - 1);
+        }
       }
-      out << "\n";
+      cel->Connect(8).SetOrder(1);
+      cel->Connect(8).SetNShape(0);
     }
-    out.close();
 
-    std::ofstream out2("nodeCoordsX.txt");
-    for (const auto& coord : nodeCoordsX) {
-      out2 << coord << "\n";
-    }
-    out2.close();
-  }
-
-  // Set dependency for connects in the same x-coordinate
-  for (auto pair : xToNodes) {
-    const REAL x = pair.first;
-    const std::set<int64_t>& nodes = pair.second;
-
-    auto it = *nodes.begin();
-
-    // No need to set dependency for connects with no shape functions
-    if (cmesh->ConnectVec()[it].NShape() == 0) continue;
-
-    for (auto it2 : nodes) {
-      if (it2 == it) continue; // Do not add dependency to itself
-      TPZConnect &c = cmesh->ConnectVec()[it2];
-      int nshape = c.NShape();
-
-      TPZFNMatrix<1,STATE> val(nshape,nshape,0.);
-      for (int i = 0; i < nshape; i++) {
-        val(i,i) = 1.;
+    auto equalize = [&](const std::map<REAL, std::set<int64_t>>& groups) {
+      for (const auto& group : groups) {
+        const auto& connects = group.second;
+        const int64_t master = *connects.begin();
+        const int nshape = cmesh->ConnectVec()[master].NShape();
+        if (nshape == 0) continue;
+        TPZFNMatrix<1, STATE> identity(nshape, nshape, 0.);
+        for (int i = 0; i < nshape; i++) identity(i, i) = 1.;
+        for (auto index : connects) {
+          if (index == master) continue;
+          TPZConnect &connect = cmesh->ConnectVec()[index];
+          if (connect.NShape() != nshape) DebugStop();
+          if (connect.HasDependency()) connect.RemoveDepend();
+          connect.AddDependency(index, master, identity, 0, 0, nshape, nshape);
+        }
       }
-
-      if (c.HasDependency()) {
-        c.RemoveDepend();
-      }
-      c.AddDependency(it2 ,it,val,0,0,nshape,nshape);
-    }
+    };
+    equalize(vertexConnects);
+    equalize(edgeConnects);
   }
 
   cmesh->ExpandSolution();

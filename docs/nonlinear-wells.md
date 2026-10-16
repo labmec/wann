@@ -19,8 +19,9 @@ counterparts `fCLin = 1/CL` and `fC = c^(-7/4)`.
 ## Pressure-only H1 well
 
 `TPZWannH1Well` uses the pressure solution and its first derivative. In the laminar
-regime the reconstructed flow is `Q = -CL * dp/dx`; turbulent **flux output** uses
-`Q = -sign(dp/dx) * c * abs(dp/dx)^(4/7)`.
+regime the reconstructed flow is `Q = -CL * dp/ds`; turbulent assembly and flux
+output use `Q = -sign(dp/ds) * c * abs(dp/ds)^(4/7)`, where `s` is the local
+axial coordinate.
 
 Full `Contribute()` computes a critical flow from Reynolds number 1187.38 and
 converts it to a critical gradient using `CL`. The first Newton iteration remains
@@ -29,21 +30,18 @@ that threshold. The currently installed volume forcing callback is not evaluated
 assembly paths. It accumulates tangent and negative-residual contributions,
 including `Kvw*(pres-p)` as the optional pseudo-resistivity term.
 
-The current turbulent assembly uses a signed tangent factor and an absolute-power
-residual factor exactly as written in the implementation. Those factors should
-not be assumed to be the derivative/residual of the signed flux output formula
-for every gradient sign. Documentation does not establish Jacobian consistency.
+The turbulent negative residual retains the gradient sign. Its tangent coefficient
+is `c * (4/7) * abs(dp/ds)^(-3/7)`, positive for either gradient sign, consistent
+with the derivative of the signed flow law.
 
 When `fAssembleRHSOnly` is true, `ContributeResidual()` estimates Reynolds from a
 laminar flow estimate, then rechecks the turbulent estimate and stops if it falls
 back below the transition threshold. It adds no tangent matrix.
 
 Boundary type 0 contributes nothing because analysis imposes pressure values.
-Types 1 and 2 add flow-load/Robin terms. `Solution()` supplies pressure, gradient,
-flow, polynomial order, and selected inherited-style diagnostic outputs. Its
-physical flux output uses the global x derivative. Its `Divergence` output is a
-historical gradient-component expression rather than an axial derivative of the
-friction-derived flow.
+Types 1 and 2 add flow-load/Robin terms. `Solution()` supplies only scalar
+`Pressure` and signed axial `Flux`. Flux uses the local axial pressure derivative,
+with its sign following the element orientation.
 
 `Errors()` uses unit gradient weighting against an exact callback, not the
 nonlinear friction energy. It expects three output entries. The stored error

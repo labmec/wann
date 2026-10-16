@@ -6,6 +6,8 @@ set(WANN_CHECK_TARGETS
     test-nonlinear-3d
     testDarcyNL
     test-nonlinear-1d
+    test-h1-well-sign
+    test-mixed-well-initial-flux
 )
 
 foreach(check_target IN LISTS WANN_CHECK_TARGETS)
