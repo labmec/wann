@@ -37,7 +37,7 @@ auto exactSolution = [](const TPZVec<REAL> &loc, TPZVec<STATE> &result, TPZFMatr
 
   // Example: radial solution for cylindrical coordinates
   REAL r = std::sqrt(y * y + z * z);
-  REAL r0 = SimData.m_Wellbore.radius;  // wellbore radius
+  REAL r0 = SimData.m_Wellbore[0].radius;  // wellbore radius
   REAL r_ext = SimData.m_Reservoir.height;  // external radius (reservoir height)
   REAL p_ext = SimData.m_Reservoir.BCs.at("surface_farfield").value;  // pressure at the far field
   REAL p0 = SimData.m_Reservoir.BCs.at("surface_wellbore_cylinder").value;  // pressure at inner boundary (wellbore)
@@ -67,6 +67,7 @@ auto forcingFunction = [](const TPZVec<REAL> &loc, TPZVec<STATE> &result) {
 TPZMultiphysicsCompMesh *MixedDarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, bool isCondensed = false);
 TPZCompMesh *H1DarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, bool isCondensed = false);
 TPZGeoMesh *CreateRadialMesh(ProblemData *SimData);
+void ModifyToCylMesh(TPZGeoMesh *gmesh, int matid, REAL radius, const TPZManVector<REAL, 3> &center);
 
 // =============
 // Main function
@@ -74,7 +75,7 @@ TPZGeoMesh *CreateRadialMesh(ProblemData *SimData);
 
 int main(int argc, char *argv[]) {
   
-  int maxRef = 4; // Maximum number of refinements to be performed.
+  int maxRef = 2; // Maximum number of refinements to be performed.
   std::ofstream results("radialTestResults.txt");
 
   std::string jsonfile = "radialTest.json";
@@ -100,7 +101,7 @@ int main(int argc, char *argv[]) {
   // Problem data
   SimData.ReadJson(jsonfile);
 
-  if (SimData.m_Wellbore.radius <= 0.0 || SimData.m_Reservoir.height <= 0.0 ||
+  if (SimData.m_Wellbore[0].radius <= 0.0 || SimData.m_Reservoir.height <= 0.0 ||
       SimData.m_Reservoir.BCs.count("surface_farfield") == 0 ||
       SimData.m_Reservoir.BCs.count("surface_wellbore_cylinder") == 0) {
     std::cerr << "Invalid simulation data for exact solution." << std::endl;
@@ -153,12 +154,12 @@ int main(int argc, char *argv[]) {
     REAL pr = SimData.m_Reservoir.BCs.at("surface_farfield").value;
     REAL pw = SimData.m_Reservoir.BCs.at("surface_wellbore_cylinder").value;
     REAL Q = 2.0 * M_PI * SimData.m_Reservoir.perm[0] * SimData.m_Reservoir.length /
-             (SimData.m_Fluid.viscosity *log(SimData.m_Reservoir.height / SimData.m_Wellbore.radius));
+             (SimData.m_Fluid[0].viscosity *log(SimData.m_Reservoir.height / SimData.m_Wellbore[0].radius));
     Q = Q * (pr - pw);
 
     // Computed flow entering the wellbore ---
-    TPZVec<REAL> segmentPoints = {0.0, SimData.m_Wellbore.length};
-    TPZVec<REAL> Qsim = TPZWannPostProcTools::ComputeWellFluxes(cmesh, &SimData, segmentPoints);
+    TPZVec<REAL> segmentPoints = {0.0, SimData.m_Wellbore[0].length};
+    TPZVec<REAL> Qsim = TPZWannPostProcTools::ComputeWellFluxes(cmesh, &SimData, 0, 1);
 
     std::cout << "\nExpected flow entering the wellbore: " << Q << std::endl;
     std::cout << "Computed flow entering the wellbore: " << Qsim
@@ -234,8 +235,10 @@ TPZGeoMesh* CreateRadialMesh(ProblemData* SimData) {
   if (SimData->m_Mesh.ToCylindrical) {
     // Internal and external cylindrical surfaces
     TPZManVector<REAL,3> cylcenter = {0., 0., 0.};
-    TPZWannGeometryTools::ModifyGeometricMeshToCylWell(gmesh, SimData->ESurfWellCyl, SimData->m_Wellbore.radius, cylcenter);
-    TPZWannGeometryTools::ModifyGeometricMeshToCylWell(gmesh, SimData->EFarField, SimData->m_Reservoir.height, cylcenter);
+    int matid_ext = SimData->m_Reservoir.BCs.at("surface_farfield").matid;
+    int matid_int = SimData->m_Reservoir.BCs.at("surface_wellbore_cylinder").matid;
+    ModifyToCylMesh(gmesh, matid_int, SimData->m_Wellbore[0].radius, cylcenter);
+    ModifyToCylMesh(gmesh, matid_ext, SimData->m_Reservoir.height, cylcenter);
   }
 
   if (SimData->m_Mesh.customRefinement != 0) {
@@ -260,17 +263,6 @@ TPZGeoMesh* CreateRadialMesh(ProblemData* SimData) {
         TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
       }
     }
-
-    if (SimData->m_Mesh.NumDirRef) {
-      gRefDBase.InitializeRefPatterns(gmesh->Dimension());
-      for (int i = 0; i < SimData->m_Mesh.NumDirRef; i++) {
-        TPZRefPatternTools::RefineDirectional(gmesh, {SimData->ECurveHeel, SimData->ECurveToe});
-      }
-      if (SimData->m_PostProc.verbosityLevel) {
-        std::ofstream out("gmeshnonlin_ref.vtk");
-        TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
-      }
-    }
   }
 
   return gmesh;
@@ -280,15 +272,15 @@ TPZMultiphysicsCompMesh *MixedDarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimD
   TPZHDivApproxCreator hdivCreator(gmesh);
   hdivCreator.ProbType() = ProblemType::EDarcy;
   hdivCreator.HdivFamily() = HDivFamily::EHDivStandard;
-  hdivCreator.SetDefaultOrder(SimData->m_Reservoir.pOrder);
+  hdivCreator.SetDefaultOrder(SimData->m_Numerics.reservoirPorder);
   hdivCreator.SetShouldCondense(isCondensed);
 
   // Reservoir data
   auto &ReservoirData = SimData->m_Reservoir;
 
-  TPZMixedDarcyFlow *reservoirMat = new TPZMixedDarcyFlow(SimData->EDomain, gmesh->Dimension());
+  TPZMixedDarcyFlow *reservoirMat = new TPZMixedDarcyFlow(ReservoirData.matid, gmesh->Dimension());
   reservoirMat->SetExactSol(exactSolution, 20);
-  reservoirMat->SetConstantPermeability(ReservoirData.perm[0]/SimData->m_Fluid.viscosity);
+  reservoirMat->SetConstantPermeability(ReservoirData.perm[0]/SimData->m_Fluid[0].viscosity);
   reservoirMat->SetForcingFunction(forcingFunction,20);
   hdivCreator.InsertMaterialObject(reservoirMat);
 
@@ -309,7 +301,7 @@ TPZMultiphysicsCompMesh *MixedDarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimD
 
 TPZCompMesh *H1DarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, bool isCondensed) {
   TPZH1ApproxCreator h1Creator(gmesh);
-  h1Creator.SetDefaultOrder(SimData->m_Reservoir.pOrder);
+  h1Creator.SetDefaultOrder(SimData->m_Numerics.reservoirPorder);
   h1Creator.ProbType() = ProblemType::EDarcy;
   h1Creator.SetShouldCondense(isCondensed);
 
@@ -317,10 +309,10 @@ TPZCompMesh *H1DarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, bool isCon
   auto &ReservoirData = SimData->m_Reservoir;
 
   // Insert material
-  TPZDarcyFlow *reservoirMat = new TPZDarcyFlow(SimData->EDomain, gmesh->Dimension());
+  TPZDarcyFlow *reservoirMat = new TPZDarcyFlow(ReservoirData.matid, gmesh->Dimension());
 
   reservoirMat->SetExactSol(exactSolution, 20);
-  reservoirMat->SetConstantPermeability(ReservoirData.perm[0]/SimData->m_Fluid.viscosity);
+  reservoirMat->SetConstantPermeability(ReservoirData.perm[0]/SimData->m_Fluid[0].viscosity);
   reservoirMat->SetForcingFunction(forcingFunction, 20);
   h1Creator.InsertMaterialObject(reservoirMat);
 
@@ -338,4 +330,93 @@ TPZCompMesh *H1DarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, bool isCon
   // Create the H1 computational mesh
   TPZCompMesh *cmesh = h1Creator.CreateClassicH1ApproximationSpace();
   return cmesh;
+}
+
+void ModifyToCylMesh(TPZGeoMesh *gmesh, int matid, REAL radius, const TPZManVector<REAL, 3> &center) {
+  const TPZManVector<REAL,3> cylcenter = center;
+  const TPZManVector<REAL,3> cylaxis = {1.,0.,0.};
+  int64_t nel = gmesh->NElements();
+  for(int64_t iel = 0; iel < nel ; iel++) {
+    TPZGeoEl* gel = gmesh->Element(iel);
+    if(!gel) continue;
+    if(gel->HasSubElement()) DebugStop();
+    if(gel->MaterialId() != matid) continue;
+    
+    TPZManVector<int64_t, 4> nodeindices;
+    gel->GetNodeIndices(nodeindices);
+    const int nnodes = gel->NCornerNodes();
+    //Moving the nodes to the cylinder surface
+    TPZManVector<REAL,3> xnode(3,0);
+    for (int in = 0; in < nnodes; in++)
+    {
+      gel->NodePtr(in)->GetCoordinates(xnode);
+      // component of xnode that is orthogonal to cyl axis
+      TPZManVector<REAL, 3> x_orth = xnode - cylcenter;
+      const REAL dax = Dot(x_orth, cylaxis);
+      for (int ix = 0; ix < 3; ix++)
+      {
+        x_orth[ix] -= dax * cylaxis[ix];
+      }
+      const auto normdiff = fabs(Norm(x_orth) - radius);
+      if (normdiff > 1e-10)
+      {
+        // Moving the node to the cylinder shell
+        REAL computed_radius = Norm(x_orth);
+        for (int ix = 0; ix < 3; ix++)
+        {
+          xnode[ix] = cylcenter[ix] + (x_orth[ix] / computed_radius) * radius + dax * cylaxis[ix];
+        }
+        x_orth = xnode - cylcenter;
+        for (int ix = 0; ix < 3; ix++)
+        {
+          x_orth[ix] -= dax * cylaxis[ix];
+        }
+        REAL new_radius = Norm(x_orth);
+        gel->NodePtr(in)->SetCoord(xnode);
+
+        PZError << __PRETTY_FUNCTION__
+                << "\nNode not on cylinder shell: " << gel->NodePtr(in)->Id()
+                << "\nComputed radius: " << computed_radius
+                << "\nGiven radius: " << radius
+                << "\nElement index: " << iel
+                << "\nNew coordinates: " << xnode
+                << "\nNew radius: " << new_radius
+                << std::endl;
+      }
+    }
+
+    TPZChangeEl::ChangeToCylinder(gmesh, iel, cylcenter, cylaxis, radius);
+  }
+
+  gmesh->BuildConnectivity();
+
+  nel = gmesh->NElements();
+  for(int64_t iel = 0; iel < nel ; iel++) {
+    TPZGeoEl* gel = gmesh->Element(iel);
+    if(!gel) continue;
+    if(gel->HasSubElement()) DebugStop();
+    // if(gel->MaterialId() != ESurfWellCyl && gel->MaterialId() != ESurfHeel && gel->MaterialId() != ESurfToe) continue;
+    if(gel->MaterialId() != matid) continue;
+    int nsides = gel->NSides();
+    // for (int iside = gel->NCornerNodes(); iside < nsides; iside++) {
+    for (int iside = gel->FirstSide(1); iside < nsides; iside++) {
+      TPZGeoElSide gelSide(gel,iside);
+      TPZStack<TPZGeoElSide> allneigh;
+      for(auto neigh = gelSide.Neighbour(); neigh != gelSide ; neigh++) {      
+        if(neigh.Element()->IsGeoBlendEl()) {
+          continue;
+        }
+        if (neigh.Element()->MaterialId() == matid) {
+          continue;
+        }
+        // if(neigh.Element()->Dimension() < 2) continue;
+        // if(neigh.Element()->MaterialId() != EDomain) DebugStop();
+        allneigh.Push(neigh);
+      }
+    //   std::cout << "Element " << iel << " side " << iside << " has " << allneigh.size() << " neighbours" << std::endl;
+      for(auto it : allneigh){
+        TPZChangeEl::ChangeToGeoBlend(gmesh, it.Element()->Index());
+      }
+    }
+  }
 }
