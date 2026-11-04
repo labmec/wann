@@ -5,6 +5,7 @@
  */
 
 
+#include <cmath>
 #include <iostream>
 #include <string>
 #include <fstream>
@@ -174,6 +175,7 @@ void ProblemData::ReadJson(std::string file)
     m_Reservoir.length = reservoir["length"];
     if (reservoir.find("BCs") == reservoir.end())
         DebugStop();
+    m_Reservoir.BCs.clear();
     json bcsres = reservoir["BCs"];
     for (int i = 0; i < bcsres.size(); i++)
     {
@@ -196,17 +198,12 @@ void ProblemData::ReadJson(std::string file)
     if (input.find("FluidData") == input.end())
         DebugStop();
     auto readFluid = [&](const json &fluidJson) {
-        FluidData fluid;
-        if (fluidJson.find("name") == fluidJson.end())
+        if (!fluidJson.contains("name") || !fluidJson.contains("viscosity") ||
+            !fluidJson.contains("density"))
             DebugStop();
-        fluid.name = fluidJson["name"];
-        if (fluidJson.find("viscosity") == fluidJson.end())
-            DebugStop();
-        fluid.viscosity = fluidJson["viscosity"];
-        if (fluidJson.find("density") == fluidJson.end())
-            DebugStop();
-        fluid.density = fluidJson["density"];
-        m_Fluid.push_back(fluid);
+        m_Fluid.push_back({fluidJson.at("name").get<std::string>(),
+                           fluidJson.at("viscosity").get<REAL>(),
+                           fluidJson.at("density").get<REAL>()});
     };
     const json &fluidData = input["FluidData"];
     m_Fluid.Resize(0);
@@ -253,9 +250,8 @@ void ProblemData::ReadJson(std::string file)
 
     // Default numerics data. Overwrite if present in json file
     m_Numerics.nthreads = 0;
-    m_Numerics.maxIterations = 10;
-    m_Numerics.res_tol = 1e-6;
-    m_Numerics.corr_tol = 1e-6;
+    m_Numerics.NewtonFlow = {1.e-6, 1.e-6, 10, true};
+    m_Numerics.NewtonTransport = {1.e-11, 1.e-6, 30, false};
     m_Numerics.reservoirPorder = 1;
     m_Numerics.wellPorder = 2;
     m_Numerics.refPressure = 1e5;
@@ -266,12 +262,16 @@ void ProblemData::ReadJson(std::string file)
     json numerics = input["NumericsData"];
     if (numerics.find("nthreads") != numerics.end())
         m_Numerics.nthreads = numerics["nthreads"];
-    if (numerics.find("maxIterations") != numerics.end())
-        m_Numerics.maxIterations = numerics["maxIterations"];
-    if (numerics.find("res_tol") != numerics.end())
-        m_Numerics.res_tol = numerics["res_tol"];
-    if (numerics.find("corr_tol") != numerics.end())
-        m_Numerics.corr_tol = numerics["corr_tol"];
+    auto readNewton = [](const json &settings, NewtonData &data) {
+        data.maxIterations = settings.value("maxIterations", data.maxIterations);
+        data.res_tol = settings.value("res_tol", data.res_tol);
+        data.corr_tol = settings.value("corr_tol", data.corr_tol);
+        data.printNewtonProgress = settings.value("printNewtonProgress", data.printNewtonProgress);
+    };
+    readNewton(numerics.contains("NewtonFlow") ? numerics.at("NewtonFlow") : numerics,
+               m_Numerics.NewtonFlow);
+    if (numerics.contains("NewtonTransport"))
+        readNewton(numerics.at("NewtonTransport"), m_Numerics.NewtonTransport);
     if (numerics.find("reservoirPorder") != numerics.end())
         m_Numerics.reservoirPorder = numerics["reservoirPorder"];
     if (numerics.find("wellPorder") != numerics.end())
@@ -280,6 +280,25 @@ void ProblemData::ReadJson(std::string file)
         m_Numerics.refPressure = numerics["refPressure"];
     if (numerics.find("pressureScale") != numerics.end())
         m_Numerics.pressureScale = numerics["pressureScale"];
+
+    m_Transport.reset();
+    if (input.contains("TransportData")) {
+        const auto &settings = input.at("TransportData");
+        auto &data = m_Transport.emplace();
+        data.initialWaterSaturation = settings.value("initialWaterSaturation", data.initialWaterSaturation);
+        data.boundaryWaterSaturation = settings.value("boundaryWaterSaturation", data.boundaryWaterSaturation);
+        data.waterFluid = settings.value("waterFluid", data.waterFluid);
+        data.oilFluid = settings.value("oilFluid", data.oilFluid);
+        data.timeStep = settings.value("timeStep", data.timeStep);
+        data.numSteps = settings.value("numSteps", data.numSteps);
+        const auto law = settings.value("relativePermeability", std::string("linear"));
+        if (law == "quadratic")
+            data.relativePermeability = RelativePermeability::Quadratic;
+        else if (law != "linear") {
+            std::cerr << "Unknown transport relativePermeability: " << law << std::endl;
+            DebugStop();
+        }
+    }
 
     // After reading the json file, set the auxiliary material IDs
     UpdateAuxiliaryMaterialIds();
@@ -313,6 +332,7 @@ void ProblemData::UpdateAuxiliaryMaterialIds()
     EPressure2DSkin = maxID + 1;
     EPressureInterface = maxID + 2;
     EHDivBoundInterface = maxID + 3;
+    ETransportInterface = maxID + 4;
 }
 
 void ProblemData::UpdateReservoirBCsForWellbores()
@@ -432,7 +452,93 @@ void ProblemData::Print(std::ostream &out)
 
     out << "Numerics Data:\n";
     out << "Number of threads: " << m_Numerics.nthreads << std::endl;
-    out << "Maximum Iterations: " << m_Numerics.maxIterations << std::endl;
-    out << "Residual Tolerance: " << m_Numerics.res_tol << std::endl;
-    out << "Correction Tolerance: " << m_Numerics.corr_tol << std::endl;
+    out << "Maximum Iterations: " << m_Numerics.NewtonFlow.maxIterations << std::endl;
+    out << "Residual Tolerance: " << m_Numerics.NewtonFlow.res_tol << std::endl;
+    out << "Correction Tolerance: " << m_Numerics.NewtonFlow.corr_tol << std::endl;
+}
+
+REAL ProblemData::TransportPhaseViscosity(const std::string &name) const {
+    const FluidData *phase = nullptr;
+    for (const auto &fluid : m_Fluid) {
+        if (fluid.name != name) continue;
+        if (phase) {
+            std::cerr << "Duplicate transport fluid: " << name << '\n';
+            DebugStop();
+        }
+        phase = &fluid;
+    }
+    if (!phase || !(phase->physicalViscosity > 0.) || !std::isfinite(phase->physicalViscosity)) {
+        std::cerr << "Missing or invalid transport fluid: " << name << '\n';
+        DebugStop();
+    }
+    return phase->physicalViscosity;
+}
+
+void ProblemData::ValidateTransport() const {
+    if (!m_Transport) {
+        std::cerr << "Missing TransportData\n";
+        DebugStop();
+    }
+    const auto &settings = *m_Transport;
+    const auto &newton = m_Numerics.NewtonTransport;
+    if (!(settings.initialWaterSaturation >= 0. && settings.initialWaterSaturation <= 1.) ||
+        !(settings.timeStep > 0.) || !std::isfinite(settings.timeStep) || settings.numSteps < 1 ||
+        !(m_Reservoir.porosity > 0. && m_Reservoir.porosity <= 1.) ||
+        ETransportInterface < 0 || m_Reservoir.matid == ETransportInterface ||
+        settings.waterFluid == settings.oilFluid ||
+        newton.maxIterations < 1 || !(newton.res_tol > 0.) || !std::isfinite(newton.res_tol)) {
+        std::cerr << "Invalid transport parameters\n";
+        DebugStop();
+    }
+    TransportPhaseViscosity(settings.waterFluid);
+    TransportPhaseViscosity(settings.oilFluid);
+}
+
+std::map<int, REAL> ProblemData::TransportBoundarySaturations() const {
+    const auto &overrides = m_Transport->boundaryWaterSaturation;
+    std::map<int, REAL> saturations;
+    std::map<std::string, int> boundaryIds;
+    auto addBoundary = [&](const std::string &name, int matid) {
+        const auto [entry, inserted] = boundaryIds.emplace(name, matid);
+        if ((!inserted && entry->second != matid && overrides.count(name)) ||
+            matid == ETransportInterface || matid == m_Reservoir.matid) {
+            std::cerr << "Invalid or ambiguous transport boundary: " << name << '\n';
+            DebugStop();
+        }
+        saturations.emplace(matid, 0.);
+    };
+    for (const auto &[name, bc] : m_Reservoir.BCs)
+        addBoundary(name, bc.matid);
+    for (const auto &well : m_Wellbore)
+        addBoundary(well.name, well.matidSurf);
+
+    std::map<int, REAL> specified;
+    for (const auto &[name, saturation] : overrides) {
+        const auto boundary = boundaryIds.find(name);
+        if (boundary == boundaryIds.end() || !(saturation >= 0. && saturation <= 1.)) {
+            std::cerr << "Unknown transport boundary or invalid saturation: " << name << '\n';
+            DebugStop();
+        }
+        const auto [entry, inserted] = specified.emplace(boundary->second, saturation);
+        if (!inserted && entry->second != saturation) {
+            std::cerr << "Conflicting transport saturation for boundary: " << name << '\n';
+            DebugStop();
+        }
+        saturations.at(boundary->second) = saturation;
+    }
+    return saturations;
+}
+
+std::pair<REAL, REAL> ProblemData::FractionalFlow(REAL sw) const {
+    // Adapted from TSFProblemData::TPetroPhysics (subFlow, MIT; see license).
+    const bool quadratic = m_Transport->relativePermeability == RelativePermeability::Quadratic;
+    const REAL waterViscosity = TransportPhaseViscosity(m_Transport->waterFluid);
+    const REAL oilViscosity = TransportPhaseViscosity(m_Transport->oilFluid);
+    const REAL so = 1. - sw;
+    const REAL lw = (quadratic ? sw * sw : sw) / waterViscosity;
+    const REAL lo = (quadratic ? so * so : so) / oilViscosity;
+    const REAL dlw = (quadratic ? 2. * sw : 1.) / waterViscosity;
+    const REAL dlo = (quadratic ? -2. * so : -1.) / oilViscosity;
+    const REAL total = lw + lo;
+    return {lw / total, (dlw * total - lw * (dlw + dlo)) / (total * total)};
 }

@@ -14,6 +14,7 @@ and data flow. Then read the relevant implementation guide:
 - [Well friction and Newton assembly](nonlinear-wells.md)
 - [Export and well diagnostics](postprocessing.md)
 - [Legacy code and current limitations](legacy.md)
+- [Reservoir transport: first increment](transport.md)
 
 The headers contain Doxygen comments for each project-owned class and method,
 including private mesh-building helpers. Implementation comments explain selected

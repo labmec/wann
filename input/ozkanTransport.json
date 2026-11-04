@@ -1,0 +1,111 @@
+{
+  "MeshData": {
+    "file": "ozkan1999.msh",
+    "customRefinement": 0,
+    "NumUniformRef": 0,
+    "NumDirRef": 0,
+    "ToCylindrical": 1
+  },
+  "WellboreData": [
+    {
+      "name": "curve_wellbore",
+      "matid": 1,
+      "matidSurf": 2,
+      "matidToeSurf": 3,
+      "matidHeelSurf": 4,
+      "radius": 0.0762,
+      "length": 800.1,
+      "height": 3.3528,
+      "eccentricity": [0.0, 0.0, 0.0],
+      "BCs": [
+        {
+          "name": "point_heel",
+          "matid": 5,
+          "type": 1, //dirichlet:0    neumann:1
+          "value": 0.0552
+        },
+        {
+          "name": "point_toe",
+          "matid": 6,
+          "type": 1,
+          "value": 0.0
+        }
+      ]
+    }
+  ],
+  "ReservoirData": {
+    "name": "volume_reservoir",
+    "matid": 7,
+    "format": "pill",
+    "perm": [8.38885e-12, 8.38885e-12, 1.48038e-12], // m^2
+    "porosity": 0.25,
+    "height": 21.9456,
+    "width": 1692.2496,
+    "length": 4000.0,
+    "BCs": [
+      {
+        "name": "surface_farfield",
+        "matid": 8,
+        "type": 0,
+        "value": 0.0
+      },
+      {
+        "name": "surface_cap_rock",
+        "matid": 9,
+        "type": 1,
+        "value": 0.0
+      }
+    ]
+  },
+  "FluidData": [
+    {
+      "name": "oil",
+      "viscosity": 1.43e-3, // Pa.s
+      "density": 881.0 // kg/m^3
+    },
+    {
+      "name": "water",
+      "viscosity": 2.86e-4, // Pa.s, preserves the test's oil-to-water viscosity ratio of 5
+      "density": 1000.0 // kg/m^3
+    }
+  ],
+  "TransportData": {
+    "initialWaterSaturation": 0.0,
+    "boundaryWaterSaturation": {
+      "curve_wellbore": 1.0
+    },
+    "relativePermeability": "quadratic",
+    "waterFluid": "water",
+    "oilFluid": "oil",
+    "timeStep": 3600.0,
+    "numSteps": 20
+  },
+  "PostProcData": {
+    "wellbore_vtk": "OzkanWell",
+    "reservoir_vtk": "OzkanReservoir",
+    "training_data": "training_data.txt",
+    "vtk_resolution": 0,
+    "training_resolution": 10, //number of subdivisions to generate training data
+    "nthreads": 4,
+    "verbosityLevel": 1
+  },
+  "NumericsData": {
+    "reservoirPorder": 1,
+    "wellPorder": 2,
+    "refPressure": 0.0,
+    "pressureScale": 1e-5,
+    "nthreads": 0,
+    "NewtonFlow": {
+      "maxIterations": 10,
+      "res_tol": 1e-6,
+      "corr_tol": 1e-6,
+      "printNewtonProgress": true
+    },
+    "NewtonTransport": {
+      "maxIterations": 30,
+      "res_tol": 1e-7,
+      "corr_tol": 1e-6,
+      "printNewtonProgress": true
+    }
+  }
+}

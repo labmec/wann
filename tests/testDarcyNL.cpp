@@ -51,9 +51,9 @@ int main(int argc, char *const argv[]) {
 
   // Problem data
   ProblemData simData;
-  simData.m_Numerics.maxIterations = 10;
-  simData.m_Numerics.res_tol = 1.e-6; 
-  simData.m_Numerics.corr_tol = 1.e-6;
+  simData.m_Numerics.NewtonFlow.maxIterations = 10;
+  simData.m_Numerics.NewtonFlow.res_tol = 1.e-6;
+  simData.m_Numerics.NewtonFlow.corr_tol = 1.e-6;
   simData.m_Numerics.nthreads = 0;
 
   simData.m_Reservoir.BCs["right"] = {ERight, 1, 0.0};

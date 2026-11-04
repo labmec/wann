@@ -6,7 +6,10 @@
 #pragma once
 
 #include <iostream>
+#include <map>
+#include <optional>
 #include <unordered_map>
+#include <utility>
 #include "json.hpp"
 #include <pzfmatrix.h>
 #include <pzvec.h>
@@ -21,6 +24,32 @@
  */
 class ProblemData
 {
+public:
+  enum class RelativePermeability { Linear, Quadratic };
+
+  struct NewtonData
+  {
+    REAL res_tol;
+    REAL corr_tol;
+    int maxIterations;
+    bool printNewtonProgress;
+  };
+
+  struct TransportData
+  {
+    REAL initialWaterSaturation = 0.;
+    /// Exterior water saturation by reservoir BC name or lateral well name.
+    std::map<std::string, REAL> boundaryWaterSaturation;
+    RelativePermeability relativePermeability = RelativePermeability::Linear;
+    std::string waterFluid = "water";
+    std::string oilFluid = "oil";
+    REAL timeStep = 0.01;
+    int numSteps = 1;
+  };
+
+private:
+  REAL TransportPhaseViscosity(const std::string &name) const;
+
   /**
    * @brief Boundary material identifier, type, and stored (possibly scaled) value.
    */
@@ -78,9 +107,9 @@ class ProblemData
   struct FluidData
   {
     std::string name;
-    REAL viscosity;
-    REAL density;
-    // Maybe add how the relative permeability is computed...
+    REAL viscosity = 0.;
+    REAL density = 0.;
+    REAL physicalViscosity = viscosity; ///< Viscosity before flow pressure scaling.
   };
 
   /**
@@ -116,13 +145,12 @@ class ProblemData
   struct NumericsData
   {
     int nthreads;
-    int maxIterations;
+    NewtonData NewtonFlow{1.e-6, 1.e-6, 10, true};
+    NewtonData NewtonTransport{1.e-11, 1.e-6, 30, false};
     int reservoirPorder;
     int wellPorder;
     REAL refPressure;
     REAL pressureScale;
-    REAL res_tol;
-    REAL corr_tol;
   };
 
 public:
@@ -141,11 +169,14 @@ public:
   PostProcData m_PostProc;
   /// Solver, order, and pressure-scaling options.
   NumericsData m_Numerics;
+  /// Optional settings for reservoir transport at frozen total flow.
+  std::optional<TransportData> m_Transport;
 
   // Auxiliary material IDs for the coupling elements
   // They are initialized to -1, and will be set in the ReadJson function
   int EPressure2DSkin = -1; // material ID for the 2D pressure skin elements
   int EPressureInterface = -1; // material ID for the pressure interface elements
+  int ETransportInterface = -1; // material ID for internal transport faces
   int EHDivBoundInterface = -1; // material ID for the HDiv boundary interface elements
 
 public:
@@ -178,7 +209,7 @@ public:
   void ReadJson(std::string jsonfile);
 
   /**
-   * @brief Assign the three coupling IDs above the largest configured material ID.
+   * @brief Assign the auxiliary IDs above the largest configured material ID.
    * Call after domain and boundary IDs have been populated.
    */
   void UpdateAuxiliaryMaterialIds();
@@ -199,4 +230,11 @@ public:
    * @brief Write the stored configuration or material summary to out.
    */
   void Print(std::ostream &out = std::cout);
+
+  /// Check the reservoir, phase, and time integration settings for transport.
+  void ValidateTransport() const;
+  /// Resolve exterior water saturations by physical boundary material ID.
+  std::map<int, REAL> TransportBoundarySaturations() const;
+  /// Return water fractional flow and its derivative with respect to Sw.
+  std::pair<REAL, REAL> FractionalFlow(REAL sw) const;
 };

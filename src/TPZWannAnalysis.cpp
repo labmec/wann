@@ -74,17 +74,15 @@ void TPZWannAnalysis::Initialize()
 void TPZWannAnalysis::NewtonIteration()
 {
 
-    int matIter = fSimData->m_Numerics.maxIterations;
+    const auto &newton = fSimData->m_Numerics.NewtonFlow;
     REAL res_norm = 1.0;
     REAL corr_norm = 1.0;
-    REAL res_tol = fSimData->m_Numerics.res_tol;
-    REAL corr_tol = fSimData->m_Numerics.corr_tol;
     bool converged = false;
     TPZWannH1Well::fIsFirstIteration = true;
     TPZWannMixedWell::fIsFirstIteration = true;
 
     TPZFMatrix<STATE> sol = Solution(); // Initial solution
-    for (fKiteration = 0; fKiteration < matIter; fKiteration++) {
+    for (fKiteration = 0; fKiteration < newton.maxIterations; fKiteration++) {
         Assemble();
 
         // Check residual convergence
@@ -92,15 +90,19 @@ void TPZWannAnalysis::NewtonIteration()
         {
             TPZFMatrix<STATE> rhs = Rhs();
             res_norm = Norm(rhs);
-            std::cout << "\n------Newton iteration: " << fKiteration << std::endl;
-            std::cout << "---------Residual norm: " << res_norm << std::endl;
-            std::cout << "---------Correction norm: " << corr_norm << std::endl;
-            if (res_norm < res_tol && corr_norm < corr_tol)
+            if (newton.printNewtonProgress) {
+                std::cout << "\n------Newton iteration: " << fKiteration << std::endl;
+                std::cout << "---------Residual norm: " << res_norm << std::endl;
+                std::cout << "---------Correction norm: " << corr_norm << std::endl;
+            }
+            if (res_norm < newton.res_tol && corr_norm < newton.corr_tol)
             {
-                std::cout << "------Iterative method converged with res_norm: "
-                          << res_norm << std::endl;
-                std::cout << "------Number of iterations = " << fKiteration
-                          << std::endl;
+                if (newton.printNewtonProgress) {
+                    std::cout << "------Iterative method converged with res_norm: "
+                              << res_norm << std::endl;
+                    std::cout << "------Number of iterations = " << fKiteration
+                              << std::endl;
+                }
                 converged = true;
                 fSolution = sol;
                 break;

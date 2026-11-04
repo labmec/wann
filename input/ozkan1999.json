@@ -38,7 +38,7 @@
     "matid": 7,
     "format": "pill",
     "perm": [8.38885e-12, 8.38885e-12, 1.48038e-12], // m^2
-    "porosity": 1.0,
+    "porosity": 0.25,
     "height": 21.9456,
     "width": 1692.2496,
     "length": 4000.0,

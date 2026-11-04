@@ -67,9 +67,9 @@ int main(int argc, char *const argv[])
 
     // Set up the problem data
     ProblemData simData;
-    simData.m_Numerics.maxIterations = 10;
-    simData.m_Numerics.res_tol = 1.e-6;
-    simData.m_Numerics.corr_tol = 1.e-6;
+    simData.m_Numerics.NewtonFlow.maxIterations = 10;
+    simData.m_Numerics.NewtonFlow.res_tol = 1.e-6;
+    simData.m_Numerics.NewtonFlow.corr_tol = 1.e-6;
     simData.m_Numerics.nthreads = nthreads;
 
     simData.m_Wellbore.radius = 0.05;

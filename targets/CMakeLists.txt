@@ -9,3 +9,9 @@ target_link_libraries(visualize PRIVATE WANN_lib)
 
 add_executable(twoWells twoWells.cpp)
 target_link_libraries(twoWells PRIVATE WANN_lib)
+
+add_executable(reservoirTransport reservoirTransport.cpp)
+target_link_libraries(reservoirTransport PRIVATE WANN_lib)
+
+add_executable(ozkanTransport ozkanTransport.cpp)
+target_link_libraries(ozkanTransport PRIVATE WANN_lib)
