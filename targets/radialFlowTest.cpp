@@ -6,6 +6,9 @@
 #include <iostream>
 #include <TPZLinearAnalysis.h>
 #include <TPZSSpStructMatrix.h>
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+#include <TPZSSpStructMatrixMumps.h>
+#endif
 #include <pzskylstrmatrix.h>
 #include <pzstepsolver.h>
 #include <TPZAnalyticSolution.h>
@@ -69,7 +72,7 @@ TPZGeoMesh *CreateRadialMesh(ProblemData *SimData);
 
 int main(int argc, char *argv[]) {
   
-  int maxRef = 4; // Maximum number of refinements to be performed.
+  int maxRef = 6; // Maximum number of refinements to be performed.
   std::ofstream results("radialTestResults.txt");
 
   std::string jsonfile = "radialTest.json";
@@ -107,7 +110,8 @@ int main(int argc, char *argv[]) {
   TPZGeoMesh* gmesh = CreateRadialMesh(&SimData);
   TPZCheckGeom checkgeom(gmesh); // For uniform refinement
 
-  for (int ref = 0; ref <= maxRef; ref++) {
+  checkgeom.UniformRefine(maxRef);
+  for (int ref = maxRef-1; ref <= maxRef; ref++) {
 
     std::cout << "\n===== Running simulation at refinement level: " << ref << " =====" << std::endl;
     results << "\n===== Running simulation at refinement level: " << ref << " =====" << std::endl;
@@ -123,11 +127,13 @@ int main(int argc, char *argv[]) {
     bool isHdiv = dynamic_cast<TPZMultiphysicsCompMesh*>(cmesh) != nullptr;
 
     // H(div) analysis
-    TPZLinearAnalysis an(cmesh);
-#ifdef PZ_USING_MKL
+    TPZLinearAnalysis an(cmesh,RenumType::EMetis);
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+    TPZSSpStructMatrixMumps<STATE> mat(cmesh);
+#elif defined(PZ_USING_MKL)
     TPZSSpStructMatrix<STATE> mat(cmesh);
 #else
-    TPZSkylStrMatrix mat(cmesh);
+    TPZSkylineStructMatrix<STATE> mat(cmesh);
 #endif
     mat.SetNumThreads(SimData.m_Numerics.nthreads);
     an.SetStructuralMatrix(mat);
@@ -206,7 +212,7 @@ int main(int argc, char *argv[]) {
     delete cmesh;
 
     // Refine mesh
-    checkgeom.UniformRefine(1);
+    
   }
   delete gmesh;
 }
@@ -273,8 +279,8 @@ TPZGeoMesh* CreateRadialMesh(ProblemData* SimData) {
 
 TPZMultiphysicsCompMesh *MixedDarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, bool isCondensed) {
   TPZHDivApproxCreator hdivCreator(gmesh);
-  hdivCreator.ProbType() = ProblemType::EDarcy;
-  hdivCreator.HdivFamily() = HDivFamily::EHDivStandard;
+  hdivCreator.SetProbType(ProblemType::EDarcy);
+  hdivCreator.SetHdivFamily(HDivFamily::EHDivStandard);
   hdivCreator.SetDefaultOrder(SimData->m_Reservoir.pOrder);
   hdivCreator.SetShouldCondense(isCondensed);
 
@@ -304,7 +310,7 @@ TPZMultiphysicsCompMesh *MixedDarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimD
 TPZCompMesh *H1DarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, bool isCondensed) {
   TPZH1ApproxCreator h1Creator(gmesh);
   h1Creator.SetDefaultOrder(SimData->m_Reservoir.pOrder);
-  h1Creator.ProbType() = ProblemType::EDarcy;
+  h1Creator.SetProbType(ProblemType::EDarcy);
   h1Creator.SetShouldCondense(isCondensed);
 
   // Reservoir data

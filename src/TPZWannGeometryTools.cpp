@@ -83,6 +83,7 @@ TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
   TPZGeoMesh* gmesh = new TPZGeoMesh();
   {
     TPZGmshReader reader;
+    reader.SetCreateRefPatterns(false);
     TPZManVector<std::map<std::string, int>, 4> stringtoint(4);
     stringtoint[3]["volume_reservoir"] = simData->EDomain;
     simData->m_Reservoir.matid = simData->EDomain;
@@ -109,6 +110,7 @@ TPZGeoMesh* TPZWannGeometryTools::ReadMeshFromGmsh(ProblemData* simData){
     SetBC(simData, "point_toe", simData->EPointToe);
     
     reader.SetDimNamePhysical(stringtoint);
+
     reader.GeometricGmshMesh(path, gmesh);
 
     // Remove gmsh boundary elements and create GeoElBC so normals are consistent

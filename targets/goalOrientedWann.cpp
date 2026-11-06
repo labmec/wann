@@ -119,7 +119,8 @@ int main(int argc, char *argv[]) {
     std::cout << "Total goal-oriented error: " << totalError << std::endl;
 
     // Wrapper for the refinement process
-    TPZWannAdaptivityTools::AdaptivityProcess(gmesh, &SimData, elementErrors, thetaRef);
+    TPZVec<int64_t> refinedElements;
+    TPZWannAdaptivityTools::AdaptivityProcess(gmesh, &SimData, elementErrors, refinedElements, thetaRef);
 
     // Print refined mesh
     if (SimData.m_PostProc.verbosityLevel > 0) {

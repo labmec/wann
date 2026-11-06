@@ -9,6 +9,9 @@
 #include "TPZWannAdaptivityTools.h"
 #include <TPZLinearAnalysis.h>
 #include <TPZSSpStructMatrix.h> //symmetric sparse matrix storage>
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+#include <TPZSSpStructMatrixMumps.h>
+#endif
 #include <pzskylstrmatrix.h>
 #include <pzstepsolver.h>
 #include <TPZAnalyticSolution.h>
@@ -59,10 +62,12 @@ int main(int argc, char *argv[])
 
     // ---- Hdiv analysis ----
     TPZLinearAnalysis analysis(cmesh);
-#ifdef PZ_USING_MKL
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+    TPZSSpStructMatrixMumps<STATE> skylstr(cmesh);
+#elif defined(PZ_USING_MKL)
     TPZSSpStructMatrix<STATE> skylstr(cmesh);
 #else
-    TPZSkylStrMatrix skylstr(cmesh);
+    TPZSkylineStructMatrix<STATE> skylstr(cmesh);
 #endif
     skylstr.SetNumThreads(global_nthread);
     analysis.SetStructuralMatrix(skylstr);
@@ -87,7 +92,7 @@ TPZMultiphysicsCompMesh* CreateMultiphysicsCompMesh(TPZGeoMesh * gmesh, ProblemD
 
     gmesh->SetDimension(dim);
     TPZHDivApproxCreator hdivCreator(gmesh);
-    hdivCreator.ProbType() = ProblemType::EDarcy;
+    hdivCreator.SetProbType(ProblemType::EDarcy);
     hdivCreator.SetDefaultOrder(SimData->m_Wellbore.pOrder);
     hdivCreator.SetShouldCondense(false);
 
@@ -106,7 +111,7 @@ TPZMultiphysicsCompMesh* CreateMultiphysicsCompMesh(TPZGeoMesh * gmesh, ProblemD
         }
         else
         {
-            wellboreMat->SetConstantPermeability(WellboreData.perm);
+            wellboreMat->SetConstantPermeability(WellboreData.perm[0]);
         }
         hdivCreator.InsertMaterialObject(wellboreMat);
 
@@ -130,7 +135,7 @@ TPZMultiphysicsCompMesh* CreateMultiphysicsCompMesh(TPZGeoMesh * gmesh, ProblemD
     TPZMultiphysicsCompMesh *cmesh = nullptr;
     hdivCreator.CreateMultiPhysicsMesh(meshvec, lagmultilevel, cmesh);
 
-    if (SimData->m_VerbosityLevel)
+    if (SimData->m_PostProc.verbosityLevel)
     {
         std::ofstream out("cmesh.txt");
         cmesh->Print(out);

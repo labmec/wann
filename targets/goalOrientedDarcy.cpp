@@ -6,6 +6,9 @@
 
 #include <TPZLinearAnalysis.h>
 #include <TPZSSpStructMatrix.h>
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+#include <TPZSSpStructMatrixMumps.h>
+#endif
 #include <pzskylstrmatrix.h>
 #include <pzstepsolver.h>
 #include <TPZAnalyticSolution.h>
@@ -161,10 +164,12 @@ int main(int argc, char *argv[]) {
 
     // H(div) analysis
     TPZLinearAnalysis anMixed(cmeshMixed);
-#ifdef PZ_USING_MKL
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+    TPZSSpStructMatrixMumps<STATE> matMixed(cmeshMixed);
+#elif defined(PZ_USING_MKL)
     TPZSSpStructMatrix<STATE> matMixed(cmeshMixed);
 #else
-    TPZSkylStrMatrix matMixed(cmeshMixed);
+    TPZSkylineStructMatrix<STATE> matMixed(cmeshMixed);
 #endif
     matMixed.SetNumThreads(nThreads);
     anMixed.SetStructuralMatrix(matMixed);
@@ -175,10 +180,12 @@ int main(int argc, char *argv[]) {
 
     // Dual analysis
     TPZLinearAnalysis anDual(cmeshDual);
-#ifdef PZ_USING_MKL
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+    TPZSSpStructMatrixMumps<STATE> matDual(cmeshDual);
+#elif defined(PZ_USING_MKL)
     TPZSSpStructMatrix<STATE> matDual(cmeshDual);
 #else
-    TPZSkylStrMatrix matDual(cmeshDual);
+    TPZSkylineStructMatrix<STATE> matDual(cmeshDual);
 #endif
     matDual.SetNumThreads(nThreads);
     anDual.SetStructuralMatrix(matDual);
@@ -205,7 +212,8 @@ int main(int argc, char *argv[]) {
     nEquations[refIt] = cmeshMixed->NEquations();
 
     // Wrapper for the refinement process
-    TPZWannAdaptivityTools::AdaptivityProcess(gmesh, &SimData, elementErrors, theta);
+    TPZVec<int64_t> refinedElements;
+    TPZWannAdaptivityTools::AdaptivityProcess(gmesh, &SimData, elementErrors, refinedElements, theta);
 
     // Uniform refinement for testing
     // TPZCheckGeom checkgeom(gmesh);
@@ -230,8 +238,8 @@ int main(int argc, char *argv[]) {
 
 TPZMultiphysicsCompMesh *MixedDarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TLaplaceExample1 *exact, bool isCondensed) {
   TPZHDivApproxCreator hdivCreator(gmesh);
-  hdivCreator.ProbType() = ProblemType::EDarcy;
-  hdivCreator.HdivFamily() = HDivFamily::EHDivStandard;
+  hdivCreator.SetProbType(ProblemType::EDarcy);
+  hdivCreator.SetHdivFamily(HDivFamily::EHDivStandard);
   hdivCreator.SetDefaultOrder(SimData->m_Reservoir.pOrder);
   hdivCreator.SetShouldCondense(isCondensed);
 
@@ -270,8 +278,8 @@ TPZMultiphysicsCompMesh *MixedDarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimD
 
 TPZMultiphysicsCompMesh *MixedDarcyDualCompMesh(TPZGeoMesh *gmesh, ProblemData *SimDataDual, bool isCondensed) {
   TPZHDivApproxCreator hdivCreator(gmesh);
-  hdivCreator.ProbType() = ProblemType::EDarcy;
-  hdivCreator.HdivFamily() = HDivFamily::EHDivStandard;
+  hdivCreator.SetProbType(ProblemType::EDarcy);
+  hdivCreator.SetHdivFamily(HDivFamily::EHDivStandard);
   hdivCreator.SetDefaultOrder(SimDataDual->m_Reservoir.pOrder);
   hdivCreator.SetShouldCondense(isCondensed);
 

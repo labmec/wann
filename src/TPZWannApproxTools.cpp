@@ -10,7 +10,7 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMultiphysicsCompMesh(TPZGeoMe
   const int dim = gmesh->Dimension();
 
   TPZHDivApproxCreator hdivCreator(gmesh);
-  hdivCreator.ProbType() = ProblemType::EDarcy;
+  hdivCreator.SetProbType(ProblemType::EDarcy);
   hdivCreator.SetDefaultOrder(SimData->m_Reservoir.pOrder);
   hdivCreator.SetShouldCondense(false);
 

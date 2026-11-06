@@ -8,6 +8,9 @@
 #include "TPZWannPostProcTools.h"
 #include <TPZLinearAnalysis.h>
 #include <TPZSSpStructMatrix.h>  //symmetric sparse matrix storage
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+#include <TPZSSpStructMatrixMumps.h>
+#endif
 #include <pzstepsolver.h>
 
 using namespace std;
@@ -47,7 +50,11 @@ int main(int argc, char *argv[]) {
   TPZMultiphysicsCompMesh* cmesh = TPZWannApproxTools::CreateMultiphysicsCompMesh(gmesh, &SimData, &exact);
   
   TPZLinearAnalysis analysis(cmesh);
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+  TPZSSpStructMatrixMumps<STATE> skylstr(cmesh);
+#else
   TPZSSpStructMatrix<STATE> skylstr(cmesh);
+#endif
   skylstr.SetNumThreads(global_nthread);
   analysis.SetStructuralMatrix(skylstr);
 

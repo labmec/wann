@@ -2,9 +2,16 @@
 //  Created by Giovane Avancini and Giovanni Taraschi on 17/11/25.
 //
 
+#ifdef HAVE_CONFIG_H
+#include <pz_config.h>
+#endif
+
 #include "TPZWannAnalysis.h"
 #include "TPZNonlinearWell.h"
 #include "TPZNonLinearWellH1.h"
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+#include <TPZSSpStructMatrixMumps.h>
+#endif
 
 using namespace std;
 
@@ -34,7 +41,9 @@ int TPZWannAnalysis::GetNumberOfIterations() { return fKiteration; }
 
 void TPZWannAnalysis::Initialize()
 {
-#ifdef PZ_USING_MKL
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+    TPZSSpStructMatrixMumps<STATE> matrix(fCompMesh);
+#elif defined(PZ_USING_MKL)
     TPZSSpStructMatrix<STATE> matrix(fCompMesh);
 #else
     TPZSkylineStructMatrix<STATE> matrix(fCompMesh);

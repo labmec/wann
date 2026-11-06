@@ -6,6 +6,9 @@
 
 #include <TPZLinearAnalysis.h>
 #include <TPZSSpStructMatrix.h>
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+#include <TPZSSpStructMatrixMumps.h>
+#endif
 #include <pzskylstrmatrix.h>
 #include <pzstepsolver.h>
 #include <TPZAnalyticSolution.h>
@@ -121,10 +124,12 @@ int main(int argc, char *argv[]) {
 
     // H(div) analysis
     TPZLinearAnalysis anMixed(cmeshMixed);
-#ifdef PZ_USING_MKL
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+    TPZSSpStructMatrixMumps<STATE> matMixed(cmeshMixed);
+#elif defined(PZ_USING_MKL)
     TPZSSpStructMatrix<STATE> matMixed(cmeshMixed);
 #else
-    TPZSkylStrMatrix matMixed(cmeshMixed);
+    TPZSkylineStructMatrix<STATE> matMixed(cmeshMixed);
 #endif
     matMixed.SetNumThreads(SimData.m_Numerics.nthreads);
     anMixed.SetStructuralMatrix(matMixed);
@@ -135,10 +140,12 @@ int main(int argc, char *argv[]) {
 
     // H1 analysis
     TPZLinearAnalysis anH1(cmeshH1);
-#ifdef PZ_USING_MKL
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+    TPZSSpStructMatrixMumps<STATE> matH1(cmeshH1);
+#elif defined(PZ_USING_MKL)
     TPZSSpStructMatrix<STATE> matH1(cmeshH1);
 #else
-    TPZSkylStrMatrix matH1(cmeshH1);
+    TPZSkylineStructMatrix<STATE> matH1(cmeshH1);
 #endif
     matH1.SetNumThreads(SimData.m_Numerics.nthreads);
     anH1.SetStructuralMatrix(matH1);
@@ -241,8 +248,8 @@ int main(int argc, char *argv[]) {
 
 TPZMultiphysicsCompMesh *MixedDarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TLaplaceExample1 *exact, bool isCondensed) {
   TPZHDivApproxCreator hdivCreator(gmesh);
-  hdivCreator.ProbType() = ProblemType::EDarcy;
-  hdivCreator.HdivFamily() = HDivFamily::EHDivStandard;
+  hdivCreator.SetProbType(ProblemType::EDarcy);
+  hdivCreator.SetHdivFamily(HDivFamily::EHDivStandard);
   hdivCreator.SetDefaultOrder(SimData->m_Reservoir.pOrder);
   hdivCreator.SetShouldCondense(isCondensed);
 
@@ -293,7 +300,7 @@ TPZMultiphysicsCompMesh *MixedDarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimD
 TPZCompMesh *H1DarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TLaplaceExample1 *exact, bool isCondensed) {
   TPZH1ApproxCreator h1Creator(gmesh);
   h1Creator.SetDefaultOrder(SimData->m_Reservoir.pOrder+2);
-  h1Creator.ProbType() = ProblemType::EDarcy;
+  h1Creator.SetProbType(ProblemType::EDarcy);
   h1Creator.SetShouldCondense(isCondensed);
 
   TLaplaceExample1* exactsol = dynamic_cast<TLaplaceExample1 *>(exact);

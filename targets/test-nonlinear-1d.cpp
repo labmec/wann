@@ -82,7 +82,7 @@ int main(int argc, char *const argv[])
     simData.m_Fluid.density = 800;
 
     simData.m_Reservoir.BCs["pres"] = {ENone, 0, 2.2e7};
-    simData.m_Reservoir.perm = 1.e-11; // Pseudo resistivity
+    simData.m_Reservoir.perm = {1.e-11, 1.e-11, 1.e-11}; // Pseudo resistivity
 
     // Non-linear solver
     TPZGeoMesh *gmesh = Create1DMesh(20, 0., simData.m_Wellbore.length);
@@ -176,7 +176,7 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, ProblemData *sim
     REAL mu = simData->m_Fluid.viscosity;
     REAL rho = simData->m_Fluid.density;
     REAL pres = simData->m_Reservoir.BCs["pres"].value;
-    REAL Kvw = simData->m_Reservoir.perm;
+    REAL Kvw = simData->m_Reservoir.perm[0];
 
     TPZNonlinearWell *matWell = new TPZNonlinearWell(EMatId, Dw, mu, rho, pres, Kvw);
     cmesh->InsertMaterialObject(matWell);
@@ -220,7 +220,7 @@ TPZCompMesh *createCompMeshH1(TPZGeoMesh *gmesh, ProblemData *simData)
     REAL mu = simData->m_Fluid.viscosity;
     REAL rho = simData->m_Fluid.density;
     REAL pres = simData->m_Reservoir.BCs["pres"].value;
-    REAL Kvw = simData->m_Reservoir.perm;
+    REAL Kvw = simData->m_Reservoir.perm[0];
 
     TPZNonLinearWellH1 *matWell = new TPZNonLinearWellH1(EMatId, Dw, mu, rho, pres, Kvw);
     cmeshH1->InsertMaterialObject(matWell);

@@ -9,6 +9,9 @@
 #include "TPZWannAdaptivityTools.h"
 #include <TPZLinearAnalysis.h>
 #include <TPZSSpStructMatrix.h>  //symmetric sparse matrix storage>
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+#include <TPZSSpStructMatrixMumps.h>
+#endif
 #include <pzskylstrmatrix.h>
 #include <pzstepsolver.h>
 #include <TPZAnalyticSolution.h>
@@ -51,7 +54,7 @@ int main(int argc, char *argv[]) {
   // Refinement loop (experimental)
   for (int refIt = 0; refIt < 1; refIt++) {
     TPZMultiphysicsCompMesh* cmesh = TPZWannApproxTools::CreateMultiphysicsCompMesh(gmesh, &SimData, &exact);
-    TPZCompMesh* cmeshH1 = TPZWannApproxTools::CreateH1CompMesh(gmesh, &SimData);
+    TPZCompMesh* cmeshH1 = TPZWannApproxTools::CreateH1CompMesh(gmesh, &SimData, &exact);
 
     // {
     //   std::ofstream out("cmesh.txt");
@@ -61,13 +64,13 @@ int main(int argc, char *argv[]) {
     if (refIt >= 0) {
     // ---- Hdiv analysis ----
     TPZLinearAnalysis analysis(cmesh);
-    #ifdef PZ_USING_MKL
+    #if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+    TPZSSpStructMatrixMumps<STATE> skylstr(cmesh);
+    #elif defined(PZ_USING_MKL)
     TPZSSpStructMatrix<STATE> skylstr(cmesh);
     #else
-    TPZSkylStrMatrix skylstr(cmesh);
+    TPZSkylineStructMatrix<STATE> skylstr(cmesh);
     #endif
-    // TPZSkylStrMatrix skylstr(cmesh);
-    // TPZSkylineStructMatrix<STATE> skylstr(cmesh);
     skylstr.SetNumThreads(global_nthread);
     analysis.SetStructuralMatrix(skylstr);
 
@@ -149,10 +152,12 @@ int main(int argc, char *argv[]) {
 
     // ---- H1 analysis ----
     TPZLinearAnalysis analysisH1(cmeshH1);
-    #ifdef PZ_USING_MKL
+    #if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+    TPZSSpStructMatrixMumps<STATE> skylstrH1(cmeshH1);
+    #elif defined(PZ_USING_MKL)
     TPZSSpStructMatrix<STATE> skylstrH1(cmeshH1);
     #else
-    TPZSkylStrMatrix skylstrH1(cmeshH1);
+    TPZSkylineStructMatrix<STATE> skylstrH1(cmeshH1);
     #endif
     skylstrH1.SetNumThreads(global_nthread);
     analysisH1.SetStructuralMatrix(skylstrH1);
@@ -187,7 +192,11 @@ int main(int argc, char *argv[]) {
     std::cout << "\n--------- Post-processing finished ---------" << std::endl;
     std::cout << "\n--------- Starting estimate and refine ---------" << std::endl;
 
-    TPZWannAdaptivityTools::EstimateAndRefine(cmesh, cmeshH1, &SimData, global_nthread);
+    TPZVec<REAL> elementErrors(gmesh->NElements(), 0.0);
+    TPZWannAdaptivityTools::PragerSynge(cmesh, cmeshH1, &SimData, elementErrors, global_nthread);
+    TPZVec<int64_t> refinedElements;
+    constexpr REAL theta = 0.5;
+    TPZWannAdaptivityTools::AdaptivityProcess(gmesh, &SimData, elementErrors, refinedElements, theta);
 
     std::cout << "\n--------- Estimate and refine finished ---------" << std::endl;
 

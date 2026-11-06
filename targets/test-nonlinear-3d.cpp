@@ -11,6 +11,9 @@
 #include "pzmultiphysicselement.h"
 #include "TPZLinearAnalysis.h"
 #include "TPZSSpStructMatrix.h"
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+#include "TPZSSpStructMatrixMumps.h"
+#endif
 #include "pzfstrmatrix.h"
 #include "pzstepsolver.h"
 #include "TPZAnalyticSolution.h"
@@ -228,7 +231,7 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order, bool 
     cmesh->ApproxSpace().Style() = TPZCreateApproximationSpace::EMultiphysics;
 
     // Add materials (weak formulation)
-    TPZMixedDarcyFlow *matDarcy = nullptr;
+    TPZMixedDarcyAnisotropic *matDarcy = nullptr;
     if (isNL)
     {
         TPZWannMixedDarcyNL *temp_mat = new TPZWannMixedDarcyNL(EMatId, gmesh->Dimension());
@@ -236,7 +239,7 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order, bool 
     }
     else
     {
-        TPZMixedDarcyFlow *temp_mat = new TPZMixedDarcyFlow(EMatId, gmesh->Dimension());
+        TPZMixedDarcyAnisotropic *temp_mat = new TPZMixedDarcyAnisotropic(EMatId, gmesh->Dimension());
         matDarcy = temp_mat;
     }
     matDarcy->SetConstantPermeability(1.0);
@@ -299,7 +302,7 @@ TPZCompMesh *createCompMeshH1(TPZGeoMesh *gmesh, int order, bool isNL)
     cmesh->SetAllCreateFunctionsContinuous();
 
     // Add materials (weak formulation)
-    TPZDarcyFlow *matDarcy = nullptr;
+    TPZDarcyAnisotropic *matDarcy = nullptr;
     if (isNL)
     {
         TPZWannDarcyNL *temp_mat = new TPZWannDarcyNL(EMatId, gmesh->Dimension());
@@ -307,7 +310,7 @@ TPZCompMesh *createCompMeshH1(TPZGeoMesh *gmesh, int order, bool isNL)
     }
     else
     {
-        TPZDarcyFlow *temp_mat = new TPZDarcyFlow(EMatId, gmesh->Dimension());
+        TPZDarcyAnisotropic *temp_mat = new TPZDarcyAnisotropic(EMatId, gmesh->Dimension());
         matDarcy = temp_mat;
     }
     matDarcy->SetConstantPermeability(1.0);
@@ -355,7 +358,9 @@ void SolveLinear(int order, TPZGeoMesh *gmesh)
 
     // Mixed solver
     TPZLinearAnalysis anMixed(cmeshMixed, RenumType::EMetis);
-#ifdef PZ_USING_MKL
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+    TPZSSpStructMatrixMumps<STATE> matMixed(cmeshMixed);
+#elif defined(PZ_USING_MKL)
     TPZSSpStructMatrix<STATE> matMixed(cmeshMixed);
 #else
     TPZFStructMatrix<STATE> matMixed(cmeshMixed);
@@ -369,7 +374,9 @@ void SolveLinear(int order, TPZGeoMesh *gmesh)
 
     // H1 solver
     TPZLinearAnalysis anH1(cmeshH1, RenumType::EMetis);
-#ifdef PZ_USING_MKL
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+    TPZSSpStructMatrixMumps<STATE> matH1(cmeshH1);
+#elif defined(PZ_USING_MKL)
     TPZSSpStructMatrix<STATE> matH1(cmeshH1);
 #else
     TPZFStructMatrix<STATE> matH1(cmeshH1);
@@ -485,7 +492,9 @@ void SolveNonLinearOld(int order, TPZGeoMesh *gmesh)
 
     // Mixed solver
     TPZLinearAnalysis anMixed(cmeshMixed, RenumType::EMetis);
-#ifdef PZ_USING_MKL
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+    TPZSSpStructMatrixMumps<STATE> matMixed(cmeshMixed);
+#elif defined(PZ_USING_MKL)
     TPZSSpStructMatrix<STATE> matMixed(cmeshMixed);
 #else
     TPZFStructMatrix<STATE> matMixed(cmeshMixed);

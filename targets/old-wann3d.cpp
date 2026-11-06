@@ -9,6 +9,9 @@
 #include <TPZNullMaterial.h>
 #include <TPZRefPatternTools.h>
 #include <TPZSSpStructMatrix.h>  //symmetric sparse matrix storage
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+#include <TPZSSpStructMatrixMumps.h>
+#endif
 #include <TPZSimpleTimer.h>
 #include <pzbuildmultiphysicsmesh.h>
 #include <pzskylstrmatrix.h>
@@ -144,7 +147,7 @@ int main() {
   
   // Create computational mesh for Darcy problem
   TPZHDivApproxCreator hdivCreator(gmesh);
-  hdivCreator.ProbType() = ProblemType::EDarcy;
+  hdivCreator.SetProbType(ProblemType::EDarcy);
   // hdivCreator.HdivFamily() = hdivfam;
   // hdivCreator.IsRigidBodySpaces() = false;
   hdivCreator.SetDefaultOrder(pOrder);
@@ -223,7 +226,11 @@ int main() {
   }
 
   TPZLinearAnalysis analysis(cmesh);
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+  TPZSSpStructMatrixMumps<STATE> skylstr(cmesh);
+#else
   TPZSSpStructMatrix<STATE> skylstr(cmesh);
+#endif
   skylstr.SetNumThreads(global_nthread);
   analysis.SetStructuralMatrix(skylstr);
 

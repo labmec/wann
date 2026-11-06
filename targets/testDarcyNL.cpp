@@ -11,6 +11,9 @@
 #include "pzmultiphysicselement.h"
 #include "TPZLinearAnalysis.h"
 #include "TPZSSpStructMatrix.h"
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+#include "TPZSSpStructMatrixMumps.h"
+#endif
 #include "pzfstrmatrix.h"
 #include "pzstepsolver.h"
 #include "TPZAnalyticSolution.h"
@@ -51,19 +54,14 @@ int main(int argc, char *const argv[]) {
 
   // Problem data
   ProblemData simData;
+  simData.ReadJson(argc > 1 ? argv[1] : "wann3d_test.json");
   simData.m_Numerics.maxIterations = 10;
   simData.m_Numerics.res_tol = 1.e-6; 
   simData.m_Numerics.corr_tol = 1.e-6;
   simData.m_Numerics.nthreads = 0;
 
-  simData.m_Reservoir.BCs["right"] = {ERight, 1, 0.0};
-  simData.m_Reservoir.BCs["left"] = {ELeft, 1, 0.0};
-  simData.m_Reservoir.BCs["front"] = {EFront, 0, 3.0};
-  simData.m_Reservoir.BCs["back"] = {EBack, 1, 1.0};
+  TPZGeoMesh *gmesh = TPZWannGeometryTools::CreateGeoMesh(&simData);
 
-  TPZGeoMesh *gmesh = TPZWannGeometryTools::readGeoMesh(&simData);
-
-  int order = simData.m_Reservoir.pOrder;
   SolveNonLinear(&simData, gmesh);
 }
 
@@ -94,7 +92,7 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, ProblemData *Sim
     TPZFMatrix<REAL> val1(1, 1, 0.);   // Part that goes to the Stiffnes matrix
     TPZBndCondT<REAL> *bcond;
 
-    bcond = mat->CreateBC(mat, SimData->EFarfield, 0, val1, val2);
+    bcond = mat->CreateBC(mat, SimData->EFarField, 0, val1, val2);
     cmeshFlux->InsertMaterialObject(bcond);
 
     bcond = mat->CreateBC(mat, SimData->ESurfHeel, 0, val1, val2);
@@ -150,7 +148,7 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, ProblemData *Sim
     cmesh->ApproxSpace().Style() = TPZCreateApproximationSpace::EMultiphysics;
 
     // Add materials (weak formulation)
-    TPZMixedDarcyFlow *matDarcy = nullptr;
+    TPZMixedDarcyAnisotropic *matDarcy = nullptr;
     if (isNL)
     {
         TPZWannMixedDarcyNL *temp_mat = new TPZWannMixedDarcyNL(SimData->EDomain, gmesh->Dimension());
@@ -158,7 +156,7 @@ TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, ProblemData *Sim
     }
     else
     {
-        TPZMixedDarcyFlow *temp_mat = new TPZMixedDarcyFlow(SimData->EDomain, gmesh->Dimension());
+        TPZMixedDarcyAnisotropic *temp_mat = new TPZMixedDarcyAnisotropic(SimData->EDomain, gmesh->Dimension());
         matDarcy = temp_mat;
     }
     matDarcy->SetConstantPermeability(1.0);
@@ -206,7 +204,7 @@ TPZCompMesh *createCompMeshH1(TPZGeoMesh *gmesh, ProblemData *SimData, bool isNL
     cmesh->SetAllCreateFunctionsContinuous();
 
     // Add materials (weak formulation)
-    TPZDarcyFlow *matDarcy = nullptr;
+    TPZDarcyAnisotropic *matDarcy = nullptr;
     if (isNL)
     {
         TPZWannDarcyNL *temp_mat = new TPZWannDarcyNL(SimData->EDomain, gmesh->Dimension());
@@ -214,7 +212,7 @@ TPZCompMesh *createCompMeshH1(TPZGeoMesh *gmesh, ProblemData *SimData, bool isNL
     }
     else
     {
-        TPZDarcyFlow *temp_mat = new TPZDarcyFlow(SimData->EDomain, gmesh->Dimension());
+        TPZDarcyAnisotropic *temp_mat = new TPZDarcyAnisotropic(SimData->EDomain, gmesh->Dimension());
         matDarcy = temp_mat;
     }
     matDarcy->SetConstantPermeability(1.0);
@@ -245,19 +243,21 @@ TPZCompMesh *createCompMeshH1(TPZGeoMesh *gmesh, ProblemData *SimData, bool isNL
     return cmesh;
 }
 
-void SolveLinear(int order, TPZGeoMesh *gmesh)
+void SolveLinear(ProblemData *SimData, TPZGeoMesh *gmesh)
 {
-    TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, order, false);
-    TPZCompMesh *cmeshH1 = createCompMeshH1(gmesh, order, false);
+    TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, SimData, false);
+    TPZCompMesh *cmeshH1 = createCompMeshH1(gmesh, SimData, false);
 
     // Mixed solver
     TPZLinearAnalysis anMixed(cmeshMixed, RenumType::EMetis);
-#ifdef PZ_USING_MKL
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+    TPZSSpStructMatrixMumps<STATE> matMixed(cmeshMixed);
+#elif defined(PZ_USING_MKL)
     TPZSSpStructMatrix<STATE> matMixed(cmeshMixed);
 #else
     TPZFStructMatrix<STATE> matMixed(cmeshMixed);
 #endif
-    matMixed.SetNumThreads(nthreads);
+    matMixed.SetNumThreads(SimData->m_Numerics.nthreads);
     anMixed.SetStructuralMatrix(matMixed);
     TPZStepSolver<STATE> stepMixed;
     stepMixed.SetDirect(ELDLt);
@@ -266,12 +266,14 @@ void SolveLinear(int order, TPZGeoMesh *gmesh)
 
     // H1 solver
     TPZLinearAnalysis anH1(cmeshH1, RenumType::EMetis);
-#ifdef PZ_USING_MKL
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+    TPZSSpStructMatrixMumps<STATE> matH1(cmeshH1);
+#elif defined(PZ_USING_MKL)
     TPZSSpStructMatrix<STATE> matH1(cmeshH1);
 #else
     TPZFStructMatrix<STATE> matH1(cmeshH1);
 #endif
-    matH1.SetNumThreads(nthreads);
+    matH1.SetNumThreads(SimData->m_Numerics.nthreads);
     anH1.SetStructuralMatrix(matH1);
     TPZStepSolver<STATE> stepH1;
     stepH1.SetDirect(ECholesky);
@@ -358,19 +360,21 @@ void SolveNonLinear(ProblemData *SimData, TPZGeoMesh *gmesh)
 // Old stuff
 // =========
 
-void SolveNonLinearOld(int order, TPZGeoMesh *gmesh)
+void SolveNonLinearOld(ProblemData *SimData, TPZGeoMesh *gmesh)
 {
 
-    TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, order, true);
+    TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, SimData, true);
 
     // Mixed solver
     TPZLinearAnalysis anMixed(cmeshMixed, RenumType::EMetis);
-#ifdef PZ_USING_MKL
+#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
+    TPZSSpStructMatrixMumps<STATE> matMixed(cmeshMixed);
+#elif defined(PZ_USING_MKL)
     TPZSSpStructMatrix<STATE> matMixed(cmeshMixed);
 #else
     TPZFStructMatrix<STATE> matMixed(cmeshMixed);
 #endif
-    matMixed.SetNumThreads(nthreads);
+    matMixed.SetNumThreads(SimData->m_Numerics.nthreads);
     anMixed.SetStructuralMatrix(matMixed);
     TPZStepSolver<STATE> stepMixed;
     stepMixed.SetDirect(ELDLt);
