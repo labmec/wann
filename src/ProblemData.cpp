@@ -286,6 +286,7 @@ void ProblemData::ReadJson(std::string file)
         const auto &settings = input.at("TransportData");
         auto &data = m_Transport.emplace();
         data.initialWaterSaturation = settings.value("initialWaterSaturation", data.initialWaterSaturation);
+        data.initialWellWaterSaturation = settings.value("initialWellWaterSaturation", data.initialWellWaterSaturation);
         data.boundaryWaterSaturation = settings.value("boundaryWaterSaturation", data.boundaryWaterSaturation);
         data.waterFluid = settings.value("waterFluid", data.waterFluid);
         data.oilFluid = settings.value("oilFluid", data.oilFluid);
@@ -333,6 +334,9 @@ void ProblemData::UpdateAuxiliaryMaterialIds()
     EPressureInterface = maxID + 2;
     EHDivBoundInterface = maxID + 3;
     ETransportInterface = maxID + 4;
+    ETransportWellSkin = maxID + 5;
+    ETransportWellWall = maxID + 6;
+    ETransportWellPoint = maxID + 7;
 }
 
 void ProblemData::UpdateReservoirBCsForWellbores()
@@ -490,6 +494,18 @@ void ProblemData::ValidateTransport() const {
         std::cerr << "Invalid transport parameters\n";
         DebugStop();
     }
+    for (const auto &[name, saturation] : settings.initialWellWaterSaturation) {
+        int matches = 0;
+        for (const auto &well : m_Wellbore) {
+            if (well.name != name) continue;
+            if (!(well.radius > 0.) || !std::isfinite(well.radius)) DebugStop();
+            ++matches;
+        }
+        if (matches != 1 || !(saturation >= 0. && saturation <= 1.)) {
+            std::cerr << "Unknown well or invalid initial well saturation: " << name << '\n';
+            DebugStop();
+        }
+    }
     TransportPhaseViscosity(settings.waterFluid);
     TransportPhaseViscosity(settings.oilFluid);
 }
@@ -509,8 +525,14 @@ std::map<int, REAL> ProblemData::TransportBoundarySaturations() const {
     };
     for (const auto &[name, bc] : m_Reservoir.BCs)
         addBoundary(name, bc.matid);
-    for (const auto &well : m_Wellbore)
-        addBoundary(well.name, well.matidSurf);
+    for (const auto &well : m_Wellbore) {
+        if (m_Transport->initialWellWaterSaturation.count(well.name)) {
+            addBoundary(well.name + "/point_heel", well.BCs.at("point_heel").matid);
+            addBoundary(well.name + "/point_toe", well.BCs.at("point_toe").matid);
+        } else {
+            addBoundary(well.name, well.matidSurf);
+        }
+    }
 
     std::map<int, REAL> specified;
     for (const auto &[name, saturation] : overrides) {

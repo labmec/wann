@@ -38,7 +38,9 @@ public:
   struct TransportData
   {
     REAL initialWaterSaturation = 0.;
-    /// Exterior water saturation by reservoir BC name or lateral well name.
+    /// Initial Sw by well name. Entries enable 1D transport for those wells.
+    std::map<std::string, REAL> initialWellWaterSaturation;
+    /// Exterior Sw by reservoir BC name, inactive well name, or well/endpoint.
     std::map<std::string, REAL> boundaryWaterSaturation;
     RelativePermeability relativePermeability = RelativePermeability::Linear;
     std::string waterFluid = "water";
@@ -176,7 +178,10 @@ public:
   // They are initialized to -1, and will be set in the ReadJson function
   int EPressure2DSkin = -1; // material ID for the 2D pressure skin elements
   int EPressureInterface = -1; // material ID for the pressure interface elements
-  int ETransportInterface = -1; // material ID for internal transport faces
+  int ETransportInterface = -1; // reservoir internal faces
+  int ETransportWellSkin = -1;
+  int ETransportWellWall = -1;
+  int ETransportWellPoint = -1;
   int EHDivBoundInterface = -1; // material ID for the HDiv boundary interface elements
 
 public:

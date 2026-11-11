@@ -12,12 +12,24 @@
 #include <stdexcept>
 #include <vector>
 
-int main() {
+int main(int argc, char* argv[]) {
     try {
         TPZLogger::InitializePZLOG();
         ProblemData problem;
         problem.ReadJson("ozkanTransport.json");
         const auto& well = problem.m_Wellbore[0];
+        const std::string mode = argc == 2 ? argv[1] : "";
+        if (argc > 2 || (argc == 2 && mode != "--reservoir-only" && mode != "--water-filled-well"))
+            throw std::invalid_argument("Usage: ozkanTransport [--reservoir-only | --water-filled-well]");
+        const bool reservoirOnly = mode == "--reservoir-only";
+        auto& settings = *problem.m_Transport;
+        if (reservoirOnly) {
+            settings.initialWellWaterSaturation.clear();
+            settings.boundaryWaterSaturation.erase(well.name + "/point_heel");
+            settings.boundaryWaterSaturation[well.name] = 1.;
+        } else if (mode == "--water-filled-well") {
+            settings.initialWellWaterSaturation.at(well.name) = 1.;
+        }
         const REAL injectionRate = well.BCs.at("point_heel").value;
 
         std::unique_ptr<TPZGeoMesh> geometry(TPZWannGeometryTools::CreateGeoMesh(&problem));
@@ -37,7 +49,7 @@ int main() {
         analysis.Initialize(flow.get(), problem);
         const auto& algebraic = analysis.fAlgebraicTransport;
         REAL wellInflow = 0.;
-        for (REAL flux : algebraic.fInterfaceData.at(well.matidSurf).fIntegralFlux)
+        for (REAL flux : algebraic.fInterfaceData.at(reservoirOnly ? well.matidSurf : problem.ETransportWellWall).fIntegralFlux)
             wellInflow -= flux;
         const REAL imbalance = TPZWannTransportDataTransfer::MaxCellFluxImbalance(algebraic);
         std::cout << "Well surface net inflow = " << wellInflow

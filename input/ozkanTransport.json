@@ -71,8 +71,11 @@
   ],
   "TransportData": {
     "initialWaterSaturation": 0.0,
+    "initialWellWaterSaturation": {
+      "curve_wellbore": 0.0
+    },
     "boundaryWaterSaturation": {
-      "curve_wellbore": 1.0
+      "curve_wellbore/point_heel": 1.0
     },
     "relativePermeability": "quadratic",
     "waterFluid": "water",
@@ -102,7 +105,7 @@
       "printNewtonProgress": true
     },
     "NewtonTransport": {
-      "maxIterations": 30,
+      "maxIterations": 100,
       "res_tol": 1e-7,
       "corr_tol": 1e-6,
       "printNewtonProgress": true

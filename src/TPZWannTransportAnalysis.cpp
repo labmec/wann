@@ -68,8 +68,9 @@ void TPZWannTransportAnalysis::Assemble() {
     for (const auto& group : fAlgebraicTransport.fInterfaceData) {
         const int matid = group.first;
         const auto& faces = group.second;
-        const REAL exteriorFractionalFlow = matid == fData->ETransportInterface
-            ? 0. : fData->FractionalFlow(boundaries.at(matid)).first;
+        const auto boundary = boundaries.find(matid);
+        const REAL exteriorFractionalFlow = boundary == boundaries.end()
+            ? 0. : fData->FractionalFlow(boundary->second).first;
         for (size_t face = 0; face < faces.fIntegralFlux.size(); face++) {
             const auto lr = faces.fLeftRightVolIndex[face];
             const int64_t left = cells.fEqNumber[lr.first];
@@ -83,6 +84,8 @@ void TPZWannTransportAnalysis::Assemble() {
                 add(left, left, ek(0, 0)); add(left, right, ek(0, 1));
                 add(right, left, ek(1, 0)); add(right, right, ek(1, 1));
             } else {
+                if (boundary == boundaries.end())
+                    throw std::logic_error("Missing exterior saturation for transport face");
                 TPZFNMatrix<1, STATE> ek(1, 1, 0.), ef(1, 1, 0.);
                 fAlgebraicTransport.ContributeBC(face, matid, dt, exteriorFractionalFlow, ek, ef);
                 rhs(left, 0) += ef(0, 0);
@@ -128,9 +131,18 @@ void TPZWannTransportAnalysis::RunTimeStep() {
             for (REAL alpha = 1.; alpha >= 1.e-8; alpha *= 0.5) {
                 TPZFMatrix<STATE> trial = iterate + alpha * correction;
                 bool bounded = true;
-                for (int64_t i = 0; i < trial.Rows(); i++)
-                    if (!std::isfinite(trial(i, 0)) || trial(i, 0) < -1.e-12 || trial(i, 0) > 1. + 1.e-12)
+                for (int64_t i = 0; i < trial.Rows(); i++) {
+                    REAL& sw = trial(i, 0);
+                    if (!std::isfinite(sw)) {
                         bounded = false;
+                        continue;
+                    }
+                    // Keep active bounds fixed when the correction points outward.
+                    // Roundoff in the frozen flow can otherwise stall the whole step.
+                    if (iterate(i, 0) >= 1. && sw > 1.) sw = 1.;
+                    if (iterate(i, 0) <= 0. && sw < 0.) sw = 0.;
+                    if (sw < -1.e-12 || sw > 1. + 1.e-12) bounded = false;
+                }
                 if (!bounded) continue;
                 load(trial);
                 Assemble();
@@ -163,4 +175,15 @@ void TPZWannTransportAnalysis::PostProcessTimeStep(const std::string& filename, 
     vtk.SetStep(step);
     vtk.SetNThreads(0);
     vtk.Do();
+
+    std::set<int> wellIds;
+    for (const auto& well : fData->m_Wellbore)
+        if (fData->m_Transport->initialWellWaterSaturation.count(well.name))
+            wellIds.insert(well.matid);
+    if (!wellIds.empty()) {
+        TPZVTKGenerator wellVtk(Mesh(), wellIds, fields, filename + "-well", 0, safeCheck);
+        wellVtk.SetStep(step);
+        wellVtk.SetNThreads(0);
+        wellVtk.Do();
+    }
 }
