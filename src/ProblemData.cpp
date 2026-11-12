@@ -233,15 +233,9 @@ void ProblemData::ReadJson(std::string file)
     if (postproc.find("reservoir_vtk") == postproc.end())
         DebugStop();
     m_PostProc.reservoir_vtk = postproc["reservoir_vtk"];
-    if (postproc.find("training_data") == postproc.end())
-        DebugStop();
-    m_PostProc.training_data = postproc["training_data"];
     if (postproc.find("vtk_resolution") == postproc.end())
         DebugStop();
     m_PostProc.vtk_resolution = postproc["vtk_resolution"];
-    if (postproc.find("training_resolution") == postproc.end())
-        DebugStop();
-    m_PostProc.training_resolution = postproc["training_resolution"];
     if (postproc.find("nthreads") != postproc.end())
         m_PostProc.nthreads = postproc["nthreads"];
     else
@@ -423,9 +417,7 @@ void ProblemData::Print(std::ostream &out)
     out << "Post Processing Data:\n";
     out << "Wellbore VTK: " << m_PostProc.wellbore_vtk << std::endl;
     out << "Reservoir VTK: " << m_PostProc.reservoir_vtk << std::endl;
-    out << "Training Data: " << m_PostProc.training_data << std::endl;
     out << "VTK Resolution: " << m_PostProc.vtk_resolution << std::endl;
-    out << "Training Data Resolution: " << m_PostProc.training_resolution << std::endl;
     out << "Number of threads: " << m_PostProc.nthreads << std::endl;
     out << "Verbosity Level: " << m_PostProc.verbosityLevel << std::endl
         << std::endl;

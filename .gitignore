@@ -33,7 +33,6 @@
 
 # VScode
 build
-pytorch/__pycache__
 .vscode
 
 # Python cache files
@@ -43,8 +42,10 @@ __pycache__/
 # config files
 src/dirs_config.h
 
-#training data
-training/training_data.txt
+# Generated intermediate Gmsh meshes
+/meshing/nearWell.msh
+/meshing/reservoir.msh
+/meshing/combined.msh
 
 # Generated Doxygen documentation
 /docs/api/

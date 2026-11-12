@@ -6,7 +6,6 @@
 #pragma once
 
 #include "ProblemData.h"
-#include <TPZGeoMeshTools.h>
 #include <TPZVTKGenerator.h>
 #include <pzvec_extras.h>
 #include <pzcompel.h>
@@ -17,18 +16,11 @@
 /**
  * @brief VTK export, well inflow integration, and productivity calculations.
  * Uses the current computational solution and reloads geometric references where
- * needed. GenerateTrainingData() is a legacy first-well, x-aligned mixed-only
- * exporter; WriteVTKs() avoids that legacy path.
+ * needed.
  */
 class TPZWannPostProcTools {
 
 public:
-  /**
-   * @brief Append x, inferred div(Q)/(farfield-pressure), and radius to TRAININGDIR.
-   * @note Legacy mixed-only first-well exporter; assumes x alignment, a specific
-   * circumferential sampling line, and a well BC named surface_farfield.
-   */
-  static void GenerateTrainingData(TPZGeoMesh* gmesh, ProblemData* SimData);
   /**
    * @brief Export pressure, axial flow, divergence, and pressure gradient for each well.
    * Names include Hdiv/H1 and a zero-based well index.
@@ -49,14 +41,9 @@ public:
    */
   static void WriteReservoirVTK(TPZCompMesh* cmesh, ProblemData* SimData);
   /**
-   * @brief Write reservoir and per-well VTK files without invoking legacy training export.
+   * @brief Write reservoir and per-well VTK files for the solved mesh.
    */
   static void WriteVTKs(TPZCompMesh* cmesh, ProblemData* SimData);
-  /**
-   * @brief Reload computational references, write VTKs, and invoke GenerateTrainingData().
-   * Inherits the legacy exporter restrictions; use WriteVTKs() for VTK-only output.
-   */
-  static void PostProcessAllData(TPZCompMesh* cmesh, TPZGeoMesh* gmesh, ProblemData* SimData);
   /**
    * @brief Integrate signed reservoir normal flux into equal-length heel-to-toe bins.
    * @param[in] cmesh Solved mixed or H1 computational mesh used to evaluate reservoir flux.

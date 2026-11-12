@@ -42,79 +42,6 @@ bool FindWellEndpoints(TPZGeoMesh* mesh, int heelId, int toeId,
 }
 }
 
-// TODO: deprecated. Must be extended to support multiple wellbores.
-// Also, the current implementation assumes x-axis aligned wellbore.
-
-void TPZWannPostProcTools::GenerateTrainingData(TPZGeoMesh* gmesh, ProblemData* SimData) {
-  auto& PostProcData = SimData->m_PostProc;
-  std::string filename = PostProcData.training_data;
-  std::string path = std::string(TRAININGDIR) + "/" + filename;
-  std::ofstream out(path, std::ios::app);
-
-  // TODO: generalize for multiple wellbores
-  int wellMatId = SimData->m_Wellbore[0].matid;
-
-  const int npts = PostProcData.training_resolution + 1;
-
-  // TODO: generalize for multiple wellbores
-  auto& WellboreData = SimData->m_Wellbore[0];
-  const REAL dx = WellboreData.length / (npts - 1);
-  const REAL ywell = -WellboreData.radius /sqrt(2.), zwell = WellboreData.radius/sqrt(2.);
-
-  int64_t InitialElIndex = -1;
-  for (auto gel : gmesh->ElementVec()) {
-    if (gel && gel->MaterialId() == wellMatId) {
-      InitialElIndex = gel->Index();
-      break;
-    }
-  }
-
-  TPZManVector<REAL,3> xvec(3, 0.);
-  xvec[1] = ywell + WellboreData.eccentricity[1];
-  xvec[2] = zwell + WellboreData.eccentricity[2];
-  for (int i = 0; i < npts; i++) {
-    const REAL x = WellboreData.eccentricity[0] + i * dx;
-    TPZManVector<REAL,3> qsi(1, 0.0);    
-    xvec[0] = x;
-    TPZGeoEl* gel = TPZGeoMeshTools::FindElementByMatId(gmesh, xvec, qsi, InitialElIndex, {wellMatId});
-    if (!gel) {
-      std::cout << "Element not found for x = " << x << std::endl;
-      DebugStop();
-    }
-#ifdef PZDEBUG
-    TPZManVector<REAL, 3> xcheck(3);
-    gel->X(qsi, xcheck);
-    REAL distance = dist(xvec, xcheck);
-    if(distance > 1.e-8){
-      DebugStop(); // check if the element found is the correct one
-    }
-#endif
-    // Now postprocess the pressure and div q of the cel reference by gel
-    TPZCompEl* cel = gel->Reference();
-    TPZMaterial* mat = cel->Material();
-    TPZWannMixedWell* wellmat = dynamic_cast<TPZWannMixedWell*>(mat);
-    if(!wellmat) DebugStop();
-    
-    const int pind = wellmat->VariableIndex("Pressure");
-    const int qind = wellmat->VariableIndex("Divergence");
-    TPZManVector<STATE, 3> output(1);
-    cel->Solution(qsi,pind,output);
-    const REAL pressure = output[0];
-    cel->Solution(qsi, qind, output);
-    const REAL divq = output[0];
-
-    // TODO: generalize for multiple wellbores
-    auto& WellboreData = SimData->m_Wellbore[0];
-    const REAL wellRad = WellboreData.radius;
-    const REAL pff = WellboreData.BCs["surface_farfield"].value;
-    const REAL K = divq / (pff - pressure);
-
-    std::cout << "x = " << x << " p = " << pressure << " divq = " << divq << " K = " << K << std::endl;
-    out << x << " " << K << " " << wellRad << std::endl;
-
-  }
-}
-
 void TPZWannPostProcTools::WriteWellboreVTK(TPZCompMesh* cmesh, ProblemData* SimData) {
   auto& PostProcData = SimData->m_PostProc;
 
@@ -272,19 +199,6 @@ void TPZWannPostProcTools::WriteVTKs(TPZCompMesh* cmesh, ProblemData* SimData) {
   WriteReservoirVTK(cmesh, SimData);
   WriteWellboreVTK(cmesh, SimData);
 }
-
-void TPZWannPostProcTools::PostProcessAllData(TPZCompMesh* cmesh, TPZGeoMesh* gmesh, ProblemData* SimData) {
-  cmesh->Reference()->ResetReference();
-  cmesh->LoadReferences();
-
-  WriteReservoirVTK(cmesh, SimData);
-  WriteWellboreVTK(cmesh, SimData);
-  GenerateTrainingData(gmesh, SimData);
-}
-
-// TODO: deprecated. Need to be extended to handle multiple wellbores and multiphysics simulations
-
-
 
 TPZVec<REAL> TPZWannPostProcTools::ComputeWellFluxes(TPZCompMesh *cmesh, ProblemData *SimData, int wellIndex, int nSegments) {
   if (wellIndex < 0 || wellIndex >= SimData->m_Wellbore.size()) {

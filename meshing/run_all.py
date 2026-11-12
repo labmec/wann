@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Run the geoNew Gmsh workflow using geometry parameters from JSON."""
+"""Generate the Ozkan mesh using geometry parameters from JSON."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ MESH_PARAMS = {
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate geoNew meshes using geometry values stored in JSON."
+        description="Generate the Ozkan mesh using geometry values stored in JSON."
     )
     parser.add_argument(
         "json_file",
@@ -115,7 +115,7 @@ def build_parameters(data: dict) -> dict[str, float]:
     well = data["WellboreData"]
     if isinstance(well, list):
         if len(well) != 1:
-            raise ValueError("geoNew currently supports exactly one well")
+            raise ValueError("The Ozkan mesh generator supports exactly one well")
         well = well[0]
     if not isinstance(well, dict):
         raise ValueError("WellboreData must be an object or a one-well array")
@@ -140,11 +140,6 @@ def build_gmsh_args(values: dict[str, float], geo_file: str, batch_mode: bool) -
 
 def run_gmsh(gmsh: str, cwd: Path, args: list[str]) -> None:
     subprocess.run([gmsh, *args], cwd=cwd, check=True)
-
-
-def build_merge_args(values: dict[str, float], geo_file: str, output_file: str) -> list[str]:
-    args = build_gmsh_args(values, geo_file, True)
-    return args
 
 
 def resolve_output_path(json_path: Path, output_file: str) -> Path:
@@ -178,51 +173,17 @@ def main() -> int:
         return 1
 
     reservoir_format = json_data["ReservoirData"]["format"]
-    if reservoir_format not in {"box", "pill", "ball", "nearWellbore"}:
-        print(f"Unsupported ReservoirData.format value: {reservoir_format}", file=sys.stderr)
+    if reservoir_format != "pill":
+        print(f"This driver generates the paper's pill-shaped reservoir. Got: {reservoir_format}", file=sys.stderr)
         return 1
 
-    output_file = json_data["MeshData"]["file"]
-    final_mesh_path = resolve_output_path(json_path, output_file)
+    final_mesh_path = resolve_output_path(json_path, json_data["MeshData"]["file"])
+    run_gmsh(args.gmsh, script_dir, build_gmsh_args(values, "reservoirPill.geo", True))
+    run_gmsh(args.gmsh, script_dir, build_gmsh_args(values, "nearWell.geo", True))
+    run_gmsh(args.gmsh, script_dir, build_gmsh_args(values, "combineMeshes.geo", True))
 
-    if reservoir_format == "nearWellbore":
-        run_gmsh(args.gmsh, script_dir, build_gmsh_args(values, "nearWellOnly.geo", True))
-
-        near_well_candidates = [
-            script_dir / "nearWell.msh",
-            json_path.parent / "nearWell.msh",
-        ]
-        for near_well_mesh_path in near_well_candidates:
-            if near_well_mesh_path.exists():
-                final_mesh_path.parent.mkdir(parents=True, exist_ok=True)
-                if final_mesh_path.exists():
-                    final_mesh_path.unlink()
-                near_well_mesh_path.replace(final_mesh_path)
-                break
-    else:
-        if reservoir_format == "box":
-            reservoir_geo = "reservoirBox.geo"
-        elif reservoir_format == "pill":
-            reservoir_geo = "reservoirPill.geo"
-        else:
-            reservoir_geo = "reservoirBall.geo"
-
-        run_gmsh(args.gmsh, script_dir, build_gmsh_args(values, reservoir_geo, True))
-        run_gmsh(args.gmsh, script_dir, build_gmsh_args(values, "nearWell.geo", True))
-        run_gmsh(args.gmsh, script_dir, build_merge_args(values, "combineMeshes.geo", output_file))
-
-        merged_candidates = [
-            script_dir / "combined.msh",
-            json_path.parent / "combined.msh",
-        ]
-        for merged_mesh_path in merged_candidates:
-            if merged_mesh_path.exists():
-                final_mesh_path.parent.mkdir(parents=True, exist_ok=True)
-                if final_mesh_path.exists():
-                    final_mesh_path.unlink()
-                merged_mesh_path.replace(final_mesh_path)
-                break
-
+    final_mesh_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(script_dir / "combined.msh"), final_mesh_path)
     return 0
 
 

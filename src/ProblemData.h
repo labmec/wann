@@ -103,9 +103,7 @@ class ProblemData
   {
     std::string wellbore_vtk;
     std::string reservoir_vtk;
-    std::string training_data;
     int vtk_resolution;
-    int training_resolution;
     int verbosityLevel;
     int nthreads;
   };

@@ -67,9 +67,7 @@
   "PostProcData": {
     "wellbore_vtk": "OzkanWell",
     "reservoir_vtk": "OzkanReservoir",
-    "training_data": "training_data.txt",
     "vtk_resolution": 0,
-    "training_resolution": 10, //number of subdivisions to generate training data
     "nthreads": 4,
     "verbosityLevel": 1
   },

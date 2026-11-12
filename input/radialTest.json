@@ -68,9 +68,7 @@
   "PostProcData": {
     "wellbore_vtk": "RadialFlowWellbore",
     "reservoir_vtk": "RadialFlowReservoir",
-    "training_data": "training_data.txt",
     "vtk_resolution": 0,
-    "training_resolution": 10,
     "nthreads": 6,
     "verbosityLevel": 1
   },

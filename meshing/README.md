@@ -1,12 +1,14 @@
 # Mesh generation
 
+## Ozkan mesh
+
 Run the driver with the simulation JSON:
 
 ```sh
-python3 geoNew/run_all.py ../input/ozkan1999.json
+python3 meshing/run_all.py ../input/ozkan1999.json
 ```
 
-Relative JSON paths are resolved against `geoNew`, regardless of the current
+Relative JSON paths are resolved against `meshing`, regardless of the current
 working directory. With no argument, the driver uses `input/ozkan1999.json`.
 The final mesh is written to `MeshData.file`, relative to the JSON directory.
 
@@ -28,9 +30,17 @@ Physical tags are supplied through `-setnumber` to the shared `params.geo`:
 
 The required IDs must be distinct positive integers. Both intermediate meshes
 receive the same reservoir and cap-rock IDs, so merging preserves these groups.
-All four formats (`box`, `pill`, `ball`, `nearWellbore`) use these parameters.
+The driver generates the pill-shaped reservoir used by the Ozkan experiments.
 
-Older JSON files without the required material IDs must be updated before use.
-Direct execution of the parameterized `.geo` files requires supplying the tag
-parameters; missing tags produce an error. `reservoirBoxStruct.geo` is a standalone
-mesh experiment and is not called by the driver.
+Regenerate the adaptive refinement history whenever you generate a new Ozkan
+mesh. The history refers to geometric element indices in the original mesh.
+
+## Radial mesh
+
+From the repository root, run the radial Gmsh script from the `meshing` directory.
+
+```sh
+(cd meshing && gmsh radialTest.geo -)
+```
+
+The script writes `input/radialTest.msh`.

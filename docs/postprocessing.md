@@ -18,9 +18,13 @@ prefix and formulation suffix. It selects dimension three and passes the
 exporter, rather than a generic dimension-independent material-output function.
 Both exporters use the configured VTK resolution and post-processing thread count.
 
-`WriteVTKs()` calls these two routines. `PostProcessAllData()` first reloads
-references, writes both VTK outputs, and then invokes the legacy training exporter.
-The latter imposes additional restrictions and is not part of `WriteVTKs()`.
+`WriteVTKs()` calls both exporters.
+
+## Well profiles for the Ozkan comparison
+
+`WriteWellProfilesCSV()` samples the mixed well solution along the normalized
+heel-to-toe coordinate. It exports flow magnitude in STB/day, dimensionless inflow
+magnitude, and far-field pressure drop in psi.
 
 ## Segmented reservoir inflow
 
@@ -61,19 +65,3 @@ local side one, then overwrites the stored flow and pressure for every matching
 element. The returned value is therefore not guaranteed to be a heel-only value
 and can depend on element order. There is no explicit zero-pressure-difference
 check. These limitations should be considered when interpreting the diagnostic.
-
-## Legacy training output
-
-`GenerateTrainingData()` appends rows to `TRAININGDIR / training_data`:
-
-```text
-x  inferred_coefficient  well_radius
-```
-
-It samples `training_resolution + 1` points along a fixed circumferential line of
-the **first** x-aligned well and expects mixed-well computational references. It
-computes `inferred_coefficient = DivFlux / (farfield pressure - well pressure)`
-using a well BC named `surface_farfield`. The current parser does not guarantee
-that every input has that well BC. This method does not support multiple wells,
-general axis orientation, or H1 well export, and has no explicit zero-denominator
-check. Calling `PostProcessAllData()` inherits these restrictions.

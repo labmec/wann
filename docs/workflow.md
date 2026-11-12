@@ -15,7 +15,7 @@ JSON or conversions can also throw through the JSON library.
 | `ReservoirData` | Domain metadata; scalar permeability replicated into three diagonal entries or an array of exactly three; geometry dimensions and porosity |
 | `FluidData` | Name, viscosity, density; accepts one object or an array |
 | `MeshData` | Mesh filename, custom/uniform/directional refinement requests, and cylindrical-map flag |
-| `PostProcData` | VTK/training names and resolutions; optional thread count/verbosity default to zero |
+| `PostProcData` | VTK names and resolution; optional thread count/verbosity default to zero |
 | `NumericsData` | Threads, iteration/tolerance settings, orders, and pressure scaling; the object itself is required |
 
 The constructor only sizes the reservoir permeability vector and reserves boundary
@@ -147,10 +147,6 @@ TPZMultiphysicsCompMesh *mesh =
 delete mesh;
 delete geometry;
 ```
-
-This is a library lifecycle example, not a complete reproduction of every driver:
-`twoWells.cpp` also applies and reverts its own well-BC sign transformation. Choose
-BC signs for the material and geometric orientation being used.
 
 `Initialize()` chooses threaded MKL sparse assembly when enabled, or skyline
 assembly otherwise. It gathers type-1 BC IDs for mixed meshes or type-0 IDs for H1,
