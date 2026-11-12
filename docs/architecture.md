@@ -22,7 +22,7 @@ this does not make the entire coupled geometry pipeline dimension-independent.
 | `TPZWannMixedWell` | Axial flow/pressure well law with laminar/turbulent friction and optional dual functional | Mixed mesh builder, analysis |
 | `TPZWannAnalysis` | Initialize/filter essential boundary equations; run Newton updates and diagnostics | Computational mesh, `ProblemData`, well flags |
 | `TPZWannPostProcTools` | Export VTK, integrate reservoir flux into well segments, calculate productivity | Solved meshes, material outputs |
-| `TPZWannAdaptivityTools` | Historical error estimation, marking, compatibility, and refinement experiments | Old configuration API; outside the current library build |
+| `TPZWannAdaptivityTools` | Prager–Synge error estimation and well-compatible refinement | Used by `adaptiveRefinement` |
 
 ## Typical flow
 
@@ -86,8 +86,7 @@ independent analyses.
 ## Build boundaries
 
 The root CMake file creates `WANN_lib` and links it to `NeoPZ::pz`. `src/CMakeLists.txt`
-collects source files directly in `src/`; its glob is not recursive. Consequently,
-`src/needRefactor/TPZWannAdaptivityTools.cpp` is not compiled into that library.
+collects source files directly in `src/`, including `TPZWannAdaptivityTools.cpp`.
 The bundled JSON header is included by configuration parsing; it is not a WANN
 class to maintain or document locally. `dirs_config.h` is generated from
 `dirs_config.h.in` during configuration.

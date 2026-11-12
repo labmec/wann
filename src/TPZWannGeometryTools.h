@@ -32,7 +32,7 @@ public:
    * @brief Import, verify, add coupling surfaces, and order well node IDs.
    * @param[in] simData Populated simulation configuration.
    * @return Newly allocated geometry mesh; caller manages its lifetime.
-   * Cylindrical conversion is optional; refinement is not invoked by this factory.
+   * Optionally convert to cylindrical geometry and replay the adaptive refinement history.
    */
   static TPZGeoMesh* CreateGeoMesh(ProblemData* simData);
   /**

@@ -324,7 +324,7 @@ void ProblemData::UpdateReservoirBCsForWellbores()
         toeBC.matid = wellbore.matidToeSurf;
         toeBC.type = 1; // Neumann BC
         toeBC.value = 0.0; // No flux
-        m_Reservoir.BCs[toeBCName] = toeBC;
+        if (toeBC.matid >= 0) m_Reservoir.BCs[toeBCName] = toeBC;
 
         // Add no flux BC for the heel surface
         std::string heelBCName = "no_flux_heel_" + wellbore.name;
@@ -332,7 +332,7 @@ void ProblemData::UpdateReservoirBCsForWellbores()
         heelBC.matid = wellbore.matidHeelSurf;
         heelBC.type = 1; // Neumann BC
         heelBC.value = 0.0; // No flux
-        m_Reservoir.BCs[heelBCName] = heelBC;
+        if (heelBC.matid >= 0) m_Reservoir.BCs[heelBCName] = heelBC;
     }
 }
 

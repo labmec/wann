@@ -6,22 +6,9 @@
 #include "TPZWannGeometryTools.h"
 #include "TPZWannApproxTools.h"
 #include "TPZWannPostProcTools.h"
-#include "TPZWannAdaptivityTools.h"
-#include <TPZLinearAnalysis.h>
-#include <TPZSSpStructMatrix.h>
-#include <pzskylstrmatrix.h>
-#include <pzstepsolver.h>
-#include <TPZAnalyticSolution.h>
 #include "TPZWannAnalysis.h"
 
-using namespace std;
-
 int main(int argc, char *argv[]) {
-  
-  TLaplaceExample1 exact; // Global variable to be used in the material objects
-  exact.fDimension = 3;
-  exact.fExact = TLaplaceExample1::ENone;
-
   std::string jsonfile = "ozkan1999.json";
 
   if (argc > 2) {
@@ -35,8 +22,8 @@ int main(int argc, char *argv[]) {
     jsonfile += ".json";
   }
 
-  std::cout << "Using json file: " << jsonfile << std::endl;
   std::cout << "\n--------- Starting simulation ---------" << std::endl;
+  std::cout << "Using json file: " << jsonfile << std::endl;
 
 #ifdef PZ_LOG
   TPZLogger::InitializePZLOG();
@@ -46,89 +33,69 @@ int main(int argc, char *argv[]) {
   ProblemData SimData;  
   SimData.ReadJson(jsonfile);
 
-  // Read original geometric mesh and perform the refinement process 
-  // described in refinementProcess.txt file
-  TPZGeoMesh* gmesh = TPZWannGeometryTools::CreateGeoMesh(&SimData);
-  std::ofstream out("gmeshWannFinal.vtk");
-  TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
-  
+  TPZGeoMesh* gmesh = nullptr;
+  TPZMultiphysicsCompMesh* cmeshMixed = nullptr;
+  TPZCompMesh* cmeshH1 = nullptr;
 
-  // H(div) Simulation
+  // Read the geometric mesh
+  gmesh = TPZWannGeometryTools::CreateGeoMesh(&SimData);
 
-  // For some reason we have to change the sign of boundary condition 
-  // when using cylindrical map. TODO: fix it
-  if (SimData.m_Mesh.ToCylindrical) {
-    SimData.m_Wellbore.BCs["point_heel"].value *= -1;
-  }
-
-  TPZMultiphysicsCompMesh* cmeshMixed = TPZWannApproxTools::CreateMultiphysicsCompMesh(gmesh, &SimData, &exact);
+  // Mixed simulation
+  cmeshMixed = TPZWannApproxTools::CreateMixedCompMesh(gmesh, &SimData);
   TPZWannAnalysis anMixed(cmeshMixed, RenumType::EMetis);
   anMixed.SetProblemData(&SimData);
-  anMixed.SetRescaling(false); // Enable matrix rescaling to improve conditioning
   anMixed.Initialize();
   anMixed.NewtonIteration();
 
-  // Reverse sign changes
-  if (SimData.m_Mesh.ToCylindrical) {
-    SimData.m_Wellbore.BCs["point_heel"].value *= -1;
-  }
-
-  // H1 Simulation
-  TPZCompMesh* cmeshH1 = TPZWannApproxTools::CreateH1CompMesh(gmesh, &SimData, &exact);
+  // H1 simulation for comparison
+  cmeshH1 = TPZWannApproxTools::CreateH1CompMesh(gmesh, &SimData);
   TPZWannAnalysis anH1(cmeshH1, RenumType::EMetis);
   anH1.SetProblemData(&SimData);
-  anH1.SetRescaling(false); // Enable matrix rescaling to improve conditioning
   anH1.Initialize();
   anH1.NewtonIteration();
 
-  std::cout << "\n--------- Simulation finished ---------" << std::endl;
-  std::cout << "\n--------- Starting post-processing ---------" << std::endl;
+  // --- Post-processing ---
 
+  // Export VTK files for both simulations
   TPZWannPostProcTools::WriteVTKs(cmeshMixed, &SimData);
   TPZWannPostProcTools::WriteVTKs(cmeshH1, &SimData);
 
-  // Integrated flux along segments of the well
-  TPZVec<REAL> segmentPoints = {0.0, SimData.m_Wellbore.length};
+  // For mixed results, export CSV files with well profiles (flow, inflow, pressure drop)
+  TPZWannPostProcTools::WriteWellProfilesCSV(cmeshMixed, SimData, 4);
 
-  TPZVec<REAL> fluxes = TPZWannPostProcTools::ComputeWellFluxes(cmeshMixed, &SimData, segmentPoints);
-  TPZVec<REAL> fluxesH1 = TPZWannPostProcTools::ComputeWellFluxes(cmeshH1, &SimData, segmentPoints);
+  // Compute and display well fluxes and productivity indices
+  for (int iw = 0; iw < SimData.m_Wellbore.size(); ++iw) {
+    const auto &well = SimData.m_Wellbore[iw];
+    std::cout << "\nWell " << well.name << '\n';
+    const auto mixedFlux = TPZWannPostProcTools::ComputeWellFluxes(cmeshMixed, &SimData, iw, 1);
+    const auto h1Flux = TPZWannPostProcTools::ComputeWellFluxes(cmeshH1, &SimData, iw, 1);
+    std::cout << "Integrated well flux H(div): " << mixedFlux[0] << '\n'
+              << "Integrated well flux H1: " << h1Flux[0] << '\n';
 
-  std::cout << "Integrated well fluxes H(div): ";
-  REAL inflow = 0.0;
-  for (int iseg = 0; iseg < fluxes.size(); iseg++) {
-    std::cout << fluxes[iseg] << " ";
-    inflow += fluxes[iseg];
+    const auto &heel = well.BCs.at("point_heel");
+    const auto &toe = well.BCs.at("point_toe");
+    if (heel.type == 1 && toe.type == 1) {
+      const REAL expected = toe.value - heel.value;
+      std::cout << "Fluid loss H(div): " << mixedFlux[0] - expected << '\n'
+                << "Fluid loss H1: " << h1Flux[0] - expected << '\n';
+    }
+
+    std::cout << "Productivity Index H(div): "
+              << TPZWannPostProcTools::ProductivityIndex(cmeshMixed, &SimData, iw) << '\n'
+              << "Productivity Index H1: "
+              << TPZWannPostProcTools::ProductivityIndex(cmeshH1, &SimData, iw) << '\n';
   }
-  std::cout << std::endl;
-  std::cout << "Fluid loss H(div): " << std::abs(inflow) - std::abs(SimData.m_Wellbore.BCs["point_heel"].value) << std::endl;
-
-  std::cout << "Integrated well fluxes H1: ";
-  REAL inflowH1 = 0.0;
-  for (int iseg = 0; iseg < fluxesH1.size(); iseg++) {
-    std::cout << fluxesH1[iseg] << " ";
-    inflowH1 += fluxesH1[iseg];
-  }
-  std::cout << std::endl;
-  std::cout << "Fluid loss H1: " << std::abs(inflowH1) - std::abs(SimData.m_Wellbore.BCs["point_heel"].value) << std::endl;
-
-  // Computing productivity index
-  REAL PI = TPZWannPostProcTools::ProductivityIndex(cmeshMixed, &SimData);
-  REAL PI_H1 = TPZWannPostProcTools::ProductivityIndex(cmeshH1, &SimData);
-
-  std::cout << "Productivity Index H(div): " << PI << std::endl;
-  std::cout << "Productivity Index H1: " << PI_H1 << std::endl;
-
-  std::cout << "\n--------- Post-processing finished ---------" << std::endl;
-
+  
   // --- Clean up ---
 
-  // Remove dependencies before deleting H1 mesh
-  int ncon = cmeshH1->NConnects();
-  for (int i = 0; i < ncon; ++i) {
-    cmeshH1->ConnectVec()[i].RemoveDepend();
-  }
-
+  // Delete H(div) meshes. The multiphysics mesh owns the atomic meshes, so we delete them first.
+  const auto atomicMeshes = cmeshMixed->MeshVector();
+  for (auto* mesh : atomicMeshes) delete mesh;
   delete cmeshMixed;
+
+  // Delete H1 mesh. Delete the connect dependencies first to avoid warnings
+  for (auto& connect : cmeshH1->ConnectVec()) connect.RemoveDepend();
   delete cmeshH1;
-  delete gmesh;
+
+  return 0;
 }

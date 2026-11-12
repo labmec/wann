@@ -8,19 +8,24 @@
   },
   "WellboreData": {
     "name": "curve_wellbore",
-    "pOrder": 2,
+    "matid": 1,
+    "matidSurf": 2,
+    "matidToeSurf": 3,
+    "matidHeelSurf": 4,
     "radius": 0.0762,
     "length": 800.1,
-    "height": 3.3528,
+    "height": 3.5052,
     "eccentricity": [0.0, 0.0, 0.0],
     "BCs": [
       {
         "name": "point_heel",
+        "matid": 5,
         "type": 1, //dirichlet:0    neumann:1
         "value": -0.0552
       },
       {
         "name": "point_toe",
+        "matid": 6,
         "type": 1,
         "value": 0.0
       }
@@ -29,30 +34,22 @@
   "ReservoirData": {
     "name": "volume_reservoir",
     "format": "pill",
-    "perm": [1.0, 1.0, 0.176469957], // m^2
+    "perm": [8.38885e-12, 8.38885e-12, 1.48038e-12], // m^2
     "porosity": 1.0,
-    "pOrder": 1,
+    "matid": 7,
     "height": 21.9456,
     "width": 1692.2496,
     "length": 4000.0,
     "BCs": [
       {
         "name": "surface_farfield",
+        "matid": 8,
         "type": 0,
-        "value": 0.0
+        "value": 1.58579e7 // Pa
       },
       {
         "name": "surface_cap_rock",
-        "type": 1,
-        "value": 0.0
-      },
-      {
-        "name": "surface_wellbore_heel",
-        "type": 1,
-        "value": 0.0
-      },
-      {
-        "name": "surface_wellbore_toe",
+        "matid": 9,
         "type": 1,
         "value": 0.0
       }
@@ -60,7 +57,7 @@
   },
   "FluidData": {
     "name": "oil",
-    "viscosity": 1.0, // Pa.s
+    "viscosity": 1.43e-3, // Pa.s
     "density": 881.0 // kg/m^3
   },
   "PostProcData": {
@@ -73,6 +70,10 @@
     "verbosityLevel": 1
   },
   "NumericsData": {
+    "reservoirPorder": 1,
+    "wellPorder": 2,
+    "refPressure": 1.58579e7, // Far-field pressure in Pa
+    "pressureScale": 5.866328671328671e-9, // Horizontal permeability divided by physical viscosity
     "nthreads": 15,
     "maxIterations" : 10,
     "res_tol": 1e-6,

@@ -9,6 +9,7 @@
 //
 
 #include "TPZWannAnalysis.h"
+#include "TPZWannStructMatrix.h"
 #include "TPZWannMixedWell.h"
 #include "TPZWannH1Well.h"
 #include "pzmultiphysicscompel.h"
@@ -42,11 +43,7 @@ int TPZWannAnalysis::GetNumberOfIterations() { return fKiteration; }
 
 void TPZWannAnalysis::Initialize()
 {
-#ifdef PZ_USING_MKL
-    TPZSSpStructMatrix<STATE> matrix(fCompMesh);
-#else
-    TPZSkylineStructMatrix<STATE> matrix(fCompMesh);
-#endif
+    TPZWannStructMatrix matrix(fCompMesh);
     int n_threads = fSimData->m_Numerics.nthreads;
     matrix.SetNumThreads(n_threads);
     SetStructuralMatrix(matrix);

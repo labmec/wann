@@ -16,7 +16,7 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMixedCompMesh(TPZGeoMesh *gme
   const int dim = gmesh->Dimension();
 
   TPZHDivApproxCreator hdivCreator(gmesh);
-  hdivCreator.ProbType() = ProblemType::EDarcy;
+  hdivCreator.SetProbType(ProblemType::EDarcy);
   hdivCreator.SetDefaultOrder(SimData->m_Numerics.reservoirPorder);
   hdivCreator.SetShouldCondense(false); // TODO: use Fast condensed elements for future implementations
 
@@ -92,6 +92,8 @@ TPZMultiphysicsCompMesh *TPZWannApproxTools::CreateMixedCompMesh(TPZGeoMesh *gme
 
   // Add material for interface elements (has to be done after autobuild so it does not create the interface elements automatically)
   TPZLagrangeMultiplierCS<STATE> *matinterface = new TPZLagrangeMultiplierCS<STATE>(SimData->EPressureInterface, dim - 1, 1);
+  // Newton needs the current interface contribution in the residual as well as its tangent.
+  matinterface->SetLinear(false);
   cmesh->InsertMaterialObject(matinterface);
   AddInterfaceElements(cmesh, SimData, lagmultilevel);
 

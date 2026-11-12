@@ -35,6 +35,15 @@ public:
    */
   static void WriteWellboreVTK(TPZCompMesh* cmesh, ProblemData* SimData);
   /**
+   * @brief Write paper-format x,Curve1 CSVs from the solved mixed well elements.
+   * Exports flow magnitude in STB/day, inflow normalized by the heel rate, and
+   * far-field pressure drop in psi against normalized heel-to-toe distance.
+   * Interior endpoints use the toe-side trace. A zero heel rate leaves the
+   * dimensionless inflow column empty.
+   */
+  static bool WriteWellProfilesCSV(TPZMultiphysicsCompMesh* cmesh, const ProblemData& data,
+                                   int subdivisionsPerElement = 4);
+  /**
    * @brief Export reservoir Pressure/Flux for dimension 3 using configured output
    * name, resolution, threads, and ToCylindrical safety-check flag.
    */
@@ -54,17 +63,16 @@ public:
    * @param[in] SimData Simulation configuration defining the well, reservoir IDs, and integration order.
    * @param[in] wellIndex Zero-based index of the selected well.
    * @param[in] nSegments Positive number of bins.
-   * @return One integrated flux per bin, oriented by the geometric face normal.
+   * @return One integrated flux per bin, positive from the reservoir into the well.
    * Entire faces belong to the bin containing their axial centroid; faces are not
-   * split at bin boundaries. Uses meshvec[0] for mixed flux or H1 variable 7.
+   * split at bin boundaries.
    */
   static TPZVec<REAL> ComputeWellFluxes(TPZCompMesh* cmesh, ProblemData* SimData, int wellIndex, int nSegments);
   /**
    * @brief Compute endpoint flow divided by signed endpoint-minus-farfield pressure
    * difference, unscale pressure, and convert to STB/(day psi). Requires named
    * point_heel/point_toe well BCs and reservoir surface_farfield BC.
-   * @note The current loop accepts heel or toe endpoints and overwrites values;
-   * the result can depend on element order. No zero-pressure-difference check exists.
+   * @note The well flow and pressure are evaluated at the heel.
    */
   static REAL ProductivityIndex(TPZCompMesh* cmesh, ProblemData* SimData, int wellIndex);
 };

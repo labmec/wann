@@ -37,7 +37,7 @@ int main() {
       TPZGeoElBC toe(TPZGeoElSide(lines[w], 1-w), -11-2*w);
     }
     TPZHDivApproxCreator creator(&geometry);
-    creator.ProbType() = ProblemType::EDarcy;
+    creator.SetProbType(ProblemType::EDarcy);
     creator.SetDefaultOrder(1);
     creator.SetShouldCondense(false);
     std::set<int> bcIds;

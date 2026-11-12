@@ -41,6 +41,22 @@ TPZGeoMesh* TPZWannGeometryTools::CreateGeoMesh(ProblemData* simData) {
   // Guarantee that nodes in the wellbore surfaces are in a increasing order along the wellbore axis
   OrderWellIds(gmesh, simData);
 
+  if (simData->m_Mesh.customRefinement != 0) {
+    // The adaptive target records indices on the mesh with coupling elements in place.
+    const std::string& meshFile = simData->m_Mesh.file;
+    const std::string history = std::string(INPUTDIR) + "/" +
+                                meshFile.substr(0, meshFile.find_last_of('.')) + "_refProcess.txt";
+    std::cout << "Replaying mesh refinement from " << history << std::endl;
+    gRefDBase.InitializeAllUniformRefPatterns();
+    RefineFromFile(gmesh, history);
+    OrderWellIds(gmesh, simData);
+  } else if (simData->m_Mesh.NumUniformRef > 0) {
+    std::cout << "Performing " << simData->m_Mesh.NumUniformRef << " uniform refinements" << std::endl;
+    TPZCheckGeom checkgeom(gmesh);
+    checkgeom.UniformRefine(simData->m_Mesh.NumUniformRef);
+    OrderWellIds(gmesh, simData);
+  }
+
   if (simData->m_PostProc.verbosityLevel > 0) {
     std::ofstream out("gmeshWannFinal.vtk");
     TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
@@ -431,8 +447,12 @@ bool TPZWannGeometryTools::CheckXInSet(const REAL x, const std::set<REAL>& nodeC
 void TPZWannGeometryTools::hRefinement(TPZGeoMesh* gmesh, TPZVec<int64_t>& toRefine) {
   for (int64_t i = 0; i < toRefine.size(); ++i) {
     TPZVec<TPZGeoEl *> pv;
-    TPZGeoEl* gel = gmesh->Element(toRefine[i]);
-    if (!gel) DebugStop();
+    const int64_t index = toRefine[i];
+    if (index < 0 || index >= gmesh->NElements() || !gmesh->Element(index)) {
+      std::cerr << "Cannot refine geometric element " << index << ": no such element in the mesh.\n";
+      DebugStop();
+    }
+    TPZGeoEl* gel = gmesh->Element(index);
     if (gel->HasSubElement()) continue;
     gel->Divide(pv);
   }

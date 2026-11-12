@@ -2,7 +2,7 @@
   "MeshData": {
     "file": "ozkan1999.msh",
     "customRefinement": 0,
-    "NumUniformRef": 0,
+    "NumUniformRef": 1,
     "NumDirRef": 0,
     "ToCylindrical": 1
   },
@@ -15,7 +15,7 @@
       "matidHeelSurf": 4,
       "radius": 0.0762,
       "length": 800.1,
-      "height": 3.3528,
+      "height": 3.5052,
       "eccentricity": [0.0, 0.0, 0.0],
       "BCs": [
         {
@@ -47,7 +47,7 @@
         "name": "surface_farfield",
         "matid": 8,
         "type": 0,
-        "value": 0.0
+        "value": 1.58579e7 // Pa
       },
       {
         "name": "surface_cap_rock",
@@ -76,8 +76,8 @@
   "NumericsData": {
     "reservoirPorder": 1,
     "wellPorder": 2,
-    "refPressure": 0.0,
-    "pressureScale": 1e-5,
+    "refPressure": 1.58579e7, // Far-field pressure in Pa
+    "pressureScale": 5.866328671328671e-9, // Horizontal permeability divided by physical viscosity
     "nthreads": 0,
     "maxIterations" : 10,
     "res_tol": 1e-6,

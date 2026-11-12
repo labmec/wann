@@ -1,544 +1,80 @@
+#include <cmath>
 #include <iostream>
-#include "TPZGenGrid2D.h"
+#include <memory>
+#include <vector>
+
 #include "TPZGenGrid3D.h"
-#include "TPZRefPatternDataBase.h"
-#include "TPZVTKGeoMesh.h"
+#include "TPZMaterial.h"
 #include "TPZVTKGenerator.h"
-#include "TPZNullMaterial.h"
-#include "DarcyFlow/TPZDarcyFlow.h"
-#include "DarcyFlow/TPZMixedDarcyFlow.h"
-#include "TPZMultiphysicsCompMesh.h"
-#include "pzmultiphysicselement.h"
-#include "TPZLinearAnalysis.h"
-#include "TPZSSpStructMatrix.h"
-#include "pzfstrmatrix.h"
-#include "pzstepsolver.h"
-#include "TPZAnalyticSolution.h"
-#include "pzlog.h"
-#include "pzintel.h"
-#include "pzvec_extras.h"
-
-// Wann includes
-#include "TPZWannMixedDarcyNL.h"
-#include "TPZWannDarcyNL.h"
 #include "TPZWannAnalysis.h"
+#include "TPZWannApproxTools.h"
 
-// ================
-// Global variables
-// ================
-
-// Exact solution
-TLaplaceExample1 gexact;
-
-// Material IDs for domain and boundaries
-enum EnumMatIds
-{
-    EMatId = 1,
-    EBottom = 2,
-    ERight = 3,
-    ETop = 4,
-    ELeft = 5,
-    EFront = 6,
-    EBack = 7
-};
-
-int nthreads = 0;
-
-auto SetBoundaryCondition = [](const TPZVec<REAL> &x, TPZVec<REAL> &u, TPZFMatrix<REAL> &du)
-{
-    u[0] = x[1];
-};
-
-// ===================
-// Function prototypes
-// ===================
-
-// Creates a geometric mesh using TPZGenGrid3D
-TPZGeoMesh *createGeoMesh3D(
-    const TPZManVector<int, 3> &nelDiv,
-    const TPZManVector<REAL, 3> &minX,
-    const TPZManVector<REAL, 3> &maxX);
-
-// Creates a 2D geometric mesh using TPZGenGrid2D
-TPZGeoMesh *createGeoMesh2D(
-    const TPZManVector<int, 2> &nelDiv,
-    const TPZManVector<REAL, 2> &minX,
-    const TPZManVector<REAL, 2> &maxX);
-
-// Creates a computational mesh for mixed approximation
-TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order = 1, bool isNL = false);
-
-// Creates a computational mesh for H1 approximation
-TPZCompMesh *createCompMeshH1(TPZGeoMesh *gmesh, int order = 1, bool isNL = false);
-
-// Linear and non-linear solvers
-void SolveLinear(int order, TPZGeoMesh *gmesh);
-void SolveNonLinear(int order, TPZGeoMesh *gmesh);
-void SolveNonLinearOld(int order, TPZGeoMesh *gmesh);
-
-// =============
-// Main function
-// =============
-
-int main(int argc, char *const argv[])
-{
-
-// --- Set up ---
-
-// Initialize logger
+int main() {
 #ifdef PZ_LOG
     TPZLogger::InitializePZLOG();
 #endif
-
-    // Initialize uniform refinements for 1D and 2D elements
-    gRefDBase.InitializeUniformRefPattern(EOned);
-    gRefDBase.InitializeUniformRefPattern(EQuadrilateral);
-    gRefDBase.InitializeUniformRefPattern(ETriangle);
-
-    // --- Solve darcy problem ---
-
-    int order = 1; // Polynomial order
-    TPZGeoMesh *gmesh = createGeoMesh3D({1, 1, 1}, {0., 0., 0.}, {1., 1., 1.});
-    // TPZGeoMesh* gmesh = createGeoMesh2D({3, 3}, {0., 0.}, {1., 1.});
-    SolveNonLinear(order, gmesh);
-    // SolveLinear(order, gmesh);
-}
-
-// =========
-// Functions
-// =========
-
-TPZGeoMesh *createGeoMesh3D(
-    const TPZManVector<int, 3> &nelDiv,
-    const TPZManVector<REAL, 3> &minX,
-    const TPZManVector<REAL, 3> &maxX)
-{
-
-    TPZGenGrid3D generator(minX, maxX, nelDiv, MMeshType::EHexahedral);
-
-    generator.BuildVolumetricElements(EMatId);
-    TPZGeoMesh *gmesh = generator.BuildBoundaryElements(EBottom, ELeft, EFront, ERight, EBack, ETop);
-
-    return gmesh;
-}
-
-TPZGeoMesh *createGeoMesh2D(
-    const TPZManVector<int, 2> &nelDiv,
-    const TPZManVector<REAL, 2> &minX,
-    const TPZManVector<REAL, 2> &maxX)
-{
-
-    TPZGeoMesh *gmesh = new TPZGeoMesh;
-    TPZGenGrid2D generator(nelDiv, minX, maxX);
-    generator.SetElementType(MMeshType::EQuadrilateral);
-    generator.Read(gmesh, EMatId);
-    generator.SetBC(gmesh, 4, EFront);
-    generator.SetBC(gmesh, 5, ERight);
-    generator.SetBC(gmesh, 6, EBack);
-    generator.SetBC(gmesh, 7, ELeft);
-
-    return gmesh;
-}
-
-TPZMultiphysicsCompMesh *createCompMeshMixed(TPZGeoMesh *gmesh, int order, bool isNL)
-{
-
-    // --- Flux atomic cmesh ----
-
-    TPZCompMesh *cmeshFlux = new TPZCompMesh(gmesh);
-    cmeshFlux->SetDimModel(gmesh->Dimension());
-    cmeshFlux->SetDefaultOrder(order);
-    if (order < 1)
-    {
-        cmeshFlux->ApproxSpace().SetHDivFamily(HDivFamily::EHDivConstant);
-    }
-    cmeshFlux->SetAllCreateFunctionsHDiv();
-
-    // Add materials (weak formulation)
-    TPZNullMaterial<STATE> *mat = new TPZNullMaterial(EMatId, gmesh->Dimension());
-    cmeshFlux->InsertMaterialObject(mat);
-
-    // Create boundary conditions
-    TPZManVector<REAL, 1> val2(1, 0.); // Part that goes to the RHS vector
-    TPZFMatrix<REAL> val1(1, 1, 0.);   // Part that goes to the Stiffnes matrix
-    TPZBndCondT<REAL> *bcond;
-
-    bcond = mat->CreateBC(mat, ERight, 0, val1, val2);
-    cmeshFlux->InsertMaterialObject(bcond);
-
-    bcond = mat->CreateBC(mat, ELeft, 0, val1, val2);
-    cmeshFlux->InsertMaterialObject(bcond);
-
-    bcond = mat->CreateBC(mat, EFront, 0, val1, val2);
-    cmeshFlux->InsertMaterialObject(bcond);
-
-    bcond = mat->CreateBC(mat, EBack, 0, val1, val2);
-    cmeshFlux->InsertMaterialObject(bcond);
-
-    if (gmesh->Dimension() == 3)
-    {
-        bcond = mat->CreateBC(mat, EBottom, 0, val1, val2);
-        cmeshFlux->InsertMaterialObject(bcond);
-
-        bcond = mat->CreateBC(mat, ETop, 0, val1, val2);
-        cmeshFlux->InsertMaterialObject(bcond);
-    }
-
-    cmeshFlux->AutoBuild();
-
-    {
-        std::ofstream out("cmeshFlux.txt");
-        cmeshFlux->Print(out);
-    }
-
-    // --- Pressure atomic cmesh ---
-
-    TPZCompMesh *cmeshPressure = new TPZCompMesh(gmesh);
-    cmeshPressure->SetDimModel(gmesh->Dimension());
-    cmeshPressure->SetDefaultOrder(order);
-    if (order < 1)
-    {
-        cmeshPressure->SetAllCreateFunctionsDiscontinuous();
-    }
-    else
-    {
-        cmeshPressure->SetAllCreateFunctionsContinuous();
-        cmeshPressure->ApproxSpace().CreateDisconnectedElements(true);
-    }
-
-    // Add materials (weak formulation)
-    cmeshPressure->InsertMaterialObject(mat);
-
-    // Set up the computational mesh
-    cmeshPressure->AutoBuild();
-
-    int ncon = cmeshPressure->NConnects();
-    const int lagLevel = 1; // Lagrange multiplier level
-    for (int i = 0; i < ncon; i++)
-    {
-        TPZConnect &newnod = cmeshPressure->ConnectVec()[i];
-        newnod.SetLagrangeMultiplier(lagLevel);
-    }
-
-    // --- Multiphysics mesh ---
-
-    TPZMultiphysicsCompMesh *cmesh = new TPZMultiphysicsCompMesh(gmesh);
-    cmesh->SetDimModel(gmesh->Dimension());
-    cmesh->SetDefaultOrder(1);
-    cmesh->ApproxSpace().Style() = TPZCreateApproximationSpace::EMultiphysics;
-
-    // Add materials (weak formulation)
-    TPZMixedDarcyFlow *matDarcy = nullptr;
-    if (isNL)
-    {
-        TPZWannMixedDarcyNL *temp_mat = new TPZWannMixedDarcyNL(EMatId, gmesh->Dimension());
-        matDarcy = temp_mat;
-    }
-    else
-    {
-        TPZMixedDarcyFlow *temp_mat = new TPZMixedDarcyFlow(EMatId, gmesh->Dimension());
-        matDarcy = temp_mat;
-    }
-    matDarcy->SetConstantPermeability(1.0);
-    cmesh->InsertMaterialObject(matDarcy);
-
-    // Create, set and add boundary conditions
-    val2[0] = 0.;
-    bcond = matDarcy->CreateBC(matDarcy, ERight, 1, val1, val2);
-    // bcond->SetForcingFunctionBC(SetBoundaryCondition, 1);
-    cmesh->InsertMaterialObject(bcond);
-    val2[0] = 0.;
-    bcond = matDarcy->CreateBC(matDarcy, ELeft, 1, val1, val2);
-    // bcond->SetForcingFunctionBC(SetBoundaryCondition, 1);
-    cmesh->InsertMaterialObject(bcond);
-
-    val2[0] = 3.;
-    bcond = matDarcy->CreateBC(matDarcy, EFront, 0, val1, val2);
-    // bcond->SetForcingFunctionBC(SetBoundaryCondition, 1);
-    cmesh->InsertMaterialObject(bcond);
-
-    val2[0] = 1.0;
-    bcond = matDarcy->CreateBC(matDarcy, EBack, 1, val1, val2);
-    // bcond->SetForcingFunctionBC(SetBoundaryCondition, 1);
-    cmesh->InsertMaterialObject(bcond);
-
-    if (gmesh->Dimension() == 3)
-    {
-        val2[0] = 0.;
-        bcond = matDarcy->CreateBC(matDarcy, EBottom, 1, val1, val2);
-        // bcond->SetForcingFunctionBC(SetBoundaryCondition, 1);
-        cmesh->InsertMaterialObject(bcond);
-
-        bcond = matDarcy->CreateBC(matDarcy, ETop, 1, val1, val2);
-        // bcond->SetForcingFunctionBC(SetBoundaryCondition, 1);
-        cmesh->InsertMaterialObject(bcond);
-    }
-
-    // Incorporate the atomic meshes into the multiphysics mesh
-    TPZManVector<TPZCompMesh *, 2> cmeshes(2);
-    cmeshes[0] = cmeshFlux;
-    cmeshes[1] = cmeshPressure;
-
-    TPZManVector<int> active(cmeshes.size(), 1);
-    cmesh->BuildMultiphysicsSpace(active, cmeshes);
-
-    {
-        std::ofstream out("cmeshMP.txt");
-        cmesh->Print(out);
-    }
-
-    return cmesh;
-}
-
-TPZCompMesh *createCompMeshH1(TPZGeoMesh *gmesh, int order, bool isNL) 
-{
-    
-    TPZCompMesh *cmesh = new TPZCompMesh(gmesh);
-    cmesh->SetDimModel(gmesh->Dimension());
-    cmesh->SetDefaultOrder(order);
-    cmesh->SetAllCreateFunctionsContinuous();
-
-    // Add materials (weak formulation)
-    TPZDarcyFlow *matDarcy = nullptr;
-    if (isNL)
-    {
-        TPZWannDarcyNL *temp_mat = new TPZWannDarcyNL(EMatId, gmesh->Dimension());
-        matDarcy = temp_mat;
-    }
-    else
-    {
-        TPZDarcyFlow *temp_mat = new TPZDarcyFlow(EMatId, gmesh->Dimension());
-        matDarcy = temp_mat;
-    }
-    matDarcy->SetConstantPermeability(1.0);
-    cmesh->InsertMaterialObject(matDarcy);
-
-    // Create, set and add boundary conditions
-    TPZManVector<REAL, 1> val2(1, 0.); // Part that goes to the RHS vector
-    TPZFMatrix<REAL> val1(1, 1, 0.);   // Part that goes to the Stiffnes matrix
-    TPZBndCondT<REAL> *bcond;
-
-    val2[0] = 0.;
-    bcond = matDarcy->CreateBC(matDarcy, ERight, 1, val1, val2);
-    cmesh->InsertMaterialObject(bcond);
-
-    val2[0] = 0.;
-    bcond = matDarcy->CreateBC(matDarcy, ELeft, 1, val1, val2);
-    cmesh->InsertMaterialObject(bcond);
-
-    val2[0] = 0.;
-    bcond = matDarcy->CreateBC(matDarcy, EFront, 0, val1, val2);
-    cmesh->InsertMaterialObject(bcond);
-
-    val2[0] = 1.0;
-    bcond = matDarcy->CreateBC(matDarcy, EBack, 1, val1, val2);
-    cmesh->InsertMaterialObject(bcond);
-
-    if (gmesh->Dimension() == 3)
-    {
-        val2[0] = 0.;
-        bcond = matDarcy->CreateBC(matDarcy, EBottom, 1, val1, val2);
-        cmesh->InsertMaterialObject(bcond);
-
-        bcond = matDarcy->CreateBC(matDarcy, ETop, 1, val1, val2);
-        cmesh->InsertMaterialObject(bcond);
-    }
-
-    cmesh->AutoBuild();
-    return cmesh;
-}
-
-void SolveLinear(int order, TPZGeoMesh *gmesh)
-{
-    TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, order, false);
-    TPZCompMesh *cmeshH1 = createCompMeshH1(gmesh, order, false);
-
-    // Mixed solver
-    TPZLinearAnalysis anMixed(cmeshMixed, RenumType::EMetis);
-#ifdef PZ_USING_MKL
-    TPZSSpStructMatrix<STATE> matMixed(cmeshMixed);
-#else
-    TPZFStructMatrix<STATE> matMixed(cmeshMixed);
-#endif
-    matMixed.SetNumThreads(nthreads);
-    anMixed.SetStructuralMatrix(matMixed);
-    TPZStepSolver<STATE> stepMixed;
-    stepMixed.SetDirect(ELDLt);
-    anMixed.SetSolver(stepMixed);
-    anMixed.Run();
-
-    // H1 solver
-    TPZLinearAnalysis anH1(cmeshH1, RenumType::EMetis);
-#ifdef PZ_USING_MKL
-    TPZSSpStructMatrix<STATE> matH1(cmeshH1);
-#else
-    TPZFStructMatrix<STATE> matH1(cmeshH1);
-#endif
-    matH1.SetNumThreads(nthreads);
-    anH1.SetStructuralMatrix(matH1);
-    TPZStepSolver<STATE> stepH1;
-    stepH1.SetDirect(ECholesky);
-    anH1.SetSolver(stepH1);
-    anH1.Run();
-
-    // ---- Plotting ---
-
-    {
-        const std::string plotfile = "Darcy_Mixed";
-        constexpr int vtkRes{0};
-        TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
-        auto vtk = TPZVTKGenerator(cmeshMixed, fields, plotfile, vtkRes);
-        vtk.Do();
-    }
-
-    {
-        const std::string plotfile = "Darcy_H1";
-        constexpr int vtkRes{0};
-        TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
-        auto vtk = TPZVTKGenerator(cmeshH1, fields, plotfile, vtkRes);
-        vtk.Do();
-    }
-
-    // --- Clean up ---
-
-    delete cmeshMixed;
-    delete cmeshH1;
-}
-
-void SolveNonLinear(int order, TPZGeoMesh *gmesh)
-{
-    TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, order, true);
-    TPZCompMesh *cmeshH1 = createCompMeshH1(gmesh, order, true);
-
-    {
-        std::ofstream out("cmeshH1.txt");
-        cmeshH1->Print(out);
-    }
-
-    ProblemData simData;
-    simData.m_Numerics.maxIterations = 10;
-    simData.m_Numerics.res_tol = 1.e-6;
-    simData.m_Numerics.corr_tol = 1.e-6;
-    simData.m_Numerics.nthreads = 0;
-
-    simData.m_Reservoir.BCs["right"] = {ERight, 1, 0.0};
-    simData.m_Reservoir.BCs["left"] = {ELeft, 1, 0.0};
-    simData.m_Reservoir.BCs["front"] = {EFront, 0, 3.0};
-    simData.m_Reservoir.BCs["back"] = {EBack, 1, 1.0};
-
-    if (gmesh->Dimension() == 3)
-    {
-        simData.m_Reservoir.BCs["bottom"] = {EBottom, 1, 0.0};
-        simData.m_Reservoir.BCs["top"] = {ETop, 1, 0.0};
-    }
-
-    // Mixed solver
-    TPZWannAnalysis anMixed(cmeshMixed, RenumType::EMetis);
-    anMixed.SetProblemData(&simData);
-    anMixed.Initialize();
-    anMixed.NewtonIteration();
-
-    // H1 solver
-    TPZWannAnalysis anH1(cmeshH1, RenumType::EMetis);
-    anH1.SetProblemData(&simData);
-    anH1.Initialize();
-
-    {
-        std::ofstream out("cmeshH1.txt");
-        cmeshH1->Print(out);
-    }
-
-    anH1.NewtonIteration();
-
-    // ---- Plotting ---
-
-    {
-        const std::string plotfile = "DarcyNL_Mixed";
-        constexpr int vtkRes{0};
-        TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
-        auto vtk = TPZVTKGenerator(cmeshMixed, fields, plotfile, vtkRes);
-        vtk.Do();
-    }
-
-    {
-        const std::string plotfile = "DarcyNL_H1";
-        constexpr int vtkRes{0};
-        TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
-        auto vtk = TPZVTKGenerator(cmeshH1, fields, plotfile, vtkRes);
-        vtk.Do();
-    }
-
-    // --- Clean up ---
-
-    delete cmeshMixed;
-    delete cmeshH1;
-}
-
-// =========
-// Old stuff
-// =========
-
-void SolveNonLinearOld(int order, TPZGeoMesh *gmesh)
-{
-
-    TPZMultiphysicsCompMesh *cmeshMixed = createCompMeshMixed(gmesh, order, true);
-
-    // Mixed solver
-    TPZLinearAnalysis anMixed(cmeshMixed, RenumType::EMetis);
-#ifdef PZ_USING_MKL
-    TPZSSpStructMatrix<STATE> matMixed(cmeshMixed);
-#else
-    TPZFStructMatrix<STATE> matMixed(cmeshMixed);
-#endif
-    matMixed.SetNumThreads(nthreads);
-    anMixed.SetStructuralMatrix(matMixed);
-    TPZStepSolver<STATE> stepMixed;
-    stepMixed.SetDirect(ELDLt);
-    anMixed.SetSolver(stepMixed);
-
-    const int maxIter = 10;
-    const REAL tol = 1.e-6;
-    TPZFMatrix<STATE> Sol(cmeshMixed->NEquations(), 1, 0.);
-    for (int iteration = 0; iteration < maxIter; iteration++)
-    {
-        std::cout << "Non-linear iteration " << iteration << std::endl;
-        anMixed.Assemble();
-        // check convergence
-        if (iteration > 0)
-        {
-            TPZMatrix<STATE> &rhs = anMixed.Rhs();
-            REAL norm = 0.;
-            for (int i = 0; i < rhs.Rows(); i++)
-            {
-                norm += rhs.GetVal(i, 0) * rhs.GetVal(i, 0);
-            }
-            norm = sqrt(norm);
-            std::cout << "norm = " << norm << std::endl;
-            if (norm < tol)
-            {
-                std::cout << "Converged!" << std::endl;
-                break;
+    enum MaterialId { Domain = 1, Bottom, Right, Top, Left, Front, Back };
+    TPZGenGrid3D generator(TPZManVector<REAL, 3>{0., 0., 0.},
+                           TPZManVector<REAL, 3>{1., 1., 1.},
+                           TPZManVector<int, 3>{1, 1, 1}, MMeshType::EHexahedral);
+    generator.BuildVolumetricElements(Domain);
+    std::unique_ptr<TPZGeoMesh> geometry(generator.BuildBoundaryElements(Bottom, Left, Front, Right, Back, Top));
+
+    ProblemData data;
+    data.m_PostProc.verbosityLevel = 0;
+    data.m_Numerics.nthreads = 0;
+    data.m_Numerics.reservoirPorder = 1;
+    data.m_Numerics.wellPorder = 2;
+    data.m_Numerics.maxIterations = 10;
+    data.m_Numerics.res_tol = 1.e-6;
+    data.m_Numerics.corr_tol = 1.e-6;
+    data.m_Fluid.Resize(1);
+    data.m_Fluid[0] = {"fluid", 1., 1.};
+    data.m_Reservoir.matid = Domain;
+    data.m_Reservoir.perm.Fill(1.);
+    data.m_Reservoir.BCs["bottom"] = {Bottom, 1, 0.};
+    data.m_Reservoir.BCs["right"] = {Right, 1, 0.};
+    data.m_Reservoir.BCs["top"] = {Top, 1, 0.};
+    data.m_Reservoir.BCs["left"] = {Left, 1, 0.};
+    data.m_Reservoir.BCs["front"] = {Front, 0, 3.};
+    data.m_Reservoir.BCs["back"] = {Back, 1, 1.};
+    data.UpdateAuxiliaryMaterialIds();
+
+    TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
+    for (bool isMixed : {true, false}) {
+        geometry->ResetReference();
+        std::vector<std::unique_ptr<TPZCompMesh>> atomicMeshes;
+        std::unique_ptr<TPZCompMesh> mesh;
+        if (isMixed) {
+            auto* mixed = TPZWannApproxTools::CreateMixedCompMesh(geometry.get(), &data);
+            mesh.reset(mixed);
+            for (auto* atomic : mixed->MeshVector()) atomicMeshes.emplace_back(atomic);
+        } else {
+            mesh.reset(TPZWannApproxTools::CreateH1CompMesh(geometry.get(), &data));
+        }
+        TPZWannAnalysis analysis(mesh.get(), RenumType::EMetis);
+        analysis.SetProblemData(&data);
+        analysis.Initialize();
+        analysis.NewtonIteration();
+        if (analysis.GetNumberOfIterations() >= data.m_Numerics.maxIterations) return 1;
+
+        // With unit mobility and the prescribed boundary data, p = 3 - y and q = (0, 1, 0).
+        for (auto* element : mesh->ElementVec()) {
+            if (!element || !element->Material() || element->Material()->Id() != Domain) continue;
+            TPZManVector<REAL, 3> center(3, 0.);
+            TPZManVector<STATE, 3> flux(3, 0.);
+            TPZManVector<STATE, 1> pressure(1, 0.);
+            element->Solution(center, element->Material()->VariableIndex("Flux"), flux);
+            element->Solution(center, element->Material()->VariableIndex("Pressure"), pressure);
+            if (!(std::abs(pressure[0] - 2.5) < 1.e-8 && std::abs(flux[0]) < 1.e-8 &&
+                  std::abs(flux[1] - 1.) < 1.e-8 && std::abs(flux[2]) < 1.e-8)) {
+                std::cerr << "Unexpected pressure or flux at the cube center.\n";
+                return 1;
             }
         }
-        anMixed.Solve();
-        TPZMatrix<STATE> &dsol = anMixed.Solution();
-        Sol += dsol;
-        // anMixed.LoadSolution(Sol);
-        cmeshMixed->LoadSolution(Sol);
-        cmeshMixed->TransferMultiphysicsSolution();
-    }
 
-    // ---- Plotting ---
-
-    {
-        const std::string plotfile = "darcy_mixed";
-        constexpr int vtkRes{0};
-        TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
-        auto vtk = TPZVTKGenerator(cmeshMixed, fields, plotfile, vtkRes);
+        const char* filename = isMixed ? "DarcyNL_Mixed" : "DarcyNL_H1";
+        TPZVTKGenerator vtk(mesh.get(), fields, filename, 0, geometry->Dimension());
         vtk.Do();
     }
-
-    // --- Clean up ---
-
-    delete cmeshMixed;
 }

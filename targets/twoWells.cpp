@@ -6,16 +6,9 @@
 #include "TPZWannGeometryTools.h"
 #include "TPZWannApproxTools.h"
 #include "TPZWannPostProcTools.h"
-#include <TPZAnalyticSolution.h>
 #include "TPZWannAnalysis.h"
 
-using namespace std;
-
 int main(int argc, char *argv[]) {
-  
-  TLaplaceExample1 exact; // Global variable to be used in the material objects
-  exact.fDimension = 3;
-  exact.fExact = TLaplaceExample1::ENone;
 
   std::string jsonfile = "ozkan1999.json";
 
@@ -41,25 +34,20 @@ int main(int argc, char *argv[]) {
   ProblemData SimData;  
   SimData.ReadJson(jsonfile);
 
-  // Read original geometric mesh and perform the refinement process 
-  // described in refinementProcess.txt file
+  // Read and prepare the geometric mesh.
   TPZGeoMesh* gmesh = TPZWannGeometryTools::CreateGeoMesh(&SimData);
   std::ofstream out("gmeshWannFinal.vtk");
   TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
 
-  // --- H(div) Simulation ---
-
-  // Mixed and H1 comp meshes
+  // Mixed simulation
   TPZMultiphysicsCompMesh* cmeshMixed = TPZWannApproxTools::CreateMixedCompMesh(gmesh, &SimData);
-  TPZCompMesh* cmeshH1 = TPZWannApproxTools::CreateH1CompMesh(gmesh, &SimData);
-
-  // Mixed analysis
   TPZWannAnalysis anMixed(cmeshMixed, RenumType::EMetis);
   anMixed.SetProblemData(&SimData);
   anMixed.Initialize();
   anMixed.NewtonIteration();
 
-  // H1 analysis
+  // H1 simulation for comparison
+  TPZCompMesh* cmeshH1 = TPZWannApproxTools::CreateH1CompMesh(gmesh, &SimData);
   TPZWannAnalysis anH1(cmeshH1, RenumType::EMetis);
   anH1.SetProblemData(&SimData);
   anH1.Initialize();
@@ -71,12 +59,14 @@ int main(int argc, char *argv[]) {
 
   // ---- Clean up ----
 
-  // To avoid pesky messages, delete all dependencies in the H1 mesh before deleting it.
-  for (int64_t ic = 0; ic < cmeshH1->NConnects(); ic++) {
-    cmeshH1->ConnectVec()[ic].RemoveDepend();
-  }
-
-  delete cmeshMixed;
+  for (auto& connect : cmeshH1->ConnectVec()) connect.RemoveDepend();
   delete cmeshH1;
+  const auto atomicMeshes = cmeshMixed->MeshVector();
+  delete cmeshMixed;
+  for (auto* mesh : atomicMeshes) {
+    for (auto& connect : mesh->ConnectVec()) connect.RemoveDepend();
+    delete mesh;
+  }
   delete gmesh;
+  return 0;
 }

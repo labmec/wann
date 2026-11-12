@@ -1,85 +1,43 @@
-#ifdef HAVE_CONFIG_H
-#include <pz_config.h>
-#endif
-
-// NeoPZ includes
+#include <fstream>
 #include <iostream>
-#include <TPZVTKGeoMesh.h>
-#include <TPZGmshReader.h>
+#include <string>
 
-#include "ProblemData.h"
+#include "TPZGmshReader.h"
+#include "TPZVTKGeoMesh.h"
+#include "TPZWannGeometryTools.h"
 
-// =====================
-// Global exact solution
-// =====================
+namespace {
+bool WriteMesh(TPZGeoMesh& mesh, const std::string& filename) {
+    std::ofstream output(filename);
+    if (!output) {
+        std::cerr << "Could not open " << filename << " for writing\n";
+        return false;
+    }
+    TPZVTKGeoMesh::PrintGMeshVTK(&mesh, output);
+    return static_cast<bool>(output);
+}
+}
 
-ProblemData SimData;
+int main(int argc, char* argv[]) {
+    if (argc > 2) {
+        std::cerr << "Usage: " << argv[0] << " [input.json]\n";
+        return 1;
+    }
+    if (argc == 2) {
+        std::string input = argv[1];
+        if (input.find(".json") == std::string::npos) input += ".json";
+        ProblemData data;
+        data.ReadJson(input);
+        TPZGeoMesh* mesh = TPZWannGeometryTools::ReadMeshFromGmsh(&data);
+        const bool written = WriteMesh(*mesh, "reservoirMesh.vtk");
+        delete mesh;
+        return written ? 0 : 1;
+    }
 
-// =============
-// Main function
-// =============
-
-int main(int argc, char *argv[]) {
-  std::string jsonfile = "ozkan1999.json";
-
-  if (argc > 2) {
-    std::cout << argv[0] << " being called with too many arguments." << std::endl;
-    DebugStop();
-  } else if (argc == 2) {
-    jsonfile = argv[1];
-  }
-
-  if (jsonfile.find(".json") == std::string::npos) {
-    jsonfile += ".json";
-  }
-
-  // Near-well mesh
-  {
-    std::string path(std::string(MESHESDIRNEW) + "/" + "nearWell.msh");
-    TPZGeoMesh* gmeshN = new TPZGeoMesh();
+    // The bundled mesh parts already carry their WANN material IDs.
     TPZGmshReader reader;
-    TPZManVector<std::map<std::string, int>, 4> stringtoint(4);
-    stringtoint[3]["volume_reservoir"] = SimData.EDomain;
-    SimData.m_Reservoir.matid = SimData.EDomain;
-
-    stringtoint[2]["surface_wellbore_cylinder"] = SimData.ESurfWellCyl;
-    stringtoint[2]["surface_wellbore_heel"] = SimData.ESurfHeel;
-    stringtoint[2]["surface_wellbore_toe"] = SimData.ESurfToe;
-    // stringtoint[2]["surface_farfield"] = SimData.EFarField;
-    // SetBC(SimData, "surface_farfield", SimData.EFarField);
-    stringtoint[2]["surface_cap_rock"] = SimData.ECapRock;
-    
-    stringtoint[1]["curve_wellbore"] = SimData.ECurveWell;
-    stringtoint[1]["curve_heel"] = SimData.ECurveHeel;
-    stringtoint[1]["curve_toe"] = SimData.ECurveToe;
-    SimData.m_Wellbore.matid = SimData.ECurveWell;
-
-    stringtoint[0]["point_heel"] = SimData.EPointHeel;
-    stringtoint[0]["point_toe"] = SimData.EPointToe;
-    
-    reader.SetDimNamePhysical(stringtoint);
-    reader.GeometricGmshMesh(path, gmeshN);
-
-    std::ofstream out("nearWellMesh.vtk");
-    TPZVTKGeoMesh::PrintGMeshVTK(gmeshN, out);
-  }
-
-  // Outer mesh
-  {
-    std::string path(std::string(MESHESDIRNEW) + "/" + "reservoir.msh");
-    TPZGeoMesh* gmeshO = new TPZGeoMesh();
-    TPZGmshReader reader;
-    TPZManVector<std::map<std::string, int>, 4> stringtoint(4);
-    stringtoint[3]["volume_reservoir"] = SimData.EDomain;
-    SimData.m_Reservoir.matid = SimData.EDomain;
-
-    stringtoint[2]["surface_farfield"] = SimData.EFarField;
-    stringtoint[2]["surface_cap_rock"] = SimData.ECapRock;
-
-    reader.SetDimNamePhysical(stringtoint);
-    reader.GeometricGmshMesh(path, gmeshO);
-
-    std::ofstream out("outerMesh.vtk");
-    TPZVTKGeoMesh::PrintGMeshVTK(gmeshO, out);
-  }
+    TPZGeoMesh nearWell, outer;
+    reader.GeometricGmshMesh(std::string(MESHESDIRNEW) + "/nearWell.msh", &nearWell);
+    reader.GeometricGmshMesh(std::string(MESHESDIRNEW) + "/reservoir.msh", &outer);
+    return WriteMesh(nearWell, "nearWellMesh.vtk") && WriteMesh(outer, "outerMesh.vtk") ? 0 : 1;
 }
