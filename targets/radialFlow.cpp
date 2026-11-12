@@ -64,6 +64,11 @@ void ZeroSource(const TPZVec<REAL> &, TPZVec<STATE> &result) {
   result.Resize(1);
   result[0] = 0.0;  // No source term for the radial flow problem
 }
+struct Formulation {
+  const char* name;
+  bool mixed;
+  int order;
+};
 
 // ====================
 // Functions prototypes
@@ -80,7 +85,7 @@ void ModifyToCylMesh(TPZGeoMesh *gmesh, int matid, REAL radius, const TPZManVect
 
 int main(int argc, char *argv[]) {
   
-  int maxRef = 4;
+  int maxRef = 2;
   std::string jsonfile = argc >= 2 ? argv[1] : "radialTest.json";
   if (argc > 3) {
     std::cerr << "Usage: " << argv[0] << " [input.json [max-refinements]]\n";
@@ -98,9 +103,6 @@ int main(int argc, char *argv[]) {
   if (jsonfile.find(".json") == std::string::npos) {
     jsonfile += ".json";
   }
-
-  std::cout << "Using json file: " << jsonfile << std::endl;
-  std::cout << "\n======= Starting simulation =======\n" << std::endl;
 
 #ifdef PZ_LOG
   TPZLogger::InitializePZLOG();
@@ -130,16 +132,13 @@ int main(int argc, char *argv[]) {
   // Pressure is relative to the inner boundary. NeoPZ weights the flux norm by 1/mobility.
   const REAL pressureIntegral = outerRadius * outerRadius *
       (logRadiusRatio * (logRadiusRatio - 1.) + 0.5) - 0.5 * wellRadius * wellRadius;
+
   const REAL exactPressureNorm = std::abs(pressureDrop) / logRadiusRatio *
       std::sqrt(M_PI * length * pressureIntegral);
+
   const REAL exactWeightedFluxNorm = std::abs(pressureDrop) *
       std::sqrt(2.0 * M_PI * length * mobility / logRadiusRatio);
 
-  struct Formulation {
-    const char* name;
-    bool mixed;
-    int order;
-  };
   const int order = SimData.m_Numerics.reservoirPorder;
   const Formulation formulations[] = {
     {"H(div) mixed", true, order},
@@ -193,23 +192,14 @@ int main(int argc, char *argv[]) {
         an.Run();
 
         computedFlow = TPZWannPostProcTools::ComputeWellFluxes(cmesh, &caseData, 0, 1)[0];
-        std::fstream errorfile("errors.txt", std::ios::app);
+        std::ostringstream errorDetails;
         an.SetThreadsForError(caseData.m_Numerics.nthreads);
-        an.PostProcessError(errors, false, errorfile);
+        an.PostProcessError(errors, false, errorDetails);
       }
 
       const REAL pressureError = errors[formulation.mixed ? 0 : 1];
-      const REAL pressureErrorPa = pressureError / caseData.m_Numerics.pressureScale;
       const REAL weightedFluxError = errors[formulation.mixed ? 1 : 2];
       std::ostringstream report;
-      report << "Expected flow entering the wellbore: " << Q << '\n'
-             << "Computed flow entering the wellbore: " << computedFlow << '\n'
-             << "L2 norm of pressure error (using pressure in Pa): " << pressureErrorPa << '\n'
-             << "Mobility-weighted L2 norm of flux error: " << weightedFluxError << '\n';
-      if (formulation.mixed) {
-        report << "H(div) norm of flux error: " << errors[4] << '\n'
-               << "L2 norm of divergence error: " << errors[2] << '\n';
-      }
       if (exactPressureNorm > 0. && exactWeightedFluxNorm > 0.) {
         report << "Relative pressure error (E_p): " << pressureError / exactPressureNorm << '\n'
                << "Relative Darcy flux error (E_u): " << weightedFluxError / exactWeightedFluxNorm << '\n';
@@ -301,9 +291,9 @@ TPZMultiphysicsCompMesh *MixedDarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimD
   auto &ReservoirData = SimData->m_Reservoir;
 
   TPZMixedDarcyFlow *reservoirMat = new TPZMixedDarcyFlow(ReservoirData.matid, gmesh->Dimension());
-  reservoirMat->SetExactSol(ExactSolution, 20);
+  reservoirMat->SetExactSol(ExactSolution, 40);
   reservoirMat->SetConstantPermeability(RadialMobility(*SimData));
-  reservoirMat->SetForcingFunction(ZeroSource, 20);
+  reservoirMat->SetForcingFunction(ZeroSource, 40);
   hdivCreator.InsertMaterialObject(reservoirMat);
 
   // Boundary conditions --- 
@@ -333,9 +323,9 @@ TPZCompMesh *H1DarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, bool isCon
   // Insert material
   TPZDarcyFlow *reservoirMat = new TPZDarcyFlow(ReservoirData.matid, gmesh->Dimension());
 
-  reservoirMat->SetExactSol(ExactSolution, 20);
+  reservoirMat->SetExactSol(ExactSolution, 40);
   reservoirMat->SetConstantPermeability(RadialMobility(*SimData));
-  reservoirMat->SetForcingFunction(ZeroSource, 20);
+  reservoirMat->SetForcingFunction(ZeroSource, 40);
   h1Creator.InsertMaterialObject(reservoirMat);
 
   // Boundary conditions ---

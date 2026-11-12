@@ -42,7 +42,6 @@ TPZMultiphysicsCompMesh* MixedDarcyCompMesh(TPZGeoMesh* gmesh, const ProblemData
 TPZCompMesh* H1DarcyCompMesh(TPZGeoMesh* gmesh, const ProblemData& data,
                             const std::map<int, REAL>& wallFlux);
 
-REAL WellSurfaceArea(TPZGeoMesh* gmesh, int wallMaterialId);
 void WriteDarcyVTK(TPZCompMesh* mesh, const std::string& filename, bool cylindrical);
 void DeleteMixedMesh(TPZMultiphysicsCompMesh* mesh);
 
@@ -53,7 +52,7 @@ void DeleteMixedMesh(TPZMultiphysicsCompMesh* mesh);
 int main(int argc, char *argv[]) {
   
   std::string jsonfile = argc >= 2 ? argv[1] : "ozkan1999adaptive.json";
-  int maxRefinements = 3;
+  int maxRefinements = 1;
   if (argc > 3) {
     std::cerr << "Usage: " << argv[0] << " [input.json [max-refinements]]\n";
     return 1;
@@ -103,7 +102,7 @@ int main(int argc, char *argv[]) {
       delete gmesh;
       return 1;
     }
-    const REAL area = WellSurfaceArea(gmesh, well.matidSurf);
+    const REAL area = 2. * M_PI * well.radius * well.length;
     if (!(area > 0.)) DebugStop();
     wallFlux.emplace(well.matidSurf, (toe.value - heel.value) / area);
   }
@@ -225,24 +224,6 @@ int main(int argc, char *argv[]) {
   refinementLog.close();
   delete gmesh;
   return 0;
-}
-
-REAL WellSurfaceArea(TPZGeoMesh* gmesh, int wallMaterialId) {
-  REAL area = 0.;
-  for (auto* gel : gmesh->ElementVec()) {
-    if (!gel || gel->HasSubElement() || gel->MaterialId() != wallMaterialId) continue;
-    TPZIntPoints* rule = gel->CreateSideIntegrationRule(gel->NSides() - 1, 6);
-    for (int ip = 0; ip < rule->NPoints(); ++ip) {
-      TPZManVector<REAL,3> qsi(gel->Dimension());
-      TPZFNMatrix<9, REAL> jac, axes, inverse;
-      REAL weight, determinant;
-      rule->Point(ip, qsi, weight);
-      gel->Jacobian(qsi, jac, axes, determinant, inverse);
-      area += weight * std::abs(determinant);
-    }
-    delete rule;
-  }
-  return area;
 }
 
 void WriteDarcyVTK(TPZCompMesh* mesh, const std::string& filename, bool cylindrical) {

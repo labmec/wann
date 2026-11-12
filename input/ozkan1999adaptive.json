@@ -74,7 +74,7 @@
     "wellPorder": 2,
     "refPressure": 1.58579e7, // Far-field pressure in Pa
     "pressureScale": 5.866328671328671e-9, // Horizontal permeability divided by physical viscosity
-    "nthreads": 15,
+    "nthreads": 8,
     "maxIterations" : 10,
     "res_tol": 1e-6,
     "corr_tol": 1e-6
