@@ -85,7 +85,7 @@ class ProblemData
 
   /**
    * @brief Mesh filename and requested processing flags.
-   * CreateGeoMesh() currently does not apply the refinement/cylindrical flags.
+   * CreateGeoMesh() applies cylindrical mapping and replays custom or uniform refinement.
    */
   struct MeshData
   {

@@ -6,8 +6,8 @@ covers the project-owned C++ library in `src/`, its simulation drivers, and the
 adaptive-refinement code. The bundled `src/json.hpp` and NeoPZ classes are
 external dependencies rather than WANN APIs.
 
-Start with [architecture](architecture.md) to understand the responsibilities
-and data flow. Then read the relevant implementation guide:
+For build and run commands, see the [paper experiment instructions](../README.md).
+Start with [architecture](architecture.md) for the code structure and data flow. Then read the relevant implementation guide:
 
 - [Configuration, meshes, and solver workflow](workflow.md)
 - [Darcy materials, tensor dimensions, and outputs](materials.md)
@@ -17,8 +17,7 @@ and data flow. Then read the relevant implementation guide:
 
 The headers contain Doxygen comments for each project-owned class and method,
 including private mesh-building helpers. Implementation comments explain selected
-mathematical and storage conventions. These documents describe the current code;
-API declarations or input options do not imply that every historical path works.
+mathematical and storage conventions.
 
 ## Optional browsable API reference
 

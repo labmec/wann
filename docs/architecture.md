@@ -10,7 +10,7 @@ this does not make the entire coupled geometry pipeline dimension-independent.
 | Class | Role | Main collaborators |
 |---|---|---|
 | `ProblemData` | Read JSON; store domains, wells, fluids, boundaries, numerical and output options; derive IDs and scale data | All builders, analysis, exporters |
-| `TPZWannGeometryTools` | Import Gmsh geometry; create coupling surfaces; order well node IDs; provide refinement helpers | `ProblemData`, NeoPZ geometry |
+| `TPZWannGeometryTools` | Import and map the geometry, create coupling surfaces, and apply mesh refinement | `ProblemData`, NeoPZ geometry |
 | `TPZWannApproxTools` | Build mixed or H1 computational spaces, materials, connects, and interfaces | Geometry tools, reservoir/well materials |
 | `TPZAnisotropicPermeability` | Supply constant or spatial permeability and its inverse as global 3 × 3 tensors | Both Darcy formulations |
 | `TPZAnisotropicPermeabilityBC` | Empty compatibility interface required by the NeoPZ boundary-material mechanism | Permeability-bearing material base |
@@ -21,7 +21,7 @@ this does not make the entire coupled geometry pipeline dimension-independent.
 | `TPZWannH1Well` | Pressure-based well law with laminar/turbulent friction and optional pseudo-resistivity | H1 mesh builder, analysis |
 | `TPZWannMixedWell` | Axial flow/pressure well law with laminar/turbulent friction and optional dual functional | Mixed mesh builder, analysis |
 | `TPZWannAnalysis` | Initialize/filter essential boundary equations; run Newton updates and diagnostics | Computational mesh, `ProblemData`, well flags |
-| `TPZWannPostProcTools` | Export VTK, integrate reservoir flux into well segments, calculate productivity | Solved meshes, material outputs |
+| `TPZWannPostProcTools` | Export VTK and well profile CSVs, integrate wall flux, and calculate productivity | Solved meshes, material outputs |
 | `TPZWannAdaptivityTools` | Prager–Synge error estimation and well-compatible refinement | Used by `adaptiveRefinement` |
 
 ## Typical flow
@@ -41,7 +41,7 @@ flowchart TD
     N --> S[Linear correction solve]
     S --> U[Load updated solution into meshes]
     U --> N
-    U --> O[VTK and well diagnostics]
+    U --> O[VTK, well profile CSVs, and diagnostics]
 ```
 
 NeoPZ calls material methods at integration points. Materials operate on supplied
@@ -70,7 +70,8 @@ names should not be confused with the two primary physical spaces.
 
 Geometry and computational factories allocate meshes and return raw pointers.
 The caller must arrange their lifetime, including keeping the geometry available
-while its computational meshes exist. Materials inserted into a mesh are managed
+while its computational meshes exist. The caller also deletes the atomic meshes
+after deleting the mixed multiphysics mesh. Materials inserted into a mesh are managed
 through the NeoPZ mesh infrastructure.
 
 `TPZWannAnalysis::SetProblemData()` borrows a pointer. The simulation data must
@@ -91,6 +92,6 @@ The bundled JSON header is included by configuration parsing; it is not a WANN
 class to maintain or document locally. `dirs_config.h` is generated from
 `dirs_config.h.in` during configuration.
 
-Some executable files still refer to removed configuration fields or renamed
-builders. See [legacy status](legacy.md) before choosing a driver. An executable
-listed by CMake is not, by itself, evidence that its source matches the current API.
+CMake builds `radialFlowTest`, `adaptiveRefinement`, and `wann3dNL`. See the
+[experiment commands](../README.md#run-the-experiments) for the inputs and outputs
+of each target.

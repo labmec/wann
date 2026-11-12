@@ -42,7 +42,7 @@ After parsing, the reader calls three mutating methods:
    ID and assigns the next three IDs to the pressure skin, pressure interface,
    and H(div) boundary interface.
 2. `UpdateReservoirBCsForWellbores()` inserts zero-Neumann reservoir boundaries
-   on every well toe and heel surface. Their names are `no_flux_toe_<well name>`
+   on the well toe and heel surfaces with configured material IDs. Their names are `no_flux_toe_<well name>`
    and `no_flux_heel_<well name>`.
 3. `ApplyPressureScaling()` multiplies fluid viscosity and density by
    `pressureScale`; type-0 pressure BCs become
@@ -63,17 +63,20 @@ scaling again to data already read/scaled.
 2. `VerifyMesh()` checks 3D reservoir IDs and face neighbor counts, and 2D boundary
    neighbors. It returns **true for errors**, assigns diagnostic IDs 1001–1005,
    and causes the factory to write `gmeshWithErrors.vtk` and stop if errors exist.
-3. `CreateCouplingEls()` places three auxiliary geometric elements on each well
-   surface: pressure skin, pressure interface, and H(div) boundary interface.
-4. `OrderWellIds()` finds the named `point_heel`/`point_toe` boundaries of each well
-   and calls `OrderIdsSingleWell()` to assign increasing node IDs by axial group.
+3. When `ToCylindrical` is enabled, `ModifyGeometricMeshToCylWell()` uses each
+   well’s heel-to-toe axis to map the well wall and convert adjacent elements
+   to GeoBlend.
+4. `CreateCouplingEls()` places the pressure skin, pressure interface, and H(div)
+   boundary interface on each wall. `OrderWellIds()` assigns increasing node
+   IDs by axial group.
+5. A nonzero `customRefinement` replays `<mesh stem>_refProcess.txt` beside the
+   mesh. Otherwise, `NumUniformRef` sets the number of uniform refinements. The
+   factory reorders the well nodes after either operation.
 
-The factory currently does not execute cylindrical conversion or refinement from
-`MeshData` flags. `ModifyGeometricMeshToCylWell()` is a separate x-aligned cylinder
-helper; it projects nodes and converts selected maps and adjoining GeoBlend
-geometry. `hRefinement()` divides a list of leaf geometric indices.
-`RefineFromFile()` replays lists, one level per line, in the form
-`count index0 index1 ...`.
+Each line of the replay file contains a count followed by the geometric element
+indices to divide in that pass. `NumDirRef` is read from the JSON but directional
+refinement is unused. The radial target builds its own geometry, with cylindrical
+maps on both the inner and outer boundaries.
 
 `ComputeAxialCoordinate(point, origin, axis)` projects onto the normalized axis.
 It requires finite nonzero axis length and three-component vectors. The coordinate
@@ -105,6 +108,8 @@ is a tolerance lookup, not an unrestricted nearest-neighbor query.
    creator assembles the multiphysics mesh.
 9. `AddInterfaceElements()` links skin-pressure and flux-trace elements with
    `TPZMultiphysicsInterfaceElement` and a Lagrange multiplier material.
+   The builder enables the interface contribution to the Newton residual with
+   `SetLinear(false)`.
 
 `ComputeTotalMobility()` is a private declaration without an implementation or
 call site. Mobility is currently supplied directly as `K/mu`, not through that
@@ -113,9 +118,8 @@ helper. `AddInterfaceElements()` does not use its `laglevel` argument.
 ## H1 approximation
 
 `CreateH1CompMesh()` creates continuous pressure spaces with the Newton H1 reservoir
-and a well material for each configured well. It optionally attaches a `TLaplaceExample1` exact solution
-and forcing function to the well. It then updates line-interior order and calls
-`EqualizeH1PressureConnects()`.
+and a well material for each configured well. It sets the line-interior order
+and calls `EqualizeH1PressureConnects()`.
 
 That helper identifies each skin's well through the neighboring cylinder material
 ID and projects coordinates onto that well's straight heel-to-toe axis. It groups
@@ -131,7 +135,7 @@ For a compatible mixed mesh, the library sequence is:
 
 ```cpp
 ProblemData data;
-data.ReadJson("case.json");
+data.ReadJson("ozkan1999.json");
 TPZGeoMesh *geometry = TPZWannGeometryTools::CreateGeoMesh(&data);
 TPZMultiphysicsCompMesh *mesh =
     TPZWannApproxTools::CreateMixedCompMesh(geometry, &data);
@@ -144,12 +148,17 @@ TPZMultiphysicsCompMesh *mesh =
     TPZWannPostProcTools::WriteVTKs(mesh, &data);
 } // Analysis lifetime ends before its mesh is deleted.
 
+const auto atomicMeshes = mesh->MeshVector();
 delete mesh;
+for (auto* atomicMesh : atomicMeshes) {
+    for (auto& connect : atomicMesh->ConnectVec()) connect.RemoveDepend();
+    delete atomicMesh;
+}
 delete geometry;
 ```
 
-`Initialize()` chooses threaded MKL sparse assembly when enabled, or skyline
-assembly otherwise. It gathers type-1 BC IDs for mixed meshes or type-0 IDs for H1,
+`Initialize()` uses `TPZWannStructMatrix` to select MKL, MUMPS, or Skyline,
+in that order. It gathers type-1 BC IDs for mixed meshes or type-0 IDs for H1,
 initializes their solution values, and excludes their connect equations from the
 correction solve. H1 initialization assigns corner values; mixed initialization
 includes a boundary-measure/ncorner factor. It selects an LDLt direct solver for

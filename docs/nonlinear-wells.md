@@ -50,9 +50,8 @@ names are H1, L2, and H1 seminorm.
 ## Mixed flow/pressure well
 
 `TPZWannMixedWell` uses flux-space entry zero and pressure-space entry one. It
-extracts only row zero of `fDeformedDirections` and component zero of the numerical
-flow. This is an x-component assumption even when geometry/pressure grouping uses
-a more general well axis.
+projects the numerical flux vector onto the element’s local axial direction. The
+residual projects flux test functions onto the same direction.
 
 The constitutive resistance assembled by the full path is:
 
@@ -66,11 +65,9 @@ uses velocity `4Q/(pi Dw^2)` to compute Reynolds, with transition at 1187.38 and
 laminar first iteration. Divergence-pressure coupling and optional
 pseudo-resistivity populate the other blocks.
 
-`ContributeResidual()` is a separate implementation. Although it computes a
-Reynolds estimate, it then explicitly assigns `turbulent = false`. Consequently,
-its residual is always laminar and can differ from the full assembly residual.
-This matters when line searches or Taylor diagnostics select residual-only
-assembly.
+`ContributeResidual()` assembles the negative residual without a tangent. It uses
+the same flow-based Reynolds criterion and first-iteration laminar flag as the
+full assembly path.
 
 `SetForcingFunctionDual()` stores a callback added against flux-test divergence;
 its `order` argument is currently unused. Both full and residual-only paths include
@@ -78,7 +75,7 @@ this optional contribution.
 
 Pressure endpoint BCs add a load to flux rows. Prescribed flow endpoint equations
 are initialized/filtered by analysis, and type 1 adds no penalty here. Outputs
-`Flux`, `Pressure`, `DivFlux`/`Divergence`, and `GradPressure` each have one component.
+`Flux`, `Pressure`, and `DivFlux`/`Divergence` each have one component.
 `Errors()` is unimplemented and calls `DebugStop()`, even though `NEvalErrors()`
 returns five.
 
@@ -95,7 +92,7 @@ class, including different wells or analyses.
 
 `LineSearchStep()` supports a full step, bisection, and golden-ratio search.
 `ESECANT` is declared but stops as unimplemented. The first Newton correction
-always takes a full step regardless of the selected method.
+always takes a full step. The paper target uses full steps throughout.
 
 Bisection searches for a root of `dsol^T RHS` and assumes a multiphysics mesh.
 Golden-ratio search attempts to reduce the RHS norm over correction scales in

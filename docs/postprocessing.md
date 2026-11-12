@@ -7,8 +7,8 @@ implemented.
 
 ## VTK output
 
-`WriteWellboreVTK()` exports `Pressure`, `Flux`, `Divergence`, and `GradPressure` for
-each well material. Filenames include the configured prefix, `Hdiv` or `H1`, and
+`WriteWellboreVTK()` exports `Pressure` and `Flux` for each well material. Mixed
+well output also includes `Divergence`. Filenames include the configured prefix, `Hdiv` or `H1`, and
 the zero-based well index. The routine identifies a mixed solve by dynamically
 casting the mesh to `TPZMultiphysicsCompMesh`.
 
@@ -23,8 +23,17 @@ Both exporters use the configured VTK resolution and post-processing thread coun
 ## Well profiles for the Ozkan comparison
 
 `WriteWellProfilesCSV()` samples the mixed well solution along the normalized
-heel-to-toe coordinate. It exports flow magnitude in STB/day, dimensionless inflow
-magnitude, and far-field pressure drop in psi.
+heel-to-toe coordinate. For the bundled Ozkan input it writes three files with the
+columns `x,Curve1`, where `x = s/L`.
+
+| File | Value in `Curve1` |
+|---|---|
+| `fluxOzkanWell.csv` | Flow magnitude in STB/day |
+| `divergenceOzkanWell.csv` | Dimensionless inflow magnitude, `L * abs(dQ/ds) / abs(Q_heel)` |
+| `pressureOzkanWell.csv` | Far-field minus well pressure in psi |
+
+`wann3dNL` uses four subdivisions per axial element. At interior interfaces it
+samples the toe-side element. The inflow column is empty when the heel rate is zero.
 
 ## Segmented reservoir inflow
 
@@ -36,14 +45,9 @@ nonzero endpoint distance.
 It locates reservoir faces neighboring the selected well surface and projects each
 face centroid onto the heel-to-toe axis. The entire face contribution is assigned
 to the centroid's bin; it is not subdivided where a bin boundary crosses the face.
-It obtains reservoir flux from atomic mixed mesh zero or the H1 material's flux
-output, and uses the geometric face normal for the sign. Opposite normal
-orientation reverses the signed result.
-
-The implementation constructs its face Jacobian/normal before calling
-`intrule->Point()` to load that iteration's quadrature coordinates. It should not
-be assumed to evaluate curved-face geometry correctly at every quadrature point.
-This existing ordering is left unchanged.
+It evaluates the reservoir material’s `Flux` at the corresponding point in the
+neighboring volume element. It evaluates the wall Jacobian and the outward
+reservoir normal at each quadrature point, so positive flux is into the well.
 
 ## Productivity index
 
@@ -60,8 +64,5 @@ It converts the result from m³/(s Pa) to STB/(day psi) using the existing facto
 6.28981 barrels/m³, 86400 seconds/day, and 6894.76 Pa/psi. The pressure difference
 and flow remain signed; the reference-pressure offset cancels.
 
-The current loop accepts a heel neighbor at local side zero or a toe neighbor at
-local side one, then overwrites the stored flow and pressure for every matching
-element. The returned value is therefore not guaranteed to be a heel-only value
-and can depend on element order. There is no explicit zero-pressure-difference
-check. These limitations should be considered when interpreting the diagnostic.
+The routine evaluates the endpoint adjacent to the heel on either local side of
+the well element. It assumes a nonzero pressure difference.

@@ -2,7 +2,7 @@
 PROJECT_NAME           = "WANN"
 PROJECT_BRIEF          = "Reservoir Darcy flow coupled to one-dimensional well flow"
 OUTPUT_DIRECTORY       = docs/api
-INPUT                  = src docs
+INPUT                  = src docs README.md meshing/README.md
 RECURSIVE              = YES
 FILE_PATTERNS          = *.h *.cpp *.md
 EXCLUDE                = src/json.hpp src/dirs_config.h docs/api

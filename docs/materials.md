@@ -103,6 +103,10 @@ H1 element or rotated frame is compatible with this direct multiplication.
 
 ## Linear and Newton assembly
 
+The radial experiment uses NeoPZ's linear Darcy materials with the exact radial
+solution and zero source. The adaptive experiment uses WANN's linear anisotropic
+Darcy materials. The coupled Ozkan experiment uses the Newton materials below.
+
 | Material | Volume right-hand side | Boundary behavior |
 |---|---|---|
 | `TPZDarcyAnisotropic` | Source load | Type 0 pressure penalty; type 1 load; type 2 Robin |
@@ -140,9 +144,8 @@ with `-K grad(p)` and obtains exact divergence from the forcing callback.
 
 Several historical output names are misleading or incomplete:
 
-- H1 Darcy `Divergence` currently sum components of a reconstructed
-  flux/gradient quantity; they do not differentiate flux to obtain its divergence.
-- H1 Darcy `ExactFlux` copy the derivative matrix of the exact callback
+- H1 Darcy `Divergence` sums components of the reconstructed flux.
+- H1 Darcy `ExactFlux` copies the derivative matrix of the exact callback
   directly, while mixed Darcy transforms an exact gradient with `-K`.
 - `TPZWannDarcyNL::Solution()` implements only IDs 1, 2, 7, 8, 9, and 10, despite
   inheriting a broader name registry.

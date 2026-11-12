@@ -22,7 +22,7 @@ class TPZWannPostProcTools {
 
 public:
   /**
-   * @brief Export pressure, axial flow, divergence, and pressure gradient for each well.
+   * @brief Export pressure and axial flow for each well, plus divergence for mixed wells.
    * Names include Hdiv/H1 and a zero-based well index.
    */
   static void WriteWellboreVTK(TPZCompMesh* cmesh, ProblemData* SimData);
