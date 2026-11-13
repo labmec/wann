@@ -1,35 +1,43 @@
 {
   "MeshData": {
-    "file": "mesh3D_rev08.msh",
+    "file": "../geo/old/mesh3D_rev08.msh",
     "NumUniformRef": 0,
     "NumDirRef": 0,
-    "ToCylindrical": 0
+    "ToCylindrical": 0,
+    "customRefinement": 0
   },
   "WellboreData": {
     "name": "curve_wellbore",
-    "perm": 10.0,
-    "pOrder": 2,
     "radius": 0.1,
     "length": 1.0,
-    "eccentricity": [0.0, 0.0, 0.0],
+    "eccentricity": [
+      0.0,
+      0.0,
+      0.0
+    ],
     "BCs": [
       {
         "name": "point_heel",
-        "type": 0, //dirichlet:0    neumann:1
-        "value": 2.0
+        "type": 0,
+        "value": 2.0,
+        "matid": 108
       },
       {
         "name": "point_toe",
         "type": 0,
-        "value": 0.0
+        "value": 0.0,
+        "matid": 109
       }
-    ]
+    ],
+    "matid": 100,
+    "matidSurf": 103,
+    "matidToeSurf": 104,
+    "matidHeelSurf": 105
   },
   "ReservoirData": {
     "name": "volume_reservoir",
     "perm": 1.0,
     "porosity": 1.0,
-    "pOrder": 1,
     "height": 1,
     "width": 1,
     "length": 1,
@@ -37,32 +45,37 @@
       {
         "name": "surface_farfield",
         "type": 0,
-        "value": 1.0
+        "value": 1.0,
+        "matid": 106
       },
       {
-        "name": "surface_wellbore_heel",
-        "type": 0,
-        "value": 0.0
-      },
-      {
-        "name": "surface_wellbore_toe",
-        "type": 0,
+        "name": "surface_cap_rock",
+        "matid": 107,
+        "type": 1,
         "value": 0.0
       }
-    ]
+    ],
+    "matid": 110
   },
   "FluidData": {
     "name": "oil",
-    "viscosity": 0.005, // Pa.s
-    "density": 800.0 // kg/m^3
+    "viscosity": 0.005,
+    "density": 800.0
   },
   "PostProcData": {
     "wellbore_vtk": "postproc_wellbore",
     "reservoir_vtk": "postproc_reservoir",
     "training_data": "training_data.txt",
     "vtk_resolution": 0,
-    "training_resolution": 400, //number of subdivisions to generate training data
-    "nthreads": 0
+    "training_resolution": 400,
+    "nthreads": 0,
+    "verbosityLevel": 0
   },
-  "VerbosityLevel": 0
+  "NumericsData": {
+    "reservoirPorder": 1,
+    "wellPorder": 2,
+    "refPressure": 0.0,
+    "pressureScale": 1.0,
+    "nthreads": 0
+  }
 }

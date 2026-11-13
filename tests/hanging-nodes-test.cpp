@@ -11,11 +11,7 @@
 #include "TPZMultiphysicsCompMesh.h"
 #include "pzmultiphysicselement.h"
 #include "TPZLinearAnalysis.h"
-#include "TPZSSpStructMatrix.h"
-#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
-#include "TPZSSpStructMatrixMumps.h"
-#endif
-#include "pzfstrmatrix.h"
+#include "TPZWannStructMatrix.h"
 #include "pzstepsolver.h"
 #include "TPZAnalyticSolution.h"
 #include "pzlog.h"
@@ -153,13 +149,7 @@ int main (int argc, char * const argv[]) {
 
     // Mixed solver
     TPZLinearAnalysis anMixed(cmeshMixed, RenumType::EMetis);
-    #if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
-    TPZSSpStructMatrixMumps<STATE> matMixed(cmeshMixed);
-    #elif defined(PZ_USING_MKL)
-    TPZSSpStructMatrix<STATE> matMixed(cmeshMixed);
-    #else
-      TPZFStructMatrix<STATE> matMixed(cmeshMixed);
-    #endif
+    TPZWannStructMatrix matMixed(cmeshMixed);
     matMixed.SetNumThreads(nthreads); 
     anMixed.SetStructuralMatrix(matMixed);
     TPZStepSolver<STATE> stepMixed;
@@ -169,13 +159,7 @@ int main (int argc, char * const argv[]) {
 
     // H1 solver
     TPZLinearAnalysis anH1(cmeshH1);
-    #if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
-    TPZSSpStructMatrixMumps<STATE> matH1(cmeshH1);
-    #elif defined(PZ_USING_MKL)
-    TPZSSpStructMatrix<STATE> matH1(cmeshH1);
-    #else
-      TPZFStructMatrix<STATE> matH1(cmeshH1);
-    #endif
+    TPZWannStructMatrix matH1(cmeshH1);
     matH1.SetNumThreads(nthreads);
     anH1.SetStructuralMatrix(matH1);
     TPZStepSolver<STATE> stepH1;

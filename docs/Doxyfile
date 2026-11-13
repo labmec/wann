@@ -1,0 +1,22 @@
+# Run from the repository root: doxygen docs/Doxyfile
+PROJECT_NAME           = "WANN"
+PROJECT_BRIEF          = "Reservoir Darcy flow coupled to one-dimensional well flow"
+OUTPUT_DIRECTORY       = docs/api
+INPUT                  = src docs
+RECURSIVE              = YES
+FILE_PATTERNS          = *.h *.cpp *.md
+EXCLUDE                = src/json.hpp src/dirs_config.h docs/api
+USE_MDFILE_AS_MAINPAGE  = docs/README.md
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+MARKDOWN_SUPPORT       = YES
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HAVE_DOT               = NO
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+QUIET                  = YES

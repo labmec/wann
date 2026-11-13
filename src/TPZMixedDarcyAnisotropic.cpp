@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Linear mixed Darcy assembly with flux-first local ordering.
+ * See the matching header for function contracts and docs/ for the architecture.
+ */
+
 #include "TPZMixedDarcyAnisotropic.h"
 #include "TPZMaterialDataT.h"
 #include "pzaxestools.h"
@@ -31,6 +37,8 @@ void TPZMixedDarcyAnisotropic::Contribute(const TPZVec<TPZMaterialDataT<STATE>> 
                                           TPZFMatrix<STATE> &ef)
 {
 
+    // Volume basis: phiQ is 3 x nFlux, phiP is nPressure x 1;
+    // divergence is scalar for each flux basis function.
     TPZFMatrix<REAL> &phiQ = datavec[0].fDeformedDirections;
     TPZFMatrix<REAL> &phiP = datavec[1].phi;
     TPZFMatrix<REAL> &divQ = datavec[0].divphi;

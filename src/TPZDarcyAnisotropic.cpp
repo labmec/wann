@@ -1,3 +1,9 @@
+/**
+ * @file
+ * @brief Linear pressure Darcy assembly and pointwise post-processing.
+ * See the matching header for function contracts and docs/ for the architecture.
+ */
+
 //
 // Created by Gustavo Batistela on 5/13/21.
 //

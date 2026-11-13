@@ -36,8 +36,15 @@ build
 pytorch/__pycache__
 .vscode
 
+# Python cache files
+__pycache__/
+*.pyc
+
 # config files
 src/dirs_config.h
 
 #training data
 training/training_data.txt
+
+# Generated Doxygen documentation
+/docs/api/

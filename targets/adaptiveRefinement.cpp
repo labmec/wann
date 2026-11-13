@@ -2,22 +2,20 @@
 #include <pz_config.h>
 #endif
 
+#include <charconv>
+#include <cmath>
+#include <iomanip>
 #include <iostream>
+#include <string_view>
 
 #include <TPZLinearAnalysis.h>
-#include <TPZSSpStructMatrix.h>
-#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
-#include <TPZSSpStructMatrixMumps.h>
-#endif
-#include <pzskylstrmatrix.h>
+#include "TPZWannStructMatrix.h"
 #include <pzstepsolver.h>
-#include <TPZAnalyticSolution.h>
 #include <TPZH1ApproxCreator.h>
 #include <TPZHDivApproxCreator.h>
 #include <TPZVTKGenerator.h>
 #include <Material/DarcyFlow/TPZMixedDarcyFlow.h>
 #include <Material/DarcyFlow/TPZDarcyFlow.h>
-#include <TPZFileStream.h>
 
 #include "TPZWannGeometryTools.h"
 #include "TPZWannAdaptivityTools.h"
@@ -32,19 +30,20 @@
 const bool shouldPlot = true;
 
 // Refinement parameters
-const int maxIterations = 3;
-const REAL errorTolerance = 1e-3;
+const REAL errorTolerance = 1e-4;
 const REAL relativeRefTol = 0.5; 
 
 // ===================
 // Function prototypes
 // ===================
 
-// Computational mesh for mixed Darcy formulation
-TPZMultiphysicsCompMesh* MixedDarcyCompMesh(TPZGeoMesh* gmesh, ProblemData* SimData, TLaplaceExample1* exact, bool isCondensed = false);
+TPZMultiphysicsCompMesh* MixedDarcyCompMesh(TPZGeoMesh* gmesh, const ProblemData& data,
+                                           const std::map<int, REAL>& wallFlux);
+TPZCompMesh* H1DarcyCompMesh(TPZGeoMesh* gmesh, const ProblemData& data,
+                            const std::map<int, REAL>& wallFlux);
 
-// Computational mesh for H1 Darcy formulation
-TPZCompMesh* H1DarcyCompMesh(TPZGeoMesh* gmesh, ProblemData* SimData, TLaplaceExample1* exact, bool isCondensed = false);
+void WriteDarcyVTK(TPZCompMesh* mesh, const std::string& filename, bool cylindrical);
+void DeleteMixedMesh(TPZMultiphysicsCompMesh* mesh);
 
 // ============
 // Main program
@@ -52,17 +51,20 @@ TPZCompMesh* H1DarcyCompMesh(TPZGeoMesh* gmesh, ProblemData* SimData, TLaplaceEx
 
 int main(int argc, char *argv[]) {
   
-  TLaplaceExample1 exact; // Exact solution (if known)
-  exact.fDimension = 3;
-  exact.fExact = TLaplaceExample1::ENone;
-
-  std::string jsonfile = "ozkan1999adaptive.json";
-
-  if (argc > 2) {
-    std::cout << argv[0] << " being called with too many arguments." << std::endl;
-    DebugStop();
-  } else if (argc == 2) {
-    jsonfile = argv[1];
+  std::string jsonfile = argc >= 2 ? argv[1] : "ozkan1999adaptive.json";
+  int maxRefinements = 1;
+  if (argc > 3) {
+    std::cerr << "Usage: " << argv[0] << " [input.json [max-refinements]]\n";
+    return 1;
+  }
+  if (argc == 3) {
+    const std::string_view argument(argv[2]);
+    const auto [end, error] = std::from_chars(argument.data(), argument.data() + argument.size(),
+                                               maxRefinements);
+    if (error != std::errc{} || end != argument.data() + argument.size() || maxRefinements < 0) {
+      std::cerr << "The maximum number of refinements must be a nonnegative integer.\n";
+      return 1;
+    }
   }
 
   if (jsonfile.find(".json") == std::string::npos) {
@@ -79,128 +81,118 @@ int main(int argc, char *argv[]) {
   ProblemData SimData;  
   SimData.ReadJson(jsonfile);
 
-  // Initial geometric mesh
-  TPZGeoMesh* gmesh = TPZWannGeometryTools::ReadMeshFromGmsh(&SimData);
+  const REAL pressureScale = SimData.m_Numerics.pressureScale;
+  if (!std::isfinite(pressureScale) || pressureScale <= 0.) {
+    std::cerr << "pressureScale must be finite and positive.\n";
+    return 1;
+  }
+  // The Prager–Synge energy norm scales with the square root of the pressure scale.
+  const REAL errorToPhysical = 1. / std::sqrt(pressureScale);
+  std::cout << "Reference pressure (Pa): " << SimData.m_Numerics.refPressure << '\n'
+            << "Pressure scale: " << pressureScale << '\n';
 
-  // Convert to cylindrical coordinates if set in json
-  if (SimData.m_Mesh.ToCylindrical) {
-    TPZManVector<REAL,3> cylcenter = {0.,0.,0.};
-    REAL hr = SimData.m_Reservoir.height;
-    REAL lr = SimData.m_Wellbore.height;
-    cylcenter[2] = lr - hr/2.;
-    TPZWannGeometryTools::ModifyGeometricMeshToCylWell(gmesh, SimData.ESurfWellCyl, SimData.m_Wellbore.radius, cylcenter);
+  TPZGeoMesh* gmesh = TPZWannGeometryTools::CreateGeoMesh(&SimData);
+  std::map<int, REAL> wallFlux;
+  for (const auto& well : SimData.m_Wellbore) {
+    const auto& heel = well.BCs.at("point_heel");
+    const auto& toe = well.BCs.at("point_toe");
+    if (heel.type != 1 || toe.type != 1) {
+      std::cerr << "Adaptive Darcy benchmark requires prescribed rates at both endpoints of "
+                << well.name << '\n';
+      delete gmesh;
+      return 1;
+    }
+    const REAL area = 2. * M_PI * well.radius * well.length;
+    if (!(area > 0.)) DebugStop();
+    wallFlux.emplace(well.matidSurf, (toe.value - heel.value) / area);
   }
 
   // --- Adaptive refinement loop ---
 
   int refIt = 0;
   REAL estimatedError = errorTolerance + 1.0;
-  TPZVec estimatedErrorVec(maxIterations+1, 0.0);
-  TPZVec maxErrorVec(maxIterations+1, 0.0);
+  TPZVec<REAL> estimatedErrorVec;
+  TPZVec<REAL> maxErrorVec;
 
   // Open file to store refinement process
   std::string file = SimData.m_Mesh.file;
   std::string baseName = file.substr(0, file.find_last_of('.'));
-  std::string path = std::string(INPUTDIR) + "/" + baseName + "_refProcess.txt";
+  std::string path = baseName + "_refProcess.txt";
   std::ofstream refinementLog(path);
   if (!refinementLog) {
-    std::cerr << "Error: Could not open refinement_log.txt for writing." << std::endl;
-    DebugStop();
+    std::cerr << "Could not open the refinement log for writing." << std::endl;
+    delete gmesh;
+    return 1;
   }
 
   std::cout << "\n=== Starting adaptive refinement loop ===" << std::endl;
 
-  while (refIt <= maxIterations && estimatedError > errorTolerance) {
+  while (refIt <= maxRefinements && estimatedError > errorTolerance) {
     std::cout << "\n--- Computing Hdiv and H1 approximations at iteration " << refIt << " ---" << std::endl;
 
-    // Create computational meshes
-    TPZMultiphysicsCompMesh* cmeshMixed = MixedDarcyCompMesh(gmesh, &SimData, &exact, false);
-    TPZCompMesh* cmeshH1 = H1DarcyCompMesh(gmesh, &SimData, &exact);
-
+    TPZVec<REAL> elementErrors(gmesh->NElements(), 0.);
+    TPZMultiphysicsCompMesh* cmeshMixed = MixedDarcyCompMesh(gmesh, SimData, wallFlux);
     if (cmeshMixed->NEquations() >= 2000000) {
       std::cerr << "Error: Number of equations exceeds 2 million. Stopping refinement." << std::endl;
+      DeleteMixedMesh(cmeshMixed);
       break;
     }
 
     // H(div) analysis
-    TPZLinearAnalysis anMixed(cmeshMixed);
-#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
-    TPZSSpStructMatrixMumps<STATE> matMixed(cmeshMixed);
-#elif defined(PZ_USING_MKL)
-    TPZSSpStructMatrix<STATE> matMixed(cmeshMixed);
-#else
-    TPZSkylineStructMatrix<STATE> matMixed(cmeshMixed);
-#endif
-    matMixed.SetNumThreads(SimData.m_Numerics.nthreads);
-    anMixed.SetStructuralMatrix(matMixed);
-    TPZStepSolver<STATE> stepMixed;
-    stepMixed.SetDirect(ELDLt);
-    anMixed.SetSolver(stepMixed);
-    anMixed.Run();
+    {
+      TPZLinearAnalysis anMixed(cmeshMixed);
+      TPZWannStructMatrix matMixed(cmeshMixed);
+      matMixed.SetNumThreads(SimData.m_Numerics.nthreads);
+      anMixed.SetStructuralMatrix(matMixed);
+      TPZStepSolver<STATE> stepMixed;
+      stepMixed.SetDirect(ELDLt);
+      anMixed.SetSolver(stepMixed);
+      anMixed.Run();
+    }
 
+    TPZCompMesh* cmeshH1 = H1DarcyCompMesh(gmesh, SimData, wallFlux);
     // H1 analysis
-    TPZLinearAnalysis anH1(cmeshH1);
-#if defined(USING_MUMPS) || defined(PZ_USING_MUMPS)
-    TPZSSpStructMatrixMumps<STATE> matH1(cmeshH1);
-#elif defined(PZ_USING_MKL)
-    TPZSSpStructMatrix<STATE> matH1(cmeshH1);
-#else
-    TPZSkylineStructMatrix<STATE> matH1(cmeshH1);
-#endif
-    matH1.SetNumThreads(SimData.m_Numerics.nthreads);
-    anH1.SetStructuralMatrix(matH1);
+    {
+      TPZLinearAnalysis anH1(cmeshH1);
+      TPZWannStructMatrix matH1(cmeshH1);
+      matH1.SetNumThreads(SimData.m_Numerics.nthreads);
+      anH1.SetStructuralMatrix(matH1);
 
-    TPZStepSolver<STATE> stepH1;
-    stepH1.SetDirect(ECholesky);
-    anH1.SetSolver(stepH1);
-    anH1.Run();
+      TPZStepSolver<STATE> stepH1;
+      stepH1.SetDirect(ECholesky);
+      anH1.SetSolver(stepH1);
+      anH1.Run();
+    }
 
-    // Plot solutions (for internal control only)
+    // Export the geometry and both reservoir solutions for this iteration.
     if (shouldPlot) {
-      // GeoMesh
-      {
-        std::ofstream plotfile("geomesh_" + std::to_string(refIt) + ".vtk");
-        TPZVTKGeoMesh::PrintGMeshVTK(gmesh, plotfile);
-      }
-
-      // H1 Darcy
-      {
-        const std::string plotfile = "h1Darcy_plot_" + std::to_string(refIt);
-        constexpr int vtkRes{0};
-        TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
-        bool safe_check = SimData.m_Mesh.ToCylindrical? true : false;
-        auto vtk = TPZVTKGenerator(cmeshH1, fields, plotfile, vtkRes, 3, safe_check);
-        vtk.Do();
-      }
-
-      // Mixed Darcy
-      {
-        const std::string plotfile = "mixedDarcy_plot_" + std::to_string(refIt);
-        constexpr int vtkRes{0};
-        TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
-        bool safe_check = SimData.m_Mesh.ToCylindrical? true : false;
-        auto vtk = TPZVTKGenerator(cmeshMixed, fields, plotfile, vtkRes, 3, safe_check);
-        vtk.Do();
-      }
+      const std::string iteration = std::to_string(refIt);
+      std::ofstream plotfile("geomesh_" + iteration + ".vtk");
+      TPZVTKGeoMesh::PrintGMeshVTK(gmesh, plotfile);
+      WriteDarcyVTK(cmeshH1, "h1Darcy_plot_" + iteration, SimData.m_Mesh.ToCylindrical);
+      WriteDarcyVTK(cmeshMixed, "mixedDarcy_plot_" + iteration, SimData.m_Mesh.ToCylindrical);
     }
 
     std::cout << "\n--- Error estimation and adaptive refinement at iteration " << refIt << " ---" << std::endl;
+    estimatedError = TPZWannAdaptivityTools::PragerSynge(
+        cmeshMixed, cmeshH1, &SimData, elementErrors, SimData.m_Numerics.nthreads);
 
-    int64_t ngel = cmeshMixed->Reference()->NElements();
-    TPZVec<REAL> elementErrors(ngel, 0.0);
-    TPZVec<int> refinementIndicator(ngel, 0);
+    for (auto& connect : cmeshH1->ConnectVec()) connect.RemoveDepend();
+    delete cmeshH1;
+    DeleteMixedMesh(cmeshMixed);
 
-    // Prager-Synge error estimation
-    estimatedError = TPZWannAdaptivityTools::PragerSynge(cmeshMixed, cmeshH1, &SimData, elementErrors, SimData.m_Numerics.nthreads);
-    estimatedErrorVec[refIt] = estimatedError;
-    maxErrorVec[refIt] = *std::max_element(elementErrors.begin(), elementErrors.end());
-    std::cout << "Estimated error: " << estimatedErrorVec[refIt] << std::endl;
-    std::cout << "Max element error: " << maxErrorVec[refIt] << std::endl;
+    estimatedErrorVec.push_back(estimatedError);
+    const REAL maxError = *std::max_element(elementErrors.begin(), elementErrors.end());
+    maxErrorVec.push_back(maxError);
+    std::cout << "Estimated error: " << estimatedError << " (scaled), "
+              << estimatedError * errorToPhysical << " (physical)\n"
+              << "Max element error: " << maxError << " (scaled), "
+              << maxError * errorToPhysical << " (physical)" << std::endl;
 
     // Mesh adaptive refinement (in the last iteration we only compute the error, no refinement)
-    if (refIt < maxIterations) {
+    if (refIt < maxRefinements && estimatedError > errorTolerance) {
       TPZVec<int64_t> refinedElements;
-      TPZWannAdaptivityTools::AdaptivityProcess(gmesh, &SimData, elementErrors, refinedElements, relativeRefTol, TPZWannAdaptivityTools::MarkingStrategy::ESimple);
+      TPZWannAdaptivityTools::AdaptivityProcess(gmesh, &SimData, elementErrors, refinedElements, relativeRefTol);
 
       // Export refinement information to file
       refinementLog << refinedElements.size() << " ";
@@ -208,140 +200,96 @@ int main(int argc, char *argv[]) {
         refinementLog << refinedElements[i];
         if (i != refinedElements.size() - 1) refinementLog << " ";
       }
-      refinementLog << "\n";
+      refinementLog << std::endl;
     }
 
-    // --- Clean up ---
-
-    // Remove dependencies before deleting H1 mesh
-    int ncon = cmeshH1->NConnects();
-    for (int i = 0; i < ncon; ++i) {
-      cmeshH1->ConnectVec()[i].RemoveDepend();
-    }
-
-    delete cmeshMixed;
-    delete cmeshH1;
     refIt++;
   }
 
   std::cout << "\n=== Adaptive refinement loop completed ===" << std::endl;
-  std::cout << "Estimated error history: ";
+  std::cout << "\nError history\n"
+            << std::setw(10) << "Iteration"
+            << std::setw(20) << "Total (scaled)"
+            << std::setw(20) << "Total (physical)"
+            << std::setw(20) << "Max elem. (scaled)"
+            << std::setw(22) << "Max elem. (physical)" << '\n';
   for (int i = 0; i < refIt; ++i) {
-    std::cout << estimatedErrorVec[i];
-    if (i != refIt - 1) std::cout << ", ";
+    std::cout << std::setw(10) << i
+              << std::setw(20) << estimatedErrorVec[i]
+              << std::setw(20) << estimatedErrorVec[i] * errorToPhysical
+              << std::setw(20) << maxErrorVec[i]
+              << std::setw(22) << maxErrorVec[i] * errorToPhysical << '\n';
   }
-  std::cout << std::endl;
-
-  std::cout << "Max element error history: ";
-  for (int i = 0; i < refIt; ++i) {
-    std::cout << maxErrorVec[i];
-    if (i != refIt - 1) std::cout << ", ";
-  }
-  std::cout << std::endl;
 
   refinementLog.close();
+  delete gmesh;
+  return 0;
 }
 
-// ========================
-// Functions implementation
-// ========================
-
-TPZMultiphysicsCompMesh *MixedDarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TLaplaceExample1 *exact, bool isCondensed) {
-  TPZHDivApproxCreator hdivCreator(gmesh);
-  hdivCreator.SetProbType(ProblemType::EDarcy);
-  hdivCreator.SetHdivFamily(HDivFamily::EHDivStandard);
-  hdivCreator.SetDefaultOrder(SimData->m_Reservoir.pOrder);
-  hdivCreator.SetShouldCondense(isCondensed);
-
-  TLaplaceExample1* exactsol = dynamic_cast<TLaplaceExample1 *>(exact);
-  bool hasAnalyticSol = (exactsol != nullptr && exactsol->fExact != TLaplaceExample1::ENone);
-
-  // Reservoir data
-  auto &ReservoirData = SimData->m_Reservoir;
-
-  TPZMixedDarcyAnisotropic *reservoirMat = new TPZMixedDarcyAnisotropic(SimData->EDomain, gmesh->Dimension());
-  TPZFNMatrix<9, STATE> perm(3, 3, 0.);
-  for (int i = 0; i < 3; i++) {
-    perm(i, i) = ReservoirData.perm[i];
-  }
-  reservoirMat->SetConstantPermeability(perm);
-  hdivCreator.InsertMaterialObject(reservoirMat);
-
-  // Boundary conditions --- 
-
-  TPZFMatrix<STATE> val1(1, 1, 0.);
-  TPZManVector<STATE> val2(1, 0);
-
-  // No flux on cylinder bases and caprock
-  val2[0] = 0.;
-  TPZBndCondT<STATE> *BCond = reservoirMat->CreateBC(reservoirMat, SimData->ESurfHeel, 1, val1, val2);
-  hdivCreator.InsertMaterialObject(BCond);
-  BCond = reservoirMat->CreateBC(reservoirMat, SimData->ESurfToe, 1, val1, val2);
-  hdivCreator.InsertMaterialObject(BCond);
-  BCond = reservoirMat->CreateBC(reservoirMat, SimData->ECapRock, 1, val1, val2);
-  hdivCreator.InsertMaterialObject(BCond);
-
-  // Zero pressure on farfield
-  val2[0] = 0.;
-  BCond = reservoirMat->CreateBC(reservoirMat, SimData->EFarField, 0, val1, val2);
-  hdivCreator.InsertMaterialObject(BCond);
-
-  // Prescribed flux on well surface
-  REAL Q = SimData->m_Wellbore.BCs["point_heel"].value;
-  REAL Area = 2.0 * M_PI * SimData->m_Wellbore.radius * SimData->m_Wellbore.height;
-  val2[0] = -Q / Area;
-  BCond = reservoirMat->CreateBC(reservoirMat, SimData->ESurfWellCyl, 1, val1, val2);
-  hdivCreator.InsertMaterialObject(BCond); 
-
-  TPZMultiphysicsCompMesh *cmesh = hdivCreator.CreateApproximationSpace();
-  return cmesh;
+void WriteDarcyVTK(TPZCompMesh* mesh, const std::string& filename, bool cylindrical) {
+  const int vtkResolution = 0;
+  TPZManVector<std::string, 2> fields = {"Flux", "Pressure"};
+  TPZVTKGenerator vtk(mesh, fields, filename, vtkResolution, 3, cylindrical);
+  vtk.Do();
 }
 
-TPZCompMesh *H1DarcyCompMesh(TPZGeoMesh *gmesh, ProblemData *SimData, TLaplaceExample1 *exact, bool isCondensed) {
-  TPZH1ApproxCreator h1Creator(gmesh);
-  h1Creator.SetDefaultOrder(SimData->m_Reservoir.pOrder+2);
-  h1Creator.SetProbType(ProblemType::EDarcy);
-  h1Creator.SetShouldCondense(isCondensed);
-
-  TLaplaceExample1* exactsol = dynamic_cast<TLaplaceExample1 *>(exact);
-  bool hasAnalyticSol = (exactsol != nullptr && exactsol->fExact != TLaplaceExample1::ENone);
-
-  // Insert material
-  TPZDarcyAnisotropic *reservoirMat = new TPZDarcyAnisotropic(SimData->EDomain, gmesh->Dimension());
-  TPZFNMatrix<9, STATE> perm(3, 3, 0.);
-  for (int i = 0; i < 3; i++) {
-    perm(i, i) = SimData->m_Reservoir.perm[i];
+void DeleteMixedMesh(TPZMultiphysicsCompMesh* mesh) {
+  const auto atomicMeshes = mesh->MeshVector();
+  for (auto& connect : mesh->ConnectVec()) connect.RemoveDepend();
+  delete mesh;
+  for (auto* atomicMesh : atomicMeshes) {
+    for (auto& connect : atomicMesh->ConnectVec()) connect.RemoveDepend();
+    delete atomicMesh;
   }
-  reservoirMat->SetConstantPermeability(perm);
-  h1Creator.InsertMaterialObject(reservoirMat);
+}
 
-  // Bondary conditions ---
+namespace {
+template<class Creator, class Material>
+void SetDarcyData(Creator& creator, Material* material, const ProblemData& data,
+                  const std::map<int, REAL>& wallFlux, REAL sign) {
+  TPZFNMatrix<9, STATE> mobility(3, 3, 0.);
+  for (int i = 0; i < 3; ++i)
+    mobility(i, i) = data.m_Reservoir.perm[i] / data.m_Fluid[0].viscosity;
+  material->SetConstantPermeability(mobility);
+  creator.InsertMaterialObject(material);
 
   TPZFMatrix<STATE> val1(1, 1, 0.);
-  TPZManVector<STATE> val2(1, 0);
+  TPZManVector<STATE, 1> val2(1);
+  for (const auto& [name, bc] : data.m_Reservoir.BCs) {
+    val2[0] = bc.value;
+    creator.InsertMaterialObject(material->CreateBC(material, bc.matid, bc.type, val1, val2));
+  }
+  for (const auto& [id, flux] : wallFlux) {
+    val2[0] = sign * flux;
+    creator.InsertMaterialObject(material->CreateBC(material, id, 1, val1, val2));
+  }
+}
+}
 
-  // No flux on cylinder bases and caprock
-  val2[0] = 0.;
-  TPZBndCondT<STATE> *BCond = reservoirMat->CreateBC(reservoirMat, SimData->ESurfHeel, 1, val1, val2);
-  h1Creator.InsertMaterialObject(BCond);
-  BCond = reservoirMat->CreateBC(reservoirMat, SimData->ESurfToe, 1, val1, val2);
-  h1Creator.InsertMaterialObject(BCond);
-  BCond = reservoirMat->CreateBC(reservoirMat, SimData->ECapRock, 1, val1, val2);
-  h1Creator.InsertMaterialObject(BCond);
+TPZMultiphysicsCompMesh* MixedDarcyCompMesh(TPZGeoMesh* gmesh, const ProblemData& data,
+                                           const std::map<int, REAL>& wallFlux) {
+  TPZHDivApproxCreator creator(gmesh);
+  creator.SetProbType(ProblemType::EDarcy);
+  creator.SetHdivFamily(HDivFamily::EHDivStandard);
+  creator.SetDefaultOrder(data.m_Numerics.reservoirPorder);
+  creator.SetShouldCondense(false);
+  auto* material = new TPZMixedDarcyAnisotropic(data.m_Reservoir.matid, gmesh->Dimension());
+  SetDarcyData(creator, material, data, wallFlux, 1.);
+  return creator.CreateApproximationSpace();
+}
 
-  // Zero pressure on farfield
-  val2[0] = 0.;
-  BCond = reservoirMat->CreateBC(reservoirMat, SimData->EFarField, 0, val1, val2);
-  h1Creator.InsertMaterialObject(BCond);
-
-  // Prescribed flux on well surface
-  REAL Q = SimData->m_Wellbore.BCs["point_heel"].value;
-  REAL Area = 2.0 * M_PI * SimData->m_Wellbore.radius * SimData->m_Wellbore.height;
-  val2[0] = Q / Area;
-  BCond = reservoirMat->CreateBC(reservoirMat, SimData->ESurfWellCyl, 1, val1, val2);
-  h1Creator.InsertMaterialObject(BCond); 
-
-  // Create the H1 computational mesh
-  TPZCompMesh *cmesh = h1Creator.CreateClassicH1ApproximationSpace();
-  return cmesh;
+TPZCompMesh* H1DarcyCompMesh(TPZGeoMesh* gmesh, const ProblemData& data,
+                            const std::map<int, REAL>& wallFlux) {
+  TPZH1ApproxCreator creator(gmesh);
+  creator.SetProbType(ProblemType::EDarcy);
+  creator.SetDefaultOrder(data.m_Numerics.reservoirPorder + 2);
+  creator.SetShouldCondense(false);
+  auto* material = new TPZDarcyAnisotropic(data.m_Reservoir.matid, gmesh->Dimension());
+  // Keep the pressure penalty relative to the Darcy stiffness at the input pressure scale.
+  const auto& permeability = data.m_Reservoir.perm;
+  const REAL maxMobility = *std::max_element(permeability.begin(), permeability.end()) /
+                           data.m_Fluid[0].viscosity;
+  material->SetBigNumber(material->BigNumber() * maxMobility);
+  SetDarcyData(creator, material, data, wallFlux, -1.);
+  return creator.CreateClassicH1ApproximationSpace();
 }

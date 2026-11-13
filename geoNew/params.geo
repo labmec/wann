@@ -27,7 +27,18 @@ DefineConstant[
 	size_min_res = {15.0, Name "size_min_res"},
 	size_max_res = {300.0, Name "size_max_res"},
 	dist_min_res = {80.0, Name "dist_min_res"},
-	dist_max_res = {200.0, Name "dist_max_res"}
+	dist_max_res = {200.0, Name "dist_max_res"},
+
+    // Physical tags supplied from JSON by run_all.py.
+    id_well = {-1, Name "id_well"},
+    id_well_surface = {-1, Name "id_well_surface"},
+    id_toe_surface = {-1, Name "id_toe_surface"},
+    id_heel_surface = {-1, Name "id_heel_surface"},
+    id_cap_rock = {-1, Name "id_cap_rock"},
+    id_farfield = {-1, Name "id_farfield"},
+    id_heel_point = {-1, Name "id_heel_point"},
+    id_toe_point = {-1, Name "id_toe_point"},
+    id_reservoir = {-1, Name "id_reservoir"}
 ];
 
 // Derived parameters
@@ -36,3 +47,41 @@ size_min_res = Lw/axial_div;
 size_max_res = Lr/30;
 dist_min_res = Hr;
 dist_max_res = Wr/3;
+
+// Reject direct generation without configured physical tags.
+If (id_well <= 0)
+    Error("Missing physical tag id_well: use run_all.py with a simulation JSON");
+    Abort;
+EndIf
+If (id_well_surface <= 0)
+    Error("Missing physical tag id_well_surface: use run_all.py with a simulation JSON");
+    Abort;
+EndIf
+If (id_toe_surface <= 0)
+    Error("Missing physical tag id_toe_surface: use run_all.py with a simulation JSON");
+    Abort;
+EndIf
+If (id_heel_surface <= 0)
+    Error("Missing physical tag id_heel_surface: use run_all.py with a simulation JSON");
+    Abort;
+EndIf
+If (id_cap_rock <= 0)
+    Error("Missing physical tag id_cap_rock: use run_all.py with a simulation JSON");
+    Abort;
+EndIf
+If (id_farfield <= 0)
+    Error("Missing physical tag id_farfield: use run_all.py with a simulation JSON");
+    Abort;
+EndIf
+If (id_heel_point <= 0)
+    Error("Missing physical tag id_heel_point: use run_all.py with a simulation JSON");
+    Abort;
+EndIf
+If (id_toe_point <= 0)
+    Error("Missing physical tag id_toe_point: use run_all.py with a simulation JSON");
+    Abort;
+EndIf
+If (id_reservoir <= 0)
+    Error("Missing physical tag id_reservoir: use run_all.py with a simulation JSON");
+    Abort;
+EndIf

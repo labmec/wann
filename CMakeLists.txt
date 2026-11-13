@@ -31,3 +31,4 @@ set_target_properties(WANN_lib PROPERTIES LINKER_LANGUAGE CXX)
 
 add_subdirectory(src)
 add_subdirectory(targets)
+add_subdirectory(tests)

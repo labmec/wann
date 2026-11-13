@@ -43,7 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "json_file",
         nargs="?",
-        default="../input/penmatcha1999.json",
+        default="../input/ozkan1999.json",
         help="Path to the JSON input file.",
     )
     parser.add_argument(
@@ -76,6 +76,56 @@ def extract_optional_value(data: dict, path: tuple) -> float | None:
             return None
         value = value[key]
     return float(value)
+
+
+def extract_material_ids(data: dict) -> dict[str, int]:
+    well = data["WellboreData"]
+    reservoir = data["ReservoirData"]
+
+    def matid(obj: dict, key: str, label: str) -> int:
+        value = obj.get(key)
+        if type(value) is not int or value <= 0:
+            raise ValueError(f"{label}.{key} must be a positive integer")
+        return value
+
+    def bc_id(domain: dict, name: str, label: str) -> int:
+        matches = [bc for bc in domain["BCs"] if bc["name"] == name]
+        if len(matches) != 1:
+            raise ValueError(f"{label}.BCs must contain exactly one {name}")
+        return matid(matches[0], "matid", f"{label}.BCs[{name}]")
+
+    values = {
+        "id_well": matid(well, "matid", "WellboreData"),
+        "id_well_surface": matid(well, "matidSurf", "WellboreData"),
+        "id_toe_surface": matid(well, "matidToeSurf", "WellboreData"),
+        "id_heel_surface": matid(well, "matidHeelSurf", "WellboreData"),
+        "id_heel_point": bc_id(well, "point_heel", "WellboreData"),
+        "id_toe_point": bc_id(well, "point_toe", "WellboreData"),
+        "id_reservoir": matid(reservoir, "matid", "ReservoirData"),
+        "id_farfield": bc_id(reservoir, "surface_farfield", "ReservoirData"),
+        "id_cap_rock": bc_id(reservoir, "surface_cap_rock", "ReservoirData"),
+    }
+    if len(set(values.values())) != len(values):
+        raise ValueError("Physical groups must have distinct material IDs")
+
+    return values
+
+
+def build_parameters(data: dict) -> dict[str, float]:
+    well = data["WellboreData"]
+    if isinstance(well, list):
+        if len(well) != 1:
+            raise ValueError("geoNew currently supports exactly one well")
+        well = well[0]
+    if not isinstance(well, dict):
+        raise ValueError("WellboreData must be an object or a one-well array")
+    data = {**data, "WellboreData": well}
+    values = {name: extract_value(data, path) for name, path in PARAM_KEYS.items() if name != "Hw"}
+    hw = extract_optional_value(data, PARAM_KEYS["Hw"])
+    values["Hw"] = hw if hw is not None else values["Hr"] / 2.0
+    values.update(MESH_PARAMS)
+    values.update(extract_material_ids(data))
+    return values
 
 
 def build_gmsh_args(values: dict[str, float], geo_file: str, batch_mode: bool) -> list[str]:
@@ -120,12 +170,12 @@ def main() -> int:
         print(f"JSON file not found: {json_path}", file=sys.stderr)
         return 1
 
-    json_data = load_json(json_path)
-
-    values = {name: extract_value(json_data, path) for name, path in PARAM_KEYS.items() if name != "Hw"}
-    hw = extract_optional_value(json_data, PARAM_KEYS["Hw"])
-    values["Hw"] = hw if hw is not None else values["Hr"] / 2.0
-    values.update(MESH_PARAMS)
+    try:
+        json_data = load_json(json_path)
+        values = build_parameters(json_data)
+    except (KeyError, TypeError, ValueError) as error:
+        print(f"Invalid simulation configuration: {error}", file=sys.stderr)
+        return 1
 
     reservoir_format = json_data["ReservoirData"]["format"]
     if reservoir_format not in {"box", "pill", "ball", "nearWellbore"}:

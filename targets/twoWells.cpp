@@ -1,0 +1,72 @@
+#ifdef HAVE_CONFIG_H
+#include <pz_config.h>
+#endif
+
+#include <iostream>
+#include "TPZWannGeometryTools.h"
+#include "TPZWannApproxTools.h"
+#include "TPZWannPostProcTools.h"
+#include "TPZWannAnalysis.h"
+
+int main(int argc, char *argv[]) {
+
+  std::string jsonfile = "ozkan1999.json";
+
+  if (argc > 2) {
+    std::cout << argv[0] << " being called with too many arguments." << std::endl;
+    DebugStop();
+  } else if (argc == 2) {
+    jsonfile = argv[1];
+  }
+
+  if (jsonfile.find(".json") == std::string::npos) {
+    jsonfile += ".json";
+  }
+
+  std::cout << "\n--------- Starting simulation ---------" << std::endl;
+  std::cout << "Using json file: " << jsonfile << std::endl;
+
+#ifdef PZ_LOG
+  TPZLogger::InitializePZLOG();
+#endif
+
+  // Problem data
+  ProblemData SimData;  
+  SimData.ReadJson(jsonfile);
+
+  // Read and prepare the geometric mesh.
+  TPZGeoMesh* gmesh = TPZWannGeometryTools::CreateGeoMesh(&SimData);
+  std::ofstream out("gmeshWannFinal.vtk");
+  TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out);
+
+  // Mixed simulation
+  TPZMultiphysicsCompMesh* cmeshMixed = TPZWannApproxTools::CreateMixedCompMesh(gmesh, &SimData);
+  TPZWannAnalysis anMixed(cmeshMixed, RenumType::EMetis);
+  anMixed.SetProblemData(&SimData);
+  anMixed.Initialize();
+  anMixed.NewtonIteration();
+
+  // H1 simulation for comparison
+  TPZCompMesh* cmeshH1 = TPZWannApproxTools::CreateH1CompMesh(gmesh, &SimData);
+  TPZWannAnalysis anH1(cmeshH1, RenumType::EMetis);
+  anH1.SetProblemData(&SimData);
+  anH1.Initialize();
+  anH1.NewtonIteration();
+
+  // --- Post-processing ----
+  TPZWannPostProcTools::WriteVTKs(cmeshMixed, &SimData);
+  TPZWannPostProcTools::WriteVTKs(cmeshH1, &SimData);
+
+  // ---- Clean up ----
+
+  for (auto& connect : cmeshH1->ConnectVec()) connect.RemoveDepend();
+  delete cmeshH1;
+  const auto atomicMeshes = cmeshMixed->MeshVector();
+  delete cmeshMixed;
+  for (auto* mesh : atomicMeshes) {
+    for (auto& connect : mesh->ConnectVec()) connect.RemoveDepend();
+    delete mesh;
+  }
+  delete gmesh;
+  return 0;
+}
