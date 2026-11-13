@@ -20,7 +20,9 @@
 #include <thread>
 #include <vector>
 
-REAL TPZWannAdaptivityTools::PragerSynge(TPZMultiphysicsCompMesh* cmeshMixed, TPZCompMesh* cmeshH1, ProblemData* SimData, TPZVec<REAL>& elementErrors, int nthreads) {
+REAL TPZWannAdaptivityTools::PragerSynge(TPZMultiphysicsCompMesh* cmeshMixed, TPZCompMesh* cmeshH1,
+                                        ProblemData* SimData, TPZVec<REAL>& elementErrors,
+                                        int nthreads, const std::string& estimatorFile) {
   // If nthreads = 0, we use 1 thread
   nthreads++;
 
@@ -158,7 +160,7 @@ REAL TPZWannAdaptivityTools::PragerSynge(TPZMultiphysicsCompMesh* cmeshMixed, TP
 
   // VTK output
   if (SimData->m_PostProc.verbosityLevel) {
-    std::ofstream out_estimator("PragerSyngeEst.vtk");
+    std::ofstream out_estimator(estimatorFile);
     TPZVTKGeoMesh::PrintCMeshVTK(cmeshMixed, out_estimator, elementErrorsAux, "EstimatedError");
   }
 

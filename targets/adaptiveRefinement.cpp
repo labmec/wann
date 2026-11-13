@@ -52,7 +52,7 @@ void DeleteMixedMesh(TPZMultiphysicsCompMesh* mesh);
 int main(int argc, char *argv[]) {
   
   std::string jsonfile = argc >= 2 ? argv[1] : "ozkan1999adaptive.json";
-  int maxRefinements = 1;
+  int maxRefinements = 3;
   if (argc > 3) {
     std::cerr << "Usage: " << argv[0] << " [input.json [max-refinements]]\n";
     return 1;
@@ -165,8 +165,8 @@ int main(int argc, char *argv[]) {
     }
 
     // Export the geometry and both reservoir solutions for this iteration.
+    const std::string iteration = std::to_string(refIt);
     if (shouldPlot) {
-      const std::string iteration = std::to_string(refIt);
       std::ofstream plotfile("geomesh_" + iteration + ".vtk");
       TPZVTKGeoMesh::PrintGMeshVTK(gmesh, plotfile);
       WriteDarcyVTK(cmeshH1, "h1Darcy_plot_" + iteration, SimData.m_Mesh.ToCylindrical);
@@ -175,7 +175,8 @@ int main(int argc, char *argv[]) {
 
     std::cout << "\n--- Error estimation and adaptive refinement at iteration " << refIt << " ---" << std::endl;
     estimatedError = TPZWannAdaptivityTools::PragerSynge(
-        cmeshMixed, cmeshH1, &SimData, elementErrors, SimData.m_Numerics.nthreads);
+        cmeshMixed, cmeshH1, &SimData, elementErrors, SimData.m_Numerics.nthreads,
+        "PragerSyngeEst_" + iteration + ".vtk");
 
     for (auto& connect : cmeshH1->ConnectVec()) connect.RemoveDepend();
     delete cmeshH1;
@@ -272,7 +273,7 @@ TPZMultiphysicsCompMesh* MixedDarcyCompMesh(TPZGeoMesh* gmesh, const ProblemData
   creator.SetProbType(ProblemType::EDarcy);
   creator.SetHdivFamily(HDivFamily::EHDivStandard);
   creator.SetDefaultOrder(data.m_Numerics.reservoirPorder);
-  creator.SetShouldCondense(false);
+  creator.SetShouldCondense(true);
   auto* material = new TPZMixedDarcyAnisotropic(data.m_Reservoir.matid, gmesh->Dimension());
   SetDarcyData(creator, material, data, wallFlux, 1.);
   return creator.CreateApproximationSpace();
@@ -283,7 +284,7 @@ TPZCompMesh* H1DarcyCompMesh(TPZGeoMesh* gmesh, const ProblemData& data,
   TPZH1ApproxCreator creator(gmesh);
   creator.SetProbType(ProblemType::EDarcy);
   creator.SetDefaultOrder(data.m_Numerics.reservoirPorder + 2);
-  creator.SetShouldCondense(false);
+  creator.SetShouldCondense(true);
   auto* material = new TPZDarcyAnisotropic(data.m_Reservoir.matid, gmesh->Dimension());
   // Keep the pressure penalty relative to the Darcy stiffness at the input pressure scale.
   const auto& permeability = data.m_Reservoir.perm;

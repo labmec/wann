@@ -36,7 +36,7 @@ The target runs the mixed degree-1 and H1 degree-1 and degree-3 approximations o
 wc -l runs/adaptive/ozkan1999_refProcess.txt
 ```
 
-The target solves two reservoir Darcy problems on each mesh, reports total and maximum element errors in scaled and physical units, and writes the mesh and solution VTKs for each iteration. The command-line limit defaults to one pass. With `3`, the target allows three passes and can stop earlier if the scaled estimated error meets the tolerance or the mixed system reaches the equation limit. The refinement history contains one line per completed pass. `PragerSyngeEst.vtk` contains the most recently computed elementwise error field.
+The target solves two reservoir Darcy problems on each mesh, reports total and maximum element errors in scaled and physical units, and writes the mesh and solution VTKs for each iteration. The command-line limit defaults to one pass. With `3`, the target allows three passes and can stop earlier if the scaled estimated error meets the tolerance or the mixed system reaches the equation limit. The refinement history contains one line per completed pass. With post-processing verbosity enabled, `PragerSyngeEst_0.vtk`, `PragerSyngeEst_1.vtk`, and subsequent files contain the elementwise error field for each mesh.
 
 ### Section 6.3 — Coupled Ozkan case
 

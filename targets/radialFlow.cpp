@@ -85,7 +85,7 @@ void ModifyToCylMesh(TPZGeoMesh *gmesh, int matid, REAL radius, const TPZManVect
 
 int main(int argc, char *argv[]) {
   
-  int maxRef = 2;
+  int maxRef = 4;
   std::string jsonfile = argc >= 2 ? argv[1] : "radialTest.json";
   if (argc > 3) {
     std::cerr << "Usage: " << argv[0] << " [input.json [max-refinements]]\n";

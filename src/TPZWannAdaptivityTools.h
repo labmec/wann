@@ -6,6 +6,7 @@
 #pragma once
 
 #include <TPZMultiphysicsCompMesh.h>
+#include <string>
 #include "ProblemData.h"
 
 /**
@@ -18,8 +19,11 @@ public:
    * @brief Reservoir flux-discrepancy/balance estimator comparing mixed and H1
    * solutions on shared geometry. Fills geometrically indexed indicators and returns
    * their Euclidean norm; uses nthreads+1 workers and zero source.
+   * Writes the error field to estimatorFile when post-processing verbosity is enabled.
    */
-  static REAL PragerSynge(TPZMultiphysicsCompMesh* cmeshHdiv, TPZCompMesh* cmeshH1, ProblemData* SimData, TPZVec<REAL>& elementErrors, int nthreads = 0);
+  static REAL PragerSynge(TPZMultiphysicsCompMesh* cmeshHdiv, TPZCompMesh* cmeshH1,
+                        ProblemData* SimData, TPZVec<REAL>& elementErrors, int nthreads = 0,
+                        const std::string& estimatorFile = "PragerSyngeEst.vtk");
   /**
    * @brief Mark geometric indices, enforce well compatibility, smooth, recheck
    * compatibility, populate refinedElements, and divide the marked elements.
